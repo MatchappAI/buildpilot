@@ -5,6 +5,7 @@ import { widgetData, WidgetSession } from "./glance";
 import { LiveStatus, readLiveStatus } from "./hooks";
 import { FREE_PROMPTS, gate, PRICE } from "./license";
 import { Tip, tips } from "./tips";
+import { shouldAsk } from "./counts";
 
 /**
  * Everything the one-page BuildPilot view shows. Pure data, no vscode imports.
@@ -30,6 +31,8 @@ export interface PageData {
   costTodayUsd: number | null;
   tips: Tip[];
   plan: { pro: boolean; freeLeft: number | null; price: string };
+  /** Ask once whether to share 4 anonymous counts. */
+  askCounts: boolean;
 }
 
 const DAY = 86_400_000;
@@ -143,6 +146,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     costTodayUsd,
     tips: tipList,
     plan: { pro: g.allowed && g.licensed, freeLeft: g.allowed ? g.remaining : 0, price: PRICE },
+    askCounts: !!st?.hooks.installed && shouldAsk(engine.home),
   };
 }
 

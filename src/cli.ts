@@ -22,6 +22,8 @@ import { glance, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
 import { paywallText, readLicense, saveLicense } from "./core/license";
+import { pageData, PageData } from "./core/page";
+import { guessGoal } from "./core/goal";
 import { openUri } from "./core/extId";
 import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
@@ -147,6 +149,8 @@ async function main(): Promise<void> {
   bp brief                 one-sentence status
   bp open                  open BuildPilot in VS Code for this folder
   bp prompt <goal> "<what you want>"   write an expert Claude Code prompt
+  bp limits                builds, memory %, plan limits + forecast, tips
+  bp prompt auto "<what>"  same as prompt, goal picked for you
   bp license [key]         show your plan, or unlock Pro with a key
   bp handoff               context handoff for a new session
   bp audit                 check dependencies for known vulnerabilities
@@ -157,6 +161,15 @@ async function main(): Promise<void> {
     console.log(`\ngoals: ${GOALS.map((g) => g.id).join(", ")}`);
     return;
   }
+  if (cmd === "limits") {
+    const engine = new Engine({ light: true });
+    await engine.start();
+    const p = pageData(engine, null);
+    engine.stop();
+    console.log(limitsText(p));
+    return;
+  }
+  if (cmd === "prompt" && rest[0] === "auto") rest[0] = guessGoal(rest[1] ?? "");
   if (cmd === "prompt" && (!rest[0] || !GOALS.some((g) => g.id === rest[0]))) {
     return usage(`${rest[0] ? `Unknown goal "${rest[0]}". ` : ""}Usage: bp prompt <goal> "<what you want>"\n\nGoals:\n${GOALS.map((g) => `  ${g.id.padEnd(14)} ${g.label}`).join("\n")}\n\nExample: bp prompt bugfix "the login button does nothing on mobile"`);
   }
@@ -243,3 +256,18 @@ main().catch((e) => {
   console.error(`buildpilot: ${(e as Error).message}`);
   process.exit(1);
 });
+
+function limitsText(p: PageData): string {
+  const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const lines: string[] = [];
+  lines.push(p.builds.length ? `${p.builds.length} build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
+  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? b.reason || b.word : b.word}${b.contextPct != null ? ` · ${Math.round(b.contextPct)}% memory` : ""}`);
+  const L = p.limits;
+  if (p.billing === "api") lines.push("", `Spend today   ${p.costTodayUsd != null ? `~$${p.costTodayUsd.toFixed(2)}` : "unknown"}`);
+  else if (L.fiveHourPct != null || L.sevenDayPct != null) {
+    lines.push("", `Next 5 hours  ${L.fiveHourPct != null ? `${Math.round(L.fiveHourPct)}%` : "unknown"}${L.fiveHourResetsAt ? ` · resets ${t(L.fiveHourResetsAt)}` : ""}${L.fullAt ? ` · runs out ~${t(L.fullAt)} at this pace` : ""}`);
+    lines.push(`This week     ${L.sevenDayPct != null ? `${Math.round(L.sevenDayPct)}%` : "unknown"}`);
+  } else lines.push("", "Plan limits   unknown (turn on: bp statusline install)");
+  if (p.tips.length) lines.push("", "Tips", ...p.tips.map((x) => `  → ${x.text}`));
+  return lines.join("\n");
+}

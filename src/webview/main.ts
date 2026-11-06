@@ -2,6 +2,7 @@
 import type { UiState } from "../core/engine";
 import type { PageData } from "../core/page";
 import type { BuiltPrompt } from "../core/prompts";
+import { guessGoal } from "../core/goal";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 const vscode = acquireVsCodeApi();
@@ -74,21 +75,6 @@ function flash(text: string): void {
   flashTimer = setTimeout(() => document.getElementById("flash")?.classList.remove("on"), 2400);
 }
 
-/** Pick the Prompt Studio goal from plain words, so users never have to choose one. */
-function goalFor(text: string): string {
-  const t = text.toLowerCase();
-  if (/\b(bug|broken|fix|error|crash|doesn'?t work|not working|fails?)\b/.test(t)) return "bugfix";
-  if (/\b(deploy|launch|ship|host|publish|go live)\b/.test(t)) return "deploy";
-  if (/\b(test|tests|testing)\b/.test(t)) return "tests";
-  if (/\b(slow|speed|faster|performance)\b/.test(t)) return "performance";
-  if (/\b(secure|security|password|leak|secret)\b/.test(t)) return "security";
-  if (/\b(design|layout|look|style|css|ui|button|page|screen)\b/.test(t)) return "ui";
-  if (/\b(connect|integrat|api|stripe|gmail|google|webhook)\w*/.test(t)) return "integration";
-  if (/\b(explain|understand|what does|how does)\b/.test(t)) return "explain";
-  if (/\b(clean ?up|refactor|reorganize|simplify)\b/.test(t)) return "refactor";
-  return "feature";
-}
-
 // ---------- render ----------
 function render(): void {
   const app = document.getElementById("app")!;
@@ -109,6 +95,7 @@ function render(): void {
     ${limitsSection()}
     ${tipsSection()}
     ${promptSection()}
+    ${P.askCounts ? `<p class="ask small">Help make BuildPilot better by sharing 4 anonymous counts (installed, connected, still using after a week, upgraded)? No names, code or prompts. <a href="#" data-act="countsYes">Yes</a> · <a href="#" data-act="countsNo">No thanks</a></p>` : ""}
     <footer class="foot">
       ${!P.plan.pro && P.plan.freeLeft != null && P.plan.freeLeft <= 5 && !paywalled ? `<span>${P.plan.freeLeft} free prompt${P.plan.freeLeft === 1 ? "" : "s"} left</span> · ` : ""}
       <a href="#" data-act="more">More tools</a>
@@ -209,7 +196,7 @@ async function buildNow(): Promise<void> {
     document.getElementById("req")?.focus();
     return;
   }
-  const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } } | null>("buildPrompt", { goal: goalFor(text), request: text, beginner: true, planFirst: true });
+  const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } } | null>("buildPrompt", { goal: guessGoal(text), request: text, beginner: true, planFirst: true });
   if (!r) return;
   if ("paywall" in r) {
     paywalled = true;

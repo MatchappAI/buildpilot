@@ -17,6 +17,7 @@ import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
 import { BuildPilotPanel, WebviewMessage } from "./sidebar";
 import { pageData } from "../core/page";
+import { count, setConsent } from "../core/counts";
 
 let engine: Engine | null = null;
 let api: IntegrationApi | null = null;
@@ -97,6 +98,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     void vscode.window.showErrorMessage(`BuildPilot couldn't start: ${(e as Error).message}`);
   }
   eng.on("changed", push);
+  void count(eng.home, "installed");
+  void count(eng.home, "day7");
   eng.on("alert", (a: Alert) => void onAlert(a));
   context.subscriptions.push({ dispose: () => eng.stop() });
 
@@ -191,7 +194,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     const key = await vscode.window.showInputBox({ title: "BuildPilot Pro", prompt: "Paste your license key", placeHolder: "BP1.…", ignoreFocusOut: true, password: true });
     if (!key) return;
     const v = saveLicense(eng.home, key);
-    if (v.valid) void vscode.window.showInformationMessage("BuildPilot Pro unlocked. Unlimited prompts.");
+    if (v.valid) { void count(eng.home, "upgraded"); void vscode.window.showInformationMessage("BuildPilot Pro unlocked. Unlimited prompts."); }
     else void vscode.window.showErrorMessage(`That key didn't work (${v.reason}).`);
     push();
   }
@@ -275,6 +278,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
           installHooks(file, eng.home);
           installStatusline(file, eng.home);
           eng.setClaudeSettingsFile(file);
+          void count(eng.home, "connected");
           void vscode.window.setStatusBarMessage("$(check) Connected. Your builds appear as soon as Claude does something.", 5000);
         } catch (e) {
           void vscode.window.showErrorMessage((e as Error).message);
@@ -322,6 +326,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       case "copyHandoff":
         await vscode.env.clipboard.writeText(eng.handoff());
         void vscode.window.setStatusBarMessage("$(check) Handoff copied. Paste it into a new Claude session.", 4000);
+        return;
+      case "countsYes":
+      case "countsNo":
+        setConsent(eng.home, m.type === "countsYes");
+        if (m.type === "countsYes") { void count(eng.home, "installed"); void count(eng.home, "connected"); }
+        push();
         return;
       case "more":
         return vscode.commands.executeCommand("workbench.action.quickOpen", ">BuildPilot: ");

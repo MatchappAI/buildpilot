@@ -1,0 +1,59 @@
+import * as fs from "fs";
+import * as path from "path";
+import { readUsage } from "./license";
+
+/**
+ * Optional anonymous product counts. OFF until the user says yes (asked once, on the page).
+ * Exactly four events, each sent at most once per install, with the random install id and nothing else:
+ * no project names, paths, prompts, code or IPs stored. See docs/SECURITY.md.
+ */
+export const COUNT_EVENTS = ["installed", "connected", "day7", "upgraded"] as const;
+export type CountEvent = (typeof COUNT_EVENTS)[number];
+/** The license Worker's /v1/count route. Placeholder = never sends. */
+export const COUNT_URL = "https://buildpilot-license.REPLACE.workers.dev/v1/count";
+
+interface CountsFile { consent?: boolean; firstSeen?: number; sent?: Partial<Record<CountEvent, number>> }
+const file = (home: string) => path.join(home, "counts.json");
+
+export function readCounts(home: string): CountsFile {
+  try {
+    return JSON.parse(fs.readFileSync(file(home), "utf8")) as CountsFile;
+  } catch {
+    return {};
+  }
+}
+
+function write(home: string, c: CountsFile): void {
+  try {
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(file(home), JSON.stringify(c, null, 2), { mode: 0o600 });
+  } catch {
+    /* read-only home: nothing is sent */
+  }
+}
+
+/** true = ask the user (never answered). */
+export const shouldAsk = (home: string) => readCounts(home).consent === undefined;
+
+export function setConsent(home: string, yes: boolean, now = Date.now()): void {
+  const c = readCounts(home);
+  write(home, { ...c, consent: yes, firstSeen: c.firstSeen ?? now });
+}
+
+/** Sends one event if (and only if) the user said yes, the endpoint is configured, and it wasn't sent before. */
+export async function count(home: string, ev: CountEvent, opts: { url?: string; now?: number; fetchFn?: typeof fetch } = {}): Promise<boolean> {
+  const url = opts.url ?? process.env.BUILDPILOT_COUNT_URL ?? COUNT_URL;
+  const now = opts.now ?? Date.now();
+  const c = readCounts(home);
+  if (!c.firstSeen) write(home, (c.firstSeen = now, c));
+  if (c.consent !== true || url.includes("REPLACE") || c.sent?.[ev]) return false;
+  if (ev === "day7" && now - (c.firstSeen ?? now) < 7 * 86_400_000) return false;
+  try {
+    const r = await (opts.fetchFn ?? fetch)(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: ev, id: readUsage(home).installId }), signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return false;
+    write(home, { ...c, sent: { ...c.sent, [ev]: now } });
+    return true;
+  } catch {
+    return false;
+  }
+}
