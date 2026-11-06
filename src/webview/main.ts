@@ -20,6 +20,8 @@ interface Settings {
   home: string;
   pocketUrl: string | null;
   screenshotUri: string | null;
+  shellInstalled: boolean;
+  openWithTerminal: boolean;
 }
 
 type Tab = "overview" | "sessions" | "supervisor" | "prompts" | "memory" | "connect";
@@ -43,6 +45,7 @@ let goals: GoalSpec[] = [];
 let cpFiles: Record<string, string[]> = {};
 let hasWebhook = false;
 const explanations: Record<string, string> = {};
+let lastAnnounce = "";
 const persist = () => vscode.setState(vs);
 
 // ---------- messaging ----------
@@ -158,10 +161,11 @@ function render(): void {
     </div>
     ${S.demo ? `<div class="demo-banner">${icon("beaker")} Showing DEMO sessions. They aren't real. <a href="#" data-act="demoOff">Remove demo</a></div>` : ""}
     ${!settings?.trusted ? `<div class="demo-banner">${icon("shield")} Restricted Mode: BuildPilot can read, but won't run scripts or change files.</div>` : ""}
-    <nav class="tabs" role="tablist">${TABS.map((t) => `<button role="tab" aria-selected="${vs.tab === t.id}" class="tab ${vs.tab === t.id ? "active" : ""}" data-tab="${t.id}" title="${t.label}" aria-label="${t.label}">${icon(t.icon)}<span class="tab-label">${t.label}</span>${badge[t.id] ?? ""}</button>`).join("")}</nav>
+    <nav class="tabs" role="tablist" aria-label="BuildPilot sections">${TABS.map((t) => `<button role="tab" id="tab-${t.id}" aria-controls="panel" aria-selected="${vs.tab === t.id}" tabindex="${vs.tab === t.id ? 0 : -1}" class="tab ${vs.tab === t.id ? "active" : ""}" data-tab="${t.id}" title="${t.label}" aria-label="${t.label}${badgeText(t.id, waitingN, urgent, live.length)}">${icon(t.icon)}<span class="tab-label">${t.label}</span>${badge[t.id] ?? ""}</button>`).join("")}</nav>
   </header>
-  <main class="content" role="tabpanel">${S.errors.map((e) => `<div class="error-box">${icon("error")} ${esc(e)}</div>`).join("")}${renderTab()}</main>`;
+  <main class="content" id="panel" role="tabpanel" aria-labelledby="tab-${vs.tab}" tabindex="-1">${S.errors.map((e) => `<div class="error-box">${icon("error")} ${esc(e)}</div>`).join("")}${renderTab()}</main>`;
   bind();
+  announce();
   const c = document.querySelector(".content");
   if (c) c.scrollTop = scroll;
   if (focusId) {
@@ -171,6 +175,37 @@ function render(): void {
       if (selStart !== null && "setSelectionRange" in el) try { el.setSelectionRange(selStart, selStart); } catch { /* not a text input */ }
     }
   }
+}
+
+function badgeText(id: Tab, waiting: number, urgent: number, live: number): string {
+  if (id === "sessions") return waiting ? `, ${waiting} waiting for you` : live ? `, ${live} active` : "";
+  if (id === "supervisor") return urgent ? `, ${urgent} important issues` : "";
+  return "";
+}
+
+/** Tell screen-reader users about changes that need them, once per change. */
+function announce(): void {
+  if (!S) return;
+  const waiting = S.out.sessions.filter((s) => !s.endedAt && (s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked"));
+  const ew = S.elsewhere.filter((s) => s.status === "awaiting_approval" || s.status === "blocked");
+  const blocker = S.out.issues.find((i) => i.severity === "blocker");
+  const parts: string[] = [];
+  if (waiting.length) parts.push(`${waiting.length} Claude session${waiting.length === 1 ? "" : "s"} waiting for you`);
+  if (ew.length) parts.push(`waiting in ${[...new Set(ew.map((s) => s.folder))].join(", ")}`);
+  if (blocker) parts.push(`Blocker: ${blocker.title}`);
+  const msg = parts.join(". ");
+  // The live region lives outside #app so re-renders never wipe a pending announcement.
+  let el = document.getElementById("live");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "live";
+    el.className = "sr-only";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    document.body.appendChild(el);
+  }
+  if (msg !== lastAnnounce) el.textContent = msg;
+  lastAnnounce = msg;
 }
 
 function renderTab(): string {
@@ -235,6 +270,7 @@ function overview(): string {
   const lastTest = st.testRuns.find((t) => /test|vitest|jest|pytest/.test(t.command));
   return `
   ${nextCard()}
+  ${metricsStrip()}
   <section class="qa">
     <div class="qa-row"><span class="qa-q">What's happening?</span><span>${happeningAll}</span></div>
     <div class="qa-row"><span class="qa-q">Anything wrong?</span><span>${wrong}</span></div>
@@ -262,6 +298,22 @@ function overview(): string {
     ${st.commits.length ? `<ul class="plain">${st.commits.slice(0, 5).map((c) => `<li><span class="muted small">${ago(c.ts)}</span> ${esc(c.subject)}</li>`).join("")}</ul>` : `<p class="muted">No commits yet.</p>`}
   </section>
   ${setupCard()}`;
+}
+
+function metricsStrip(): string {
+  const ms = S!.metrics;
+  if (!ms.length) return "";
+  const conf = (c: string) => (c === "unknown" ? "Unknown" : c === "estimate" ? "Estimate" : "Measured");
+  return `<section class="metrics" aria-label="Key numbers">${ms
+    .map(
+      (m) => `<button class="metric tone-${m.tone}" ${m.tab ? `data-tab="${m.tab}"` : ""} title="${esc(m.why)}" aria-label="${esc(`${m.label}: ${m.value === "—" ? "unknown" : m.value}. ${m.detail}. ${m.why}`)}">
+        <span class="m-label">${esc(m.label)}</span>
+        <span class="m-value">${esc(m.value)}</span>
+        <span class="m-detail">${esc(m.detail)}</span>
+        <span class="sr-only">${conf(m.confidence)}</span>
+      </button>`,
+    )
+    .join("")}</section>`;
 }
 
 function featureGroup(label: string, items: Requirement[], c: Confidence): string {
@@ -449,7 +501,7 @@ function memoryTab(): string {
   return `
   <section>
     <h3>Goal</h3>
-    <textarea id="goal" rows="2" placeholder="What are you building, for whom, and what does success look like?">${esc(st.notes.goal)}</textarea>
+    <textarea id="goal" rows="2" aria-label="Project goal" placeholder="What are you building, for whom, and what does success look like?">${esc(st.notes.goal)}</textarea>
     <div class="actions"><button class="secondary small" data-act="saveNote" data-key="goal" data-src="goal">Save</button></div>
   </section>
   <section>
@@ -459,19 +511,22 @@ function memoryTab(): string {
       <div class="req-top"><select data-req-status="${r.id}" aria-label="Status for ${esc(r.title)}">${statusOpts(r)}</select><span class="req-title">${esc(r.title)}</span>${r.status === "done" ? conf(r.evidence, r.evidenceNote) : ""}<span class="spacer"></span><button class="icon-btn" data-act="delReq" data-id="${r.id}" aria-label="Delete requirement">${icon("trash")}</button></div>
       <div class="muted small">${r.acceptance ? `Done when: ${esc(r.acceptance)}` : `<span class="warn-text">No acceptance criteria.</span> <a href="#" data-act="editAcc" data-id="${r.id}">Add</a>`}</div>
     </li>`).join("")}</ul>` : ""}
+    <label class="lbl" for="newReq">New requirement</label>
     <input id="newReq" type="text" placeholder="e.g. Users can pay with a card">
-    <input id="newAcc" type="text" placeholder="Done when… e.g. a test payment succeeds and a receipt is emailed">
+    <label class="lbl" for="newAcc">Done when…</label>
+    <input id="newAcc" type="text" placeholder="e.g. a test payment succeeds and a receipt is emailed">
     <div class="actions"><button class="secondary small" data-act="addReq">Add requirement</button>${st.facts?.checklistItems.length ? `<button class="link" data-act="importChecklist">Import ${st.facts.checklistItems.length} from docs</button>` : ""}</div>
   </section>
   <section>
     <h3>Decisions</h3>
     ${st.decisions.length ? `<ul class="plain">${st.decisions.map((d) => `<li><b>${esc(d.title)}</b>${d.detail ? `: ${esc(d.detail)}` : ""} <button class="icon-btn" data-act="delDec" data-id="${d.id}" aria-label="Delete decision">${icon("close")}</button></li>`).join("")}</ul>` : `<p class="muted small">Record choices (e.g. "Use Supabase for auth") so new sessions don't undo them.</p>`}
-    <input id="newDec" type="text" placeholder="Decision"><input id="newDecD" type="text" placeholder="Why / detail (optional)">
+    <label class="lbl" for="newDec">New decision</label><input id="newDec" type="text" placeholder="e.g. Use Supabase for login">
+    <label class="lbl" for="newDecD">Why (optional)</label><input id="newDecD" type="text" placeholder="e.g. built-in email login, free tier">
     <div class="actions"><button class="secondary small" data-act="addDec">Add decision</button></div>
   </section>
   <section>
     <h3>Preferences</h3>
-    <textarea id="prefs" rows="2" placeholder="e.g. Keep the UI minimal. Use TypeScript. Explain things simply.">${esc(st.notes.preferences)}</textarea>
+    <textarea id="prefs" rows="2" aria-label="Your preferences" placeholder="e.g. Keep the UI minimal. Use TypeScript. Explain things simply.">${esc(st.notes.preferences)}</textarea>
     <div class="actions"><button class="secondary small" data-act="saveNote" data-key="preferences" data-src="prefs">Save</button></div>
   </section>
   <section>
@@ -501,6 +556,13 @@ function connectTab(): string {
       <li>${icon("database", "muted")} <span>${st.integration.spool.accepted} events received this run${st.integration.spool.rejected ? `, ${st.integration.spool.rejected} malformed ignored` : ""}${st.integration.spool.lastEventAt ? ` · last ${ago(st.integration.spool.lastEventAt)}` : ""}</span></li>
     </ul>
     <div class="actions wrap">${st.hooks.installed ? `<button class="link" data-act="uninstallHooks">Disconnect</button>` : `<button class="primary" data-act="installHooks">Connect</button>`}${st.demo ? `<button class="link" data-act="demoOff">Remove demo data</button>` : `<button class="link" data-act="demoOn">Load demo data</button>`}</div>
+  </section>
+  <section>
+    <h3>Terminal</h3>
+    <label class="check"><input type="checkbox" id="openWithTerminal" ${s.openWithTerminal ? "checked" : ""}> Open BuildPilot whenever I open a terminal or start Claude Code</label>
+    <ul class="steps">
+      <li>${icon(s.shellInstalled ? "pass-filled" : "circle-large-outline", s.shellInstalled ? "ok" : "muted")} <span>${s.shellInstalled ? "Shown in every terminal (Terminal, iTerm, VS Code). Type <code>bp</code> for details." : "Show a BuildPilot summary in every new terminal, plus the <code>bp</code> command"} ${s.shellInstalled ? `<a href="#" data-act="shellOff">remove</a>` : `<a href="#" data-act="shellOn">turn on</a>`}</span></li>
+    </ul>
   </section>
   <section>
     <h3>Phone, glasses &amp; other devices</h3>
@@ -540,6 +602,19 @@ function bind(): void {
       (document.querySelector(".content") as HTMLElement | null)?.scrollTo(0, 0);
     }),
   );
+  const tabEls = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+  tabEls.forEach((el, i) =>
+    el.addEventListener("keydown", (e) => {
+      const k = (e as KeyboardEvent).key;
+      const next = k === "ArrowRight" ? (i + 1) % tabEls.length : k === "ArrowLeft" ? (i - 1 + tabEls.length) % tabEls.length : k === "Home" ? 0 : k === "End" ? tabEls.length - 1 : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      vs.tab = tabEls[next]!.dataset.tab as Tab;
+      persist();
+      render();
+      document.getElementById(`tab-${vs.tab}`)?.focus();
+    }),
+  );
   document.querySelectorAll<HTMLDetailsElement>("details[data-key]").forEach((d) => d.addEventListener("toggle", () => { vs.open[d.dataset.key!] = d.open; persist(); }));
   document.querySelectorAll<HTMLElement>("[data-open]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); void call("openFile", { path: el.dataset.open }); }));
   document.querySelectorAll<HTMLElement>("[data-goal-pick]").forEach((el) => el.addEventListener("click", () => { vs.goal = el.dataset.goalPick!; persist(); render(); }));
@@ -549,6 +624,7 @@ function bind(): void {
   bindInput("acc", "acceptance");
   document.getElementById("planFirst")?.addEventListener("change", (e) => { vs.planFirst = (e.target as HTMLInputElement).checked; persist(); });
   document.getElementById("ptext")?.addEventListener("input", (e) => { promptText = (e.target as HTMLTextAreaElement).value; });
+  document.getElementById("openWithTerminal")?.addEventListener("change", (e) => void call("openWithTerminal", { value: (e.target as HTMLInputElement).checked }));
   document.getElementById("apiToggle")?.addEventListener("change", (e) => void call("apiToggle", { value: (e.target as HTMLInputElement).checked }));
   document.getElementById("beginner")?.addEventListener("change", (e) => void call("setBeginner", { value: (e.target as HTMLInputElement).checked }));
   document.querySelectorAll<HTMLSelectElement>("[data-req-status]").forEach((el) => el.addEventListener("change", () => void call("updateRequirement", { id: el.dataset.reqStatus, patch: { status: el.value } })));
@@ -637,6 +713,8 @@ async function act(el: HTMLElement): Promise<void> {
       cpFiles = {};
       return render();
     }
+    case "shellOn": return void call("shell", { on: true });
+    case "shellOff": return void call("shell", { on: false });
     case "statuslineOn": return void call("statusline", { on: true });
     case "statuslineOff": return void call("statusline", { on: false });
     case "visualCheck": return void call("visualCheck", { url: val("appUrl") });

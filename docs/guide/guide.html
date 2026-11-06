@@ -47,7 +47,7 @@
   td:first-child { font-weight: 600; white-space: nowrap; }
   .pill { display: inline-block; font-size: 8pt; border: 1px solid currentColor; border-radius: 4px; padding: 0 4pt; font-weight: 600; }
   .v { color: var(--ok); } .i { color: var(--acc); } .u { color: var(--warn); } .f { color: var(--bad); } .k { color: var(--mut); }
-  .toc { columns: 2; column-gap: 24pt; padding: 0; list-style: none; margin-top: 6pt; font-size: 9.5pt; }
+  .toc { columns: 3; column-gap: 18pt; padding: 0; list-style: none; margin-top: 6pt; font-size: 9pt; }
   .toc li { break-inside: avoid; padding: 2.5pt 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
   .toc span { color: var(--mut); }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14pt; }
@@ -71,7 +71,7 @@
       <div><div class="n">3</div><div class="q">What do I do next?</div><div class="a">One recommended step, plus an expert prompt that tells Claude exactly how to do it.</div></div>
     </div>
   </div>
-  <div class="meta"><span>Version 0.2.1 · November 2026 · macOS (Windows &amp; Linux supported, not yet field-tested)</span><span>Designed &amp; built by Mohil Gupta</span></div>
+  <div class="meta"><span>Version 0.3.1 · November 2026 · macOS (Windows &amp; Linux supported, not yet field-tested)</span><span>Designed &amp; built by Mohil Gupta</span></div>
 </div>
 
 <!-- CONTENTS + STATUS -->
@@ -88,6 +88,8 @@
     <li>Prompt Studio</li>
     <li>Memory</li>
     <li>Phone, glasses &amp; alerts</li>
+    <li>In every terminal</li>
+    <li>Accessibility</li>
     <li>Reading the labels</li>
     <li>Privacy &amp; safety</li>
     <li>Troubleshooting</li>
@@ -98,7 +100,7 @@
   <section style="margin-top: 14pt">
     <div class="eyebrow">Your setup today</div>
     <h2>It's already installed and connected on this Mac</h2>
-    <div class="callout ok"><b>Ready to use</b>BuildPilot 0.2.1 is installed in Visual Studio Code and connected to Claude Code. It was verified live: your open Claude Code sessions are reporting their activity, context use and limits.</div>
+    <div class="callout ok"><b>Ready to use</b>BuildPilot 0.3.1 is installed in Visual Studio Code and connected to Claude Code. It was verified live: your open Claude Code sessions are reporting their activity, context use and limits.</div>
     <p>To start using it:</p>
     <ol class="steps">
       <li>In VS Code, press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>, type <b>Reload Window</b> and press Enter. (Only needed once, so VS Code loads the newest version.)</li>
@@ -106,10 +108,11 @@
       <li>Click the <b>BuildPilot</b> compass icon in the left Activity Bar. A short <b>Getting Started</b> tour opens the first time.</li>
     </ol>
     <h3>What was changed on this Mac</h3>
-    <table>
+    <table style="font-size: 8.8pt">
       <tr><th>Where</th><th>What</th><th>How to undo</th></tr>
       <tr><td>VS Code</td><td>The BuildPilot extension</td><td>Uninstall script (page 12)</td></tr>
       <tr><td><code>~/.claude/settings.json</code></td><td>Added background <b>hooks</b> (so BuildPilot sees each session's activity) and a <b>status line</b> (exact context %). Every other setting was kept, and a backup was saved first.</td><td>Uninstall script, or <b>Connect → Disconnect</b></td></tr>
+      <tr><td><code>~/.zshrc</code></td><td>A 3-line marked block so every new terminal shows BuildPilot and the <code>bp</code> command works (backed up first)</td><td>Uninstall script, or <code>bp shell uninstall</code></td></tr>
       <tr><td><code>~/.buildpilot/</code></td><td>BuildPilot's private local data (sessions, notes, backups)</td><td>Uninstall script moves it to the Trash</td></tr>
     </table>
   </section>
@@ -123,10 +126,10 @@
   <ol class="steps">
     <li>Copy the whole <b>BuildPilot</b> folder from the Desktop to the other Mac.</li>
     <li>Double-click <b>2 - Install BuildPilot.command</b>. If macOS says it can't verify the developer, right-click the file → <b>Open</b> → <b>Open</b>.</li>
-    <li>When it asks <i>Connect to Claude Code now?</i>, type <b>y</b>. (Or skip it and click <b>Connect</b> inside BuildPilot later.)</li>
+    <li>When it asks <i>Connect to Claude Code now?</i> and <i>Show BuildPilot every time you open a terminal?</i>, type <b>y</b>. (Or do both later from BuildPilot's <b>Connect</b> tab.)</li>
     <li>Open VS Code and click the BuildPilot icon.</li>
   </ol>
-  <p class="small">Manual install: in VS Code, open the Command Palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>) → <b>Extensions: Install from VSIX…</b> → choose <code>BuildPilot 0.2.1.vsix</code>.</p>
+  <p class="small">Manual install: in VS Code, open the Command Palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>) → <b>Extensions: Install from VSIX…</b> → choose <code>BuildPilot 0.3.1.vsix</code>.</p>
 
   <div style="height: 10pt"></div>
   <div class="eyebrow">Your first five minutes</div>
@@ -150,6 +153,8 @@
     <div>
       <h3>Next step</h3>
       <p>The one recommendation that matters most, ranked by severity, impact and urgency. It always says <i>why</i>, and <b>Why BuildPilot thinks so</b> shows the evidence it saw.</p>
+      <h3>Key numbers</h3>
+      <p>Six tiles, each clickable to where you act on it: <b>Sessions</b> (working / waiting for you), <b>Context</b> (fullest session's memory), <b>5h limit</b> (your plan's rolling usage), <b>Tests</b> (passing or failing, and when), <b>Unsaved</b> (files not yet in Git), <b>Errors 1h</b> (agent failures in the last hour). A dash means <i>unknown</i>, never a guess. Hover (or use a screen reader) to hear why each number matters.</p>
       <h3>What's happening? · Anything wrong?</h3>
       <p>Plain-English status of your sessions (including ones <b>waiting for you in other projects</b>) and the most important problem.</p>
       <h3>Project</h3>
@@ -329,6 +334,42 @@
   <p class="small">On this Mac use <code>127.0.0.1</code> as above. From your <b>phone</b>, turn on <b>Allow Lan</b> and use your Mac's network address instead (the one shown in the Pocket link, e.g. <code>http://192.168.1.20:47821</code>). iOS Shortcut: <b>Get Contents of URL</b> (that address + <code>/v1/brief?format=text</code>, with header <code>Authorization: Bearer …</code>) → <b>Speak Text</b>. Name it "Build status" and say <i>"Hey Siri, build status."</i> Other endpoints: <code>/v1/status</code>, <code>/v1/sessions</code>, <code>/v1/next</code>, and <code>POST /v1/prompt</code> to generate a prompt. The API is read-only: it can't run anything or change files.</p>
 </div>
 
+<!-- TERMINAL + ACCESSIBILITY -->
+<div class="page">
+  <div class="eyebrow">In every terminal</div>
+  <h2>BuildPilot opens when your terminal does</h2>
+  <p>Every new terminal (Terminal, iTerm, or VS Code's own) starts with a short summary of <b>all</b> your Claude Code sessions, across every project:</p>
+  <pre>◆ BuildPilot  ·  3 Claude sessions  ·  1 needs you  ·  5-hour limit 42%
+  ! api           needs approval  Needs your approval: Run: npm publish   context 12%
+  ● web-app       working         "Add a pricing page with three plans"   context 37%
+  ○ invoice-app   idle            Finished its last response              context 64%
+  Here invoice-app  Next: Fix the failing tests before building more
+  bp = details · bp open = BuildPilot in VS Code · bp prompt &lt;goal&gt; "&lt;what you want&gt;"</pre>
+  <p>Sessions that need you are always listed first. Every state is a word (<i>needs approval</i>, <i>working</i>, <i>idle</i>), not just a color. <b>Here</b> shows the next step for the folder you're in. It's fast (about 0.3 s) because it reads what BuildPilot already knows, without re-analyzing.</p>
+  <table>
+    <tr><th>Type</th><th>To</th></tr>
+    <tr><td><code>bp</code></td><td>see the full status of the project you're in: stage, health, issues, next step</td></tr>
+    <tr><td><code>bp open</code></td><td>jump to BuildPilot in VS Code for this folder (opens the folder if needed)</td></tr>
+    <tr><td><code>bp prompt bugfix "…"</code></td><td>get an expert Claude Code prompt right in the terminal</td></tr>
+    <tr><td><code>bp sessions</code> · <code>bp handoff</code> · <code>bp audit</code></td><td>sessions here · a handoff for a fresh session · dependency check</td></tr>
+    <tr><td><code>bp --help</code></td><td>everything else</td></tr>
+  </table>
+  <h3>Inside VS Code</h3>
+  <p>Opening a terminal, or starting a new Claude Code session in your project, also opens the BuildPilot panel beside it. Your cursor stays in the terminal. Turn this off in <b>Connect → Terminal</b>.</p>
+  <div class="callout"><b>Quieter, or off</b>Hide the summary with <code>export BUILDPILOT_QUIET=1</code>. Remove it entirely with <b>Connect → Terminal → remove</b> or <code>bp shell uninstall</code>. Your <code>~/.zshrc</code> is restored exactly.</div>
+</div>
+<div class="page">
+  <div class="eyebrow">Accessibility</div>
+  <h2>Built to be usable by everyone</h2>
+  <ul>
+    <li><b>Keyboard:</b> every control is reachable with <kbd>Tab</kbd>. Move between sections with <kbd>←</kbd> <kbd>→</kbd> (<kbd>Home</kbd>/<kbd>End</kbd> for first/last). <kbd>⌘</kbd><kbd>⌥</kbd><kbd>P</kbd> opens Prompt Studio, and <kbd>⌘</kbd><kbd>↵</kbd> builds the prompt.</li>
+    <li><b>Screen readers:</b> sections, tabs and tiles have full spoken labels (e.g. <i>"Sessions, 1 waiting for you"</i>). When a session starts waiting for you, it's announced automatically.</li>
+    <li><b>Never color alone:</b> every status, severity and metric also uses words and symbols.</li>
+    <li><b>Themes &amp; contrast:</b> follows your VS Code theme (light, dark, high contrast) and Windows high-contrast mode. Animations stop when "reduce motion" is on.</li>
+    <li><b>Plain language:</b> beginner explanations are on by default (Connect → Experience).</li>
+  </ul>
+</div>
+
 <!-- LABELS + PRIVACY -->
 <div class="page">
   <div class="eyebrow">Reading the labels</div>
@@ -400,14 +441,14 @@
   <h2>Everything is reversible</h2>
   <ol class="steps">
     <li>Double-click <b>3 - Uninstall BuildPilot.command</b> on the Desktop.</li>
-    <li>It disconnects Claude Code (your original settings and status line are restored), removes the extension, and asks whether to move BuildPilot's data to the Trash.</li>
+    <li>It disconnects Claude Code (your original settings and status line are restored), removes the terminal summary (your <code>~/.zshrc</code> is restored), removes the extension, and asks whether to move BuildPilot's data to the Trash.</li>
   </ol>
   <p class="small">To only stop watching Claude Code: BuildPilot → <b>Connect → Disconnect</b>. Settings backups: <code>~/.buildpilot/backups/</code>. Checkpoints live in your project's Git as <code>refs/buildpilot/checkpoints/*</code> and never affect your branches.</p>
 
   <div style="height: 8pt"></div>
   <div class="eyebrow">For the curious</div>
   <h2>Command line &amp; file locations</h2>
-  <p>The same engine works in Terminal (needs Node.js). From <code>~/buildpilot</code>:</p>
+  <p>In any terminal, <code>bp</code> runs these (needs Node.js). The long form, from <code>~/buildpilot</code>:</p>
   <pre>node dist/cli.js status [folder]          # stage, health, issues, next step
 node dist/cli.js sessions [folder]        # Claude Code sessions for a folder
 node dist/cli.js brief [folder]           # one-sentence status

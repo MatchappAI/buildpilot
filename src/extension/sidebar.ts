@@ -20,6 +20,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   ) {}
 
   /** Webview-safe URI for a local file inside an allowed root (e.g. a Visual QA screenshot). */
+  get visible(): boolean {
+    return !!this.view?.visible;
+  }
+
   toUri(file: string): string | null {
     return this.view ? this.view.webview.asWebviewUri(vscode.Uri.file(file)).toString() : null;
   }

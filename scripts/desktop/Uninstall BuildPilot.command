@@ -19,10 +19,12 @@ fi
 
 # 1) Disconnect Claude Code FIRST (needs the extension's CLI), so your status line is restored before files go away.
 CLI=$(ls -1d "$EXT_DIR"/buildpilot-local.buildpilot-*/dist/cli.js 2>/dev/null | sort -V | tail -n 1)
+[ -z "$CLI" ] && [ -f "$BP_HOME/bin/cli.js" ] && CLI="$BP_HOME/bin/cli.js"
 [ -z "$CLI" ] && [ -f "$HOME/buildpilot/dist/cli.js" ] && CLI="$HOME/buildpilot/dist/cli.js"
 if command -v node >/dev/null 2>&1 && [ -n "$CLI" ]; then
   node "$CLI" statusline uninstall >/dev/null && echo "✓ Status line restored to what you had before."
   node "$CLI" hooks uninstall >/dev/null && echo "✓ Disconnected from Claude Code (only BuildPilot's hooks removed)."
+  node "$CLI" shell uninstall >/dev/null && echo "✓ Removed from terminal startup (~/.zshrc restored)."
 else
   echo "Couldn't disconnect automatically (Node.js not found)."
   echo "Please open VS Code → BuildPilot → Connect → Disconnect first, then run this again."

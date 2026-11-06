@@ -20,6 +20,19 @@ export interface EngineOptions {
   home?: string;
   inMemory?: boolean;
   claudeSettingsFile?: string;
+  /** Terminal glance: drain the spool once, no file watchers, no tool probing. */
+  light?: boolean;
+}
+
+export interface Metric {
+  key: string;
+  label: string;
+  value: string; // display value, "—" when unknown
+  detail: string;
+  why: string; // why this number matters (tooltip / screen reader)
+  tone: "good" | "warn" | "bad" | "neutral";
+  confidence: "verified" | "unknown" | "estimate";
+  tab?: "overview" | "sessions" | "supervisor" | "prompts" | "memory" | "connect";
 }
 
 export interface Alert {
@@ -56,6 +69,7 @@ export interface UiState {
   statusline: StatuslineStatus;
   integration: { claudeInstalled: boolean | null; claudeVersion: string | null; gitAvailable: boolean | null; spool: SpoolReader["stats"]; otherProjectSessions: number };
   /** Active sessions in OTHER folders: mission control across all your projects (observed only). */
+  metrics: Metric[];
   elsewhere: { id: string; folder: string; cwd: string; status: SessionStatus; reason: string; task: string | null; lastEventAt: number; contextPct: number | null }[];
   notes: { goal: string; preferences: string };
   errors: string[];
@@ -109,9 +123,13 @@ export class Engine extends EventEmitter {
   async start(): Promise<void> {
     ensureHome(this.home);
     this.store = await Store.open(this.opts.inMemory ? null : path.join(this.home, "buildpilot.db"));
-    this.store.prune();
     this.ingestor = new Ingestor(this.store, (cwd) => this.resolveProject(cwd));
     this.spool = new SpoolReader(path.join(this.home, "spool"), this.ingestor, (n) => this.onIngest(n));
+    if (this.opts.light) {
+      this.spool.drain();
+      return;
+    }
+    this.store.prune();
     this.spool.start();
     void this.probeTools();
   }
@@ -563,6 +581,13 @@ export class Engine extends EventEmitter {
       visual,
     });
     const resolved = this.trackRecommendations(out, now);
+    if (p && this.facts) {
+      const summary = JSON.stringify({ next: out.next?.title ?? null, health: out.health.label, stage: out.stage.stage, name: this.facts.name });
+      if (summary !== this.lastSummary) {
+        this.lastSummary = summary;
+        this.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, 'summary', ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [p.id, summary, now]);
+      }
+    }
     const usage: Record<string, UsageSnapshot> = {};
     for (const s of sessions.slice(0, 12)) usage[s.id] = this.usageFor(s);
     const elsewhere = this.store
@@ -599,6 +624,7 @@ export class Engine extends EventEmitter {
       statusline: statuslineStatus(this.settingsFile, this.home),
       integration: { claudeInstalled: this.claude.installed, claudeVersion: this.claude.version, gitAvailable: this.gitOk, spool: this.spool?.stats ?? { accepted: 0, duplicates: 0, rejected: 0, lastEventAt: 0 }, otherProjectSessions },
       elsewhere,
+      metrics: this.metrics(p?.id ?? null, sessions, live, testRuns, now, out),
       notes: { goal: this.note("goal"), preferences: this.note("preferences") },
       errors: this.errors,
       runningScript: this.runningScript,
@@ -666,6 +692,55 @@ export class Engine extends EventEmitter {
   }
 
   private recTitles = new Map<string, string>();
+  private lastSummary = "";
+
+  /** At-a-glance numbers. Every one is observed or explicitly marked unknown/estimate, and each says why it matters. */
+  metrics(projectId: string | null, sessions: Session[], live: Record<string, LiveStatus | null>, runs: TestRun[], now: number, out: SupervisorOutput): Metric[] {
+    const m: Metric[] = [];
+    const active = sessions.filter((s) => !s.endedAt && now - s.lastEventAt < 3600_000 && !s.id.startsWith("demo-"));
+    const views = out.sessions.filter((s) => active.some((a) => a.id === s.id));
+    const waiting = views.filter((s) => s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked").length;
+    const working = views.filter((s) => s.displayStatus === "running").length;
+    m.push({ key: "sessions", label: "Sessions", value: active.length ? `${working} working` : "0", detail: waiting ? `${waiting} waiting for you` : active.length ? `${active.length} active` : "none active", why: "How many Claude Code agents are working on this project right now, and whether any are blocked on you.", tone: waiting ? "warn" : "neutral", confidence: "verified", tab: "sessions" });
+    const ctx = active.map((s) => live[s.id]?.contextPct).filter((v): v is number => typeof v === "number");
+    const maxCtx = ctx.length ? Math.max(...ctx) : null;
+    m.push({ key: "context", label: "Context", value: maxCtx == null ? "—" : `${Math.round(maxCtx)}%`, detail: maxCtx == null ? "turn on in Connect" : ctx.length > 1 ? "fullest session" : "active session", why: "When a session's memory fills up, Claude summarizes and forgets details. Above 80%, start a fresh session with a handoff.", tone: maxCtx == null ? "neutral" : maxCtx >= 80 ? "bad" : maxCtx >= 60 ? "warn" : "good", confidence: maxCtx == null ? "unknown" : "verified", tab: "sessions" });
+    const all = Object.values(live).filter((l): l is LiveStatus => !!l && now - l.updatedAt < 6 * 3600_000);
+    const statusDir = path.join(this.home, "status");
+    let fiveH: number | null = all.length ? Math.max(...all.map((l) => l.fiveHourPct ?? -1)) : null;
+    if (fiveH == null || fiveH < 0) {
+      // Limits are account-wide: any recent session's report is valid here.
+      try {
+        const recent = fs.readdirSync(statusDir).filter((f) => f.endsWith(".json")).map((f) => ({ f, t: fs.statSync(path.join(statusDir, f)).mtimeMs })).filter((x) => now - x.t < 3600_000).sort((a, b) => b.t - a.t);
+        for (const r of recent.slice(0, 5)) {
+          const l = readLiveStatus(r.f.replace(/\.json$/, ""), this.home);
+          if (l?.fiveHourPct != null) {
+            fiveH = l.fiveHourPct;
+            break;
+          }
+        }
+      } catch {
+        /* no status dir */
+      }
+    }
+    m.push({ key: "limit", label: "5h limit", value: fiveH == null || fiveH < 0 ? "—" : `${Math.round(fiveH)}%`, detail: fiveH == null || fiveH < 0 ? "turn on in Connect" : "of plan usage", why: "Your Claude plan's rolling usage limit. Near 100%, sessions pause until it resets, so save it for the important work.", tone: fiveH == null || fiveH < 0 ? "neutral" : fiveH >= 85 ? "bad" : fiveH >= 65 ? "warn" : "good", confidence: fiveH == null || fiveH < 0 ? "unknown" : "verified", tab: "connect" });
+    const test = runs.find((t) => /\b(test|vitest|jest|pytest|playwright)\b/.test(t.command));
+    const ago = (ts: number) => { const mn = Math.round((now - ts) / 60000); return mn < 1 ? "just now" : mn < 60 ? `${mn} min ago` : mn < 2880 ? `${Math.round(mn / 60)} h ago` : `${Math.round(mn / 1440)} d ago`; };
+    m.push({ key: "tests", label: "Tests", value: test ? (test.passed ? "Passing" : "Failing") : "—", detail: test ? ago(test.startedAt) : "not run yet", why: "The only real proof the app still works after AI changes. Run them after every meaningful change.", tone: test ? (test.passed ? "good" : "bad") : "neutral", confidence: test ? "verified" : "unknown", tab: "supervisor" });
+    const ch = this.changes;
+    const dirty = ch ? ch.unstaged.length + ch.untracked.length + ch.staged.length : null;
+    m.push({ key: "unsaved", label: "Unsaved", value: dirty == null ? "—" : String(dirty), detail: dirty == null ? (this.facts?.isGit === false ? "no Git: can't undo" : "…") : dirty ? "uncommitted files" : "all committed", why: "Changes not saved in Git can't be rolled back if the next AI edit goes wrong. Commit or save a checkpoint.", tone: dirty == null ? (this.facts?.isGit === false ? "bad" : "neutral") : dirty >= 15 ? "warn" : "good", confidence: dirty == null ? "unknown" : "verified", tab: "supervisor" });
+    let errs = 0;
+    let acts = 0;
+    for (const s of active) {
+      const r = this.store.get<{ a: number; e: number }>("SELECT COUNT(*) AS a, SUM(is_error) AS e FROM events WHERE session_id = ? AND ts > ?", [s.id, now - 3600_000]);
+      acts += Number(r?.a ?? 0);
+      errs += Number(r?.e ?? 0);
+    }
+    m.push({ key: "errors", label: "Errors 1h", value: active.length ? String(errs) : "—", detail: active.length ? `${acts} agent actions` : "no activity", why: "Failed commands and tool errors from your agents in the last hour. A rising number usually means an agent is stuck.", tone: !active.length ? "neutral" : errs >= 5 ? "bad" : errs >= 2 ? "warn" : "good", confidence: active.length ? "verified" : "unknown", tab: "sessions" });
+    void projectId;
+    return m;
+  }
 
   /**
    * Verification loop: a recommendation that was showing and is no longer produced by the rules means the

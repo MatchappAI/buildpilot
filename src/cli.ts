@@ -11,15 +11,50 @@
  *   node dist/cli.js statusline status|install|uninstall   exact context % from Claude Code
  *   node dist/cli.js serve [folder]          run the Integration API (token in ~/.buildpilot/api-token)
  */
+import "./quiet";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
 import { claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
+import { glance } from "./core/glance";
 import { GOALS } from "./core/prompts";
+import { installShell, shellStatus, uninstallShell } from "./core/shell";
+import { execFile } from "child_process";
 import { GoalType } from "./core/types";
 
 async function main(): Promise<void> {
-  const [cmd = "brief", ...rest] = process.argv.slice(2);
+  const [cmd = "status", ...rest] = process.argv.slice(2);
+  if (cmd === "glance") {
+    // Fast path for new terminals: no project analysis, no tool probing.
+    const engine = new Engine({ light: true });
+    await engine.start();
+    console.log(glance(engine, { cwd: process.cwd(), columns: process.stdout.columns ?? 80, color: !!process.stdout.isTTY && !process.env.NO_COLOR }));
+    engine.stop();
+    return;
+  }
+  if (cmd === "open") {
+    const folder = path.resolve(rest[0] ?? process.cwd());
+    const uri = `vscode://buildpilot-local.buildpilot/open?folder=${encodeURIComponent(folder)}`;
+    const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+    execFile(opener, [uri], (e) => {
+      if (e) console.error(`Couldn't open VS Code: ${e.message}`);
+    });
+    console.log(`Opening BuildPilot for ${folder} in VS Code…`);
+    return;
+  }
+  if (cmd === "shell") {
+    const sub = rest[0] ?? "status";
+    if (sub === "install") {
+      const r = installShell(__dirname);
+      console.log(r.changed.length ? `BuildPilot will now appear in every new terminal (${r.changed.join(", ")}). Open a new terminal to see it. Silence anytime: export BUILDPILOT_QUIET=1` : "Already set up.");
+    } else if (sub === "uninstall") {
+      const r = uninstallShell();
+      console.log(r.changed.length ? `Removed from ${r.changed.join(", ")}.` : "Nothing to remove.");
+    } else console.log(shellStatus());
+    return;
+  }
   if (cmd === "hooks") {
     const pi = rest.indexOf("--project");
     const file = pi >= 0 ? claudeSettingsPath("project", path.resolve(rest[pi + 1] ?? ".")) : claudeSettingsPath("user");
@@ -38,14 +73,36 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "help" || cmd === "--help") {
-    console.log("usage: buildpilot brief|status|sessions|handoff|audit|visual [url]|prompt <goal> <request>|hooks [status|install|uninstall]|serve [folder]");
+    console.log(`BuildPilot: mission control for Claude Code
+
+  bp                       full status of this folder (stage, health, issues, next step)
+  bp glance                the short summary shown when a terminal opens
+  bp sessions              Claude Code sessions in this folder
+  bp brief                 one-sentence status
+  bp open                  open BuildPilot in VS Code for this folder
+  bp prompt <goal> "<what you want>"   write an expert Claude Code prompt
+  bp handoff               context handoff for a new session
+  bp audit                 check dependencies for known vulnerabilities
+  bp visual [url]          check your running app + screenshot
+  bp hooks|statusline|shell  status | install | uninstall
+  bp serve                 Integration API without VS Code`);
     console.log(`goals: ${GOALS.map((g) => g.id).join(", ")}`);
     return;
   }
-  const folderArg = cmd === "prompt" ? rest[2] : rest[0];
+  const folderArg = cmd === "prompt" ? rest[2] : cmd === "visual" ? rest[0] && !/^https?:/.test(rest[0]) ? rest[0] : undefined : rest[0];
+  const folder = path.resolve(folderArg ?? process.cwd());
+  const markers = [".git", "package.json", "pyproject.toml", "requirements.txt", "go.mod", "Cargo.toml", "CLAUDE.md", ".claude"];
+  if (!markers.some((m) => fs.existsSync(path.join(folder, m))) || folder === os.homedir()) {
+    const engine = new Engine({ light: true });
+    await engine.start();
+    console.log(glance(engine, { cwd: folder, columns: process.stdout.columns ?? 80, color: !!process.stdout.isTTY && !process.env.NO_COLOR }));
+    console.log(`\n${folder} doesn't look like a project folder. cd into a project (one with .git or package.json) and run bp again.`);
+    engine.stop();
+    return;
+  }
   const engine = new Engine();
   await engine.start();
-  await engine.openProject(path.resolve(folderArg ?? process.cwd()));
+  await engine.openProject(folder);
   const st = engine.snapshot();
   switch (cmd) {
     case "brief":
@@ -71,7 +128,7 @@ async function main(): Promise<void> {
       break;
     }
     case "visual": {
-      const url = rest[1] ?? st.appUrl.url;
+      const url = rest.find((x) => /^https?:/.test(x)) ?? st.appUrl.url;
       if (!url) {
         console.log("No app address detected. Usage: buildpilot visual <folder> <url>");
         break;

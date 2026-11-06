@@ -71,6 +71,32 @@ export function isEditTool(name: string | null): boolean {
   return !!name && EDIT_TOOLS.has(name);
 }
 
+/**
+ * Turn what Claude Code submitted as a "prompt" into what the user actually asked.
+ * Claude Code also submits system-injected messages (other sessions, background tasks) and expands pastes,
+ * so those become short readable labels instead of raw markup.
+ */
+export function cleanPrompt(raw: string): string {
+  let t = raw.trim();
+  const tag = /^<([a-z][\w-]*)\b/i.exec(t)?.[1]?.toLowerCase();
+  if (tag === "cross-session-message") return "Message from another Claude session";
+  if (tag === "task-notification") return "Background task update";
+  if (tag === "system-reminder") return "System update";
+  if (tag === "command-name" || tag === "command-message") {
+    const cmd = /<command-name>([^<]*)<\/command-name>/.exec(t)?.[1];
+    return cmd ? `Ran ${cmd.trim()}` : "Ran a slash command";
+  }
+  t = t.replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, "[pasted text]");
+  t = t.replace(/<\/?[a-z][\w-]*(\s[^>]*)?>/gi, " ").replace(/\s+/g, " ").trim();
+  return t || "[pasted text]";
+}
+
+const SYSTEM_LABELS = new Set(["Message from another Claude session", "Background task update", "System update"]);
+/** True for messages Claude Code injected itself (not something the user asked for). */
+export function isSystemPrompt(cleaned: string): boolean {
+  return SYSTEM_LABELS.has(cleaned);
+}
+
 export function summarize(p: RawHookPayload): string {
   const ti = p.tool_input ?? {};
   const tool = p.tool_name ?? "";
@@ -92,7 +118,7 @@ export function summarize(p: RawHookPayload): string {
     case "SessionEnd":
       return `Session ended (${clip(p.reason ?? "other", 40)})`;
     case "UserPromptSubmit":
-      return `Prompt: ${clip(p.prompt ?? "", 200)}`;
+      return `Prompt: ${clip(cleanPrompt(p.prompt ?? ""), 200)}`;
     case "PreToolUse":
       return toolPhrase();
     case "PostToolUse":
@@ -108,9 +134,9 @@ export function summarize(p: RawHookPayload): string {
     case "StopFailure":
       return `Turn failed (${clip(str(p.error_type) ?? str(p.error) ?? p.reason ?? "API error", 60)})`;
     case "SubagentStart":
-      return `Subagent started (${clip(p.agent_type ?? "", 40)})`;
+      return p.agent_type ? `Subagent started (${clip(p.agent_type, 40)})` : "Subagent started";
     case "SubagentStop":
-      return `Subagent finished (${clip(p.agent_type ?? "", 40)})`;
+      return p.agent_type ? `Subagent finished (${clip(p.agent_type, 40)})` : "Subagent finished";
     case "PreCompact":
       return "Compacting context";
     default:
@@ -174,6 +200,7 @@ export class Ingestor {
   }
 
   ingest(p: RawHookPayload, ts: number, fingerprint: string): IngestResult {
+    // Cheap early exit; the INSERT OR IGNORE below is the real (race-safe) duplicate guard.
     if (this.store.get("SELECT 1 AS x FROM events WHERE fingerprint = ?", [fingerprint])) {
       return { accepted: false, duplicate: true, reason: "duplicate", sessionId: p.session_id };
     }
@@ -187,16 +214,17 @@ export class Ingestor {
     );
     if (!existing) {
       this.store.run(
-        `INSERT INTO sessions (id, project_id, cwd, transcript_path, status, status_reason, started_at, last_event_at, event_count, error_count)
+        `INSERT OR IGNORE INTO sessions (id, project_id, cwd, transcript_path, status, status_reason, started_at, last_event_at, event_count, error_count)
          VALUES (?, ?, ?, ?, 'unknown', 'First event observed', ?, ?, 0, 0)`,
         [p.session_id, cwd ? this.resolveProject(cwd) : null, cwd, p.transcript_path ?? null, ts, ts],
       );
     }
     this.store.run(
-      `INSERT INTO events (session_id, hook_event, ts, tool_name, tool_use_id, summary, file_path, is_error, error_text, agent_id, fingerprint)
+      `INSERT OR IGNORE INTO events (session_id, hook_event, ts, tool_name, tool_use_id, summary, file_path, is_error, error_text, agent_id, fingerprint)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [p.session_id, p.hook_event_name, ts, p.tool_name ?? null, p.tool_use_id ?? null, summarize(p), filePath, isError ? 1 : 0, errorText, p.agent_id ?? null, fingerprint],
     );
+    if (this.store.changes() === 0) return { accepted: false, duplicate: true, reason: "duplicate", sessionId: p.session_id }; // another process got it first
     // Out-of-order safety: only let an event change status if it is not older than the latest one we have.
     const isLatest = !existing || ts >= existing.last_event_at;
     const ns = nextStatus(p);
@@ -220,9 +248,9 @@ export class Ingestor {
       sets.push("ended_at = ?");
       params.push(ts);
     }
-    if (p.hook_event_name === "UserPromptSubmit" && p.prompt) {
+    if (p.hook_event_name === "UserPromptSubmit" && p.prompt && !isSystemPrompt(cleanPrompt(p.prompt))) {
       sets.push("current_task = ?");
-      params.push(clip(p.prompt, 300));
+      params.push(clip(cleanPrompt(p.prompt), 300));
     }
     if (p.transcript_path) {
       sets.push("transcript_path = ?");
@@ -357,7 +385,11 @@ export function rowToSession(r: Record<string, unknown>): Session {
     transcriptPath: (r.transcript_path as string | null) ?? null,
     status: r.status as SessionStatus,
     statusReason: String(r.status_reason ?? ""),
-    currentTask: (r.current_task as string | null) ?? null,
+    currentTask: (() => {
+      if (r.current_task == null) return null;
+      const t = cleanPrompt(String(r.current_task)); // also cleans rows stored before this existed
+      return isSystemPrompt(t) ? null : t;
+    })(),
     model: (r.model as string | null) ?? null,
     permissionMode: (r.permission_mode as string | null) ?? null,
     startedAt: Number(r.started_at),

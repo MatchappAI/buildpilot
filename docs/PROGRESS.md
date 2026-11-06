@@ -1,10 +1,11 @@
 # Progress (2026-11-05)
 
-## State: v0.2.1, installed and connected on this Mac; Desktop folder delivered
-- Extension installed in VS Code (`buildpilot-local.buildpilot@0.2.1`) via the Desktop installer.
-- `~/Desktop/BuildPilot/`: `1 - START HERE.pdf` (13 pages), `2 - Install BuildPilot.command`, `3 - Uninstall BuildPilot.command`, `BuildPilot 0.2.1.vsix`. Rebuild with `npm run desktop`.
+## State: v0.3.1, installed and connected on this Mac; Desktop folder delivered; BuildPilot shows in every terminal
+- Extension installed in VS Code (`buildpilot-local.buildpilot@0.3.1`) via the Desktop installer.
+- `~/Desktop/BuildPilot/`: `1 - START HERE.pdf` (15 pages), `2 - Install BuildPilot.command`, `3 - Uninstall BuildPilot.command`, `BuildPilot 0.3.1.vsix`. Rebuild with `npm run desktop`.
 - Hooks + status line are in `~/.claude/settings.json` (backups in `~/.buildpilot/backups/`). Verified live: a new headless session was captured and linked; already-open sessions (including the one that built this) appeared without a restart; status-line data (context %, cost estimate, 5-hour limit) arrived for all 6 open sessions.
-- Gates: typecheck, lint, 68/68 unit/UI tests, 25/25 VS Code smoke checks, VSIX packaged; install/uninstall scripts sandbox-tested.
+- Gates: typecheck, lint, 77/77 unit/UI/accessibility tests, 25/25 VS Code smoke checks, VSIX packaged; install/uninstall scripts sandbox-tested (Claude settings and ~/.zshrc restored byte-for-byte).
+- Storage: node:sqlite in WAL mode, so multiple windows plus the terminal share one DB safely (tested: 2 engines, 400 events, each recorded once).
 
 ## Milestones
 | # | Milestone | Status |

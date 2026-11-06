@@ -19,3 +19,9 @@
 **D-009 Integration API off by default, loopback, token, read-only.** External devices get summaries, not control.
 
 **D-010 Canonical paths.** Projects are stored by `realpath` because Claude Code reports real paths (found in live testing: macOS `/var` → `/private/var`).
+
+**D-011 node:sqlite (WAL) as the primary store; sql.js as fallback.** Several BuildPilot processes run at once (one per VS Code window, plus the terminal `bp`). Whole-file sql.js flushes would let them overwrite each other and split spool events. VS Code ships Node 24 and system Node 22 both include `node:sqlite`, so every statement is written directly to one WAL-mode database with a busy timeout. Duplicate events are guarded by `INSERT OR IGNORE` on the fingerprint, so two processes draining the spool at once record each event exactly once (tested). sql.js remains for runtimes without node:sqlite.
+
+**D-012 Terminal presence via a sourced shell file, not a daemon.** `~/.zshrc` gets a 3-line marked block that sources `~/.buildpilot/shell.sh` (the `bp` function + a glance in interactive TTYs only). The glance reads saved state and never runs project analysis (~0.3 s). The CLI is copied to `~/.buildpilot/bin/` so upgrades never break the path. Removal restores the rc file exactly.
+
+**D-013 Injected prompts are not tasks.** Claude Code submits system messages (other sessions, background tasks, expanded pastes) through UserPromptSubmit. They're labelled, and never replace the user's last real request as a session's "current task".

@@ -263,3 +263,92 @@ describe("supervisor rules for new signals", () => {
     expect(out.recommendations.find((r) => r.key === "drift")?.action).toEqual({ kind: "open_tab", tab: "memory" });
   });
 });
+
+import { cleanPrompt } from "../../src/core/ingest";
+describe("prompt cleanup", () => {
+  it("labels system-injected messages and pastes instead of showing markup", () => {
+    expect(cleanPrompt('<cross-session-message from="x">hi</cross-session-message>')).toBe("Message from another Claude session");
+    expect(cleanPrompt("<task-notification><task-id>1</task-id></task-notification>")).toBe("Background task update");
+    expect(cleanPrompt('do this <pasted_content id="a">\nlots\n</pasted_content id="a"> please')).toBe("do this [pasted text] please");
+    expect(cleanPrompt('<pasted_content id="a">\nx\n</pasted_content id="a">')).toBe("[pasted text]");
+    expect(cleanPrompt("<command-name>/review</command-name><command-message>review</command-message>")).toBe("Ran /review");
+    expect(cleanPrompt("Fix the login bug")).toBe("Fix the login bug");
+  });
+});
+
+describe("current task ignores injected messages", () => {
+  it("keeps the user's last real prompt as the task", async () => {
+    const { Store } = await import("../../src/core/db");
+    const { Ingestor, rowToSession } = await import("../../src/core/ingest");
+    const store = await Store.open(null);
+    const ing = new Ingestor(store, () => null);
+    ing.ingestRaw(JSON.stringify({ session_id: "s", cwd: "/p", hook_event_name: "UserPromptSubmit", prompt: "Add a pricing page" }), 1);
+    ing.ingestRaw(JSON.stringify({ session_id: "s", cwd: "/p", hook_event_name: "UserPromptSubmit", prompt: '<cross-session-message from="x">hey</cross-session-message>' }), 2);
+    expect(rowToSession(store.get("SELECT * FROM sessions")!).currentTask).toBe("Add a pricing page");
+  });
+});
+
+import { installShell, shellStatus, uninstallShell } from "../../src/core/shell";
+import { glance } from "../../src/core/glance";
+describe("terminal integration", () => {
+  it("adds a marked block to the rc file and removes it exactly", () => {
+    const home = tmpDir();
+    const rc = path.join(tmpDir(), ".zshrc");
+    const original = "export PATH=$HOME/bin:$PATH\nalias ll='ls -la'\n";
+    fs.writeFileSync(rc, original);
+    const dist = tmpDir();
+    fs.writeFileSync(path.join(dist, "cli.js"), "console.log('x')");
+    const r = installShell(dist, home, [rc]);
+    expect(r.changed).toEqual([rc]);
+    expect(fs.readFileSync(rc, "utf8")).toContain("# >>> BuildPilot >>>");
+    expect(fs.existsSync(path.join(home, "bin", "cli.js"))).toBe(true);
+    expect(shellStatus([rc]).installed).toBe(true);
+    expect(installShell(dist, home, [rc]).changed).toEqual([]); // idempotent
+    uninstallShell(home, [rc]);
+    expect(fs.readFileSync(rc, "utf8")).toBe(original);
+  });
+  it("shell.sh only prints in interactive terminals and respects BUILDPILOT_QUIET", () => {
+    const home = tmpDir();
+    const dist = tmpDir();
+    fs.writeFileSync(path.join(dist, "cli.js"), "console.log('GLANCE')");
+    installShell(dist, home, [path.join(tmpDir(), ".zshrc")]);
+    const sh = path.join(home, "shell.sh");
+    expect(execFileSync("sh", ["-c", `. "${sh}"; bp hi`]).toString()).toBe("GLANCE\n"); // bp works
+    expect(execFileSync("sh", ["-c", `. "${sh}"`]).toString()).toBe(""); // non-interactive: silent
+  });
+  it("glance lists sessions needing you first, uses words not just color, and fits narrow terminals", async () => {
+    const home = tmpDir();
+    const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    engines.push(engine);
+    await engine.start();
+    const ing = (o: Record<string, unknown>, ts: number) => fs.writeFileSync(path.join(home, "spool", `${ts}.json`), JSON.stringify(o));
+    const now = Date.now();
+    ing({ session_id: "aaa", cwd: "/work/web-app", hook_event_name: "UserPromptSubmit", prompt: "Add a pricing page with three plans" }, now - 5000);
+    ing({ session_id: "bbb", cwd: "/work/api", hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "npm publish" } }, now - 4000);
+    engine.drainNow();
+    const out = glance(engine, { cwd: "/work", columns: 60, color: false, now });
+    const lines = out.split("\n");
+    expect(lines[0]).toMatch(/2 Claude sessions.*1 needs you/);
+    expect(lines[1]).toMatch(/! api\s+needs approval/);
+    expect(lines[2]).toMatch(/● web-app\s+working/);
+    expect(out).not.toMatch(/\x1b\[/); // NO_COLOR respected
+    for (const l of lines.slice(0, -1)) expect(l.length).toBeLessThanOrEqual(62);
+  });
+});
+
+describe("metrics", () => {
+  it("are honest: unknown shows a dash, and each explains why it matters", async () => {
+    const home = tmpDir();
+    const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    engines.push(engine);
+    await engine.start();
+    await engine.openProject(makeRepo({ "package.json": JSON.stringify({ name: "m", scripts: { test: "node -e 0" } }) }));
+    const m = engine.snapshot().metrics;
+    expect(m.map((x) => x.key)).toEqual(["sessions", "context", "limit", "tests", "unsaved", "errors"]);
+    expect(m.find((x) => x.key === "tests")).toMatchObject({ value: "—", confidence: "unknown" });
+    expect(m.find((x) => x.key === "context")).toMatchObject({ value: "—", confidence: "unknown" });
+    for (const x of m) expect(x.why.length).toBeGreaterThan(30);
+    await engine.runScript("test");
+    expect(engine.snapshot().metrics.find((x) => x.key === "tests")).toMatchObject({ value: "Passing", tone: "good", confidence: "verified" });
+  });
+});

@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { IntegrationApi, loadOrCreateToken, rotateToken, sendWebhook } from "../core/api";
 import { complete, ProviderConfig, refineRequest } from "../core/ai";
 import { pocketLink } from "./pocketLink";
+import { installCliCopy, installShell, shellStatus, uninstallShell } from "../core/shell";
 import { Alert, Engine, UiState } from "../core/engine";
 import { restoreFiles, diffSinceCheckpoint } from "../core/git";
 import { claudeSettingsPath, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
@@ -61,6 +62,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     notifications: cfg().get<string>("notifications", "important"),
     platform: process.platform,
     home: eng.home,
+    shellInstalled: shellStatus().installed,
+    openWithTerminal: cfg().get<boolean>("openWithTerminal", true),
     pocketUrl: api ? pocketLink(api.address, cfg().get<number>("integrationApi.port", 47821), cfg().get<boolean>("integrationApi.allowLan", false)) : null,
     screenshotUri: (() => {
       const shot = cached?.visual?.screenshot;
@@ -460,6 +463,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
           return null;
         }
       }
+      case "shell":
+        return vscode.commands.executeCommand(m.on ? "buildpilot.installShell" : "buildpilot.uninstallShell");
+      case "openWithTerminal":
+        await cfg().update("openWithTerminal", !!m.value, vscode.ConfigurationTarget.Global);
+        return;
       case "statusline":
         return vscode.commands.executeCommand(m.on ? "buildpilot.installStatusline" : "buildpilot.uninstallStatusline");
       case "copyPocketLink": {
@@ -630,6 +638,74 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     push();
   });
   reg("buildpilot.showBrief", () => vscode.window.showInformationMessage(eng.brief()));
+  reg("buildpilot.installShell", async () => {
+    const ok = await confirm(
+      "Show BuildPilot in every terminal?",
+      "Adds a 3-line block to your ~/.zshrc (and ~/.bashrc if you use bash). Every new terminal then shows a short BuildPilot summary (Claude sessions, what needs you, limits, next step) and you get the `bp` command. A backup is saved first. Silence it anytime with `export BUILDPILOT_QUIET=1`, or remove it here.",
+      "Turn on",
+    );
+    if (!ok) return;
+    try {
+      const r = installShell(path.join(context.extensionPath, "dist"), eng.home);
+      void vscode.window.showInformationMessage(r.changed.length ? "Done. Open a new terminal to see BuildPilot. Type `bp` for details." : "Already on.");
+    } catch (e) {
+      void vscode.window.showErrorMessage((e as Error).message);
+    }
+    push();
+  });
+  reg("buildpilot.uninstallShell", () => {
+    const r = uninstallShell(eng.home);
+    void vscode.window.showInformationMessage(r.changed.length ? "Removed from your terminal startup files." : "Nothing to remove.");
+    push();
+  });
+  // Keep the terminal CLI current after upgrades.
+  try {
+    if (shellStatus().installed) installCliCopy(path.join(context.extensionPath, "dist"), eng.home);
+  } catch {
+    /* non-fatal */
+  }
+  // `bp open` → vscode://buildpilot-local.buildpilot/open?folder=...
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri: async (uri) => {
+        const folder = new URLSearchParams(uri.query).get("folder");
+        const inWorkspace = !folder || (vscode.workspace.workspaceFolders ?? []).some((f) => folder === f.uri.fsPath || folder.startsWith(f.uri.fsPath + path.sep));
+        if (folder && !inWorkspace && fs.existsSync(folder)) {
+          await context.globalState.update("buildpilot.focusOnStart", Date.now());
+          await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(folder), { forceNewWindow: true });
+          return;
+        }
+        if (folder && eng.currentProject?.root !== folder && fs.existsSync(folder)) await eng.openProject(folder);
+        await vscode.commands.executeCommand("buildpilot.main.focus");
+      },
+    }),
+  );
+  const focusRequested = context.globalState.get<number>("buildpilot.focusOnStart");
+  if (focusRequested && Date.now() - focusRequested < 120_000) {
+    void context.globalState.update("buildpilot.focusOnStart", undefined);
+    setTimeout(() => void vscode.commands.executeCommand("buildpilot.main.focus"), 800);
+  }
+  // Open BuildPilot alongside every new terminal (without stealing focus from the terminal).
+  const revealBeside = async (term?: vscode.Terminal) => {
+    if (!cfg().get<boolean>("openWithTerminal", true) || sidebar.visible) return;
+    await vscode.commands.executeCommand("workbench.view.extension.buildpilot");
+    if (term) term.show(false);
+  };
+  context.subscriptions.push(
+    vscode.window.onDidOpenTerminal((t) => {
+      if (t.name.includes("BuildPilot")) return; // our own terminals already have context
+      void revealBeside(t);
+    }),
+  );
+  // Also when a NEW Claude Code session starts in this project.
+  let knownSessions = new Set<string>();
+  eng.on("changed", () => {
+    if (!eng.currentProject || !eng.store) return;
+    const ids = eng.sessionsForProject(eng.currentProject.id, 10).filter((s) => !s.endedAt && Date.now() - s.startedAt < 60_000).map((s) => s.id);
+    const fresh = ids.filter((id) => !knownSessions.has(id) && !id.startsWith("demo-"));
+    knownSessions = new Set([...knownSessions, ...ids]);
+    if (fresh.length) void revealBeside(vscode.window.activeTerminal);
+  });
   reg("buildpilot.walkthrough", () => vscode.commands.executeCommand("workbench.action.openWalkthrough", "buildpilot-local.buildpilot#buildpilot.start", false));
   // First run: open the walkthrough once.
   if (!context.globalState.get<boolean>("buildpilot.welcomed")) {

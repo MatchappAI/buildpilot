@@ -139,3 +139,27 @@ describe("engine end-to-end", () => {
     expect(alerts).toEqual(["Claude needs your approval"]);
   });
 });
+
+describe("multiple BuildPilot processes (e.g. two VS Code windows + terminal)", () => {
+  it("share one database safely: every event recorded exactly once, nothing lost", async () => {
+    const home = tmpDir("bp-multi-");
+    const a = new Engine({ home, claudeSettingsFile: path.join(home, "s.json") });
+    const b = new Engine({ home, claudeSettingsFile: path.join(home, "s.json") });
+    engines.push(a, b);
+    await a.start();
+    await b.start();
+    expect(a.store.backend).toBe("node:sqlite");
+    const spoolDir = path.join(home, "spool");
+    for (let i = 0; i < 400; i++) fs.writeFileSync(path.join(spoolDir, `e${i}.json`), JSON.stringify({ session_id: `s${i % 4}`, cwd: "/p", hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: `t${i}` }));
+    // both drain at the same time, interleaved
+    for (let k = 0; k < 20; k++) {
+      a.drainNow();
+      b.drainNow();
+    }
+    expect(Number(a.store.scalar("SELECT COUNT(*) FROM events"))).toBe(400);
+    expect(Number(b.store.scalar("SELECT COUNT(*) FROM events"))).toBe(400); // b sees a's writes immediately
+    expect(Number(b.store.scalar("SELECT SUM(event_count) FROM sessions"))).toBe(400);
+    a.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES ('p', 'k', 'from-a', 1)");
+    expect(b.store.scalar("SELECT value FROM notes WHERE key = 'k'")).toBe("from-a");
+  });
+});

@@ -1,13 +1,16 @@
 import * as fs from "fs";
 import * as path from "path";
-import initSqlJs, { Database, SqlJsStatic, SqlValue } from "sql.js";
+import initSqlJs, { Database, SqlJsStatic } from "sql.js";
 
 /**
- * SQLite persistence via sql.js (WASM). Chosen over native bindings so the extension
- * installs on any OS / VS Code Electron version without a native rebuild (see docs/DECISIONS.md, D-003).
- * Only the BuildPilot process writes this file; hooks write to a spool directory instead.
+ * SQLite persistence.
+ * Primary backend: Node's built-in `node:sqlite` (VS Code ships Node 24; system Node >= 22.5) in WAL mode with a
+ * busy timeout, so several processes (multiple VS Code windows, the terminal CLI) can read and write the same
+ * database safely, statement by statement (docs/DECISIONS.md, D-011).
+ * Fallback: sql.js (WASM) for runtimes without node:sqlite: single-writer, whole-file atomic flushes (D-003).
  */
 
+export type SqlValue = string | number | null | Uint8Array;
 export const MIGRATIONS: string[] = [
   // 1: core tables
   `CREATE TABLE projects (id TEXT PRIMARY KEY, root TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL, last_analyzed_at INTEGER);
@@ -45,33 +48,173 @@ function locateWasm(): string {
   throw new Error("BuildPilot could not find sql-wasm.wasm. Reinstall the extension.");
 }
 
-export class Store {
+interface Backend {
+  readonly kind: "node:sqlite" | "sql.js";
+  exec(sql: string): void;
+  run(sql: string, params: SqlValue[]): number; // returns changed rows
+  all(sql: string, params: SqlValue[]): Record<string, SqlValue>[];
+  flush(): void;
+  close(): void;
+}
+
+type NodeSqlite = { DatabaseSync: new (file: string, opts?: Record<string, unknown>) => NodeDb };
+interface NodeDb {
+  exec(sql: string): void;
+  prepare(sql: string): { run(...p: SqlValue[]): { changes: number | bigint }; all(...p: SqlValue[]): Record<string, SqlValue>[] };
+  close(): void;
+}
+
+function loadNodeSqlite(): NodeSqlite | null {
+  if (process.env.BUILDPILOT_FORCE_SQLJS === "1") return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require("node:sqlite") as NodeSqlite;
+  } catch {
+    return null;
+  }
+}
+
+class NodeBackend implements Backend {
+  readonly kind = "node:sqlite" as const;
+  private cache = new Map<string, ReturnType<NodeDb["prepare"]>>();
+  constructor(private readonly db: NodeDb) {}
+  static open(mod: NodeSqlite, file: string | null): NodeBackend {
+    const db = new mod.DatabaseSync(file ?? ":memory:");
+    if (file) {
+      db.exec("PRAGMA journal_mode = WAL");
+      db.exec("PRAGMA busy_timeout = 4000");
+      db.exec("PRAGMA synchronous = NORMAL");
+    }
+    db.exec("SELECT count(*) FROM sqlite_master"); // validates the file header
+    return new NodeBackend(db);
+  }
+  private stmt(sql: string) {
+    let s = this.cache.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      if (this.cache.size > 200) this.cache.clear();
+      this.cache.set(sql, s);
+    }
+    return s;
+  }
+  exec(sql: string): void {
+    this.db.exec(sql);
+  }
+  run(sql: string, params: SqlValue[]): number {
+    return Number(this.stmt(sql).run(...params).changes);
+  }
+  all(sql: string, params: SqlValue[]): Record<string, SqlValue>[] {
+    return this.stmt(sql).all(...params).map((r) => ({ ...r }));
+  }
+  flush(): void {
+    /* every statement is already durable */
+  }
+  close(): void {
+    this.cache.clear();
+    this.db.close();
+  }
+}
+
+class SqlJsBackend implements Backend {
+  readonly kind = "sql.js" as const;
   private dirty = false;
   private timer: NodeJS.Timeout | null = null;
+  constructor(private readonly db: Database, private readonly file: string | null) {}
+  exec(sql: string): void {
+    this.db.exec(sql);
+    this.markDirty();
+  }
+  run(sql: string, params: SqlValue[]): number {
+    this.db.run(sql, params);
+    this.markDirty();
+    return this.db.getRowsModified();
+  }
+  all(sql: string, params: SqlValue[]): Record<string, SqlValue>[] {
+    const stmt = this.db.prepare(sql);
+    try {
+      stmt.bind(params);
+      const rows: Record<string, SqlValue>[] = [];
+      while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, SqlValue>);
+      return rows;
+    } finally {
+      stmt.free();
+    }
+  }
+  private markDirty(): void {
+    this.dirty = true;
+    if (!this.file || this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.flush();
+    }, 750);
+  }
+  flush(): void {
+    if (!this.file || !this.dirty) return;
+    const data = this.db.export();
+    fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
+    const tmp = `${this.file}.tmp`;
+    fs.writeFileSync(tmp, data, { mode: 0o600 });
+    fs.renameSync(tmp, this.file);
+    this.dirty = false;
+  }
+  close(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.flush();
+    this.db.close();
+  }
+}
 
-  private constructor(
-    private readonly db: Database,
-    readonly file: string | null,
-  ) {}
+function quarantine(file: string): void {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    if (fs.existsSync(file + suffix)) fs.renameSync(file + suffix, `${file}${suffix}.corrupt-${Date.now()}`);
+  }
+}
 
-  /** file = null -> in-memory (tests). */
+export class Store {
+  private lastChanges = 0;
+  private constructor(private readonly b: Backend, readonly file: string | null) {}
+
+  get backend(): Backend["kind"] {
+    return this.b.kind;
+  }
+
+  /** file = null -> in-memory (tests). Corrupt files are kept aside (never deleted) and a fresh DB is created. */
   static async open(file: string | null): Promise<Store> {
-    sqlPromise ??= initSqlJs({ locateFile: () => locateWasm() });
-    const SQL = await sqlPromise;
-    let db: Database;
-    if (file && fs.existsSync(file)) {
+    if (file) fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    const mod = loadNodeSqlite();
+    let backend: Backend;
+    if (mod) {
       try {
-        db = new SQL.Database(fs.readFileSync(file));
-        db.exec("SELECT count(*) FROM sqlite_master"); // forces header validation
+        backend = NodeBackend.open(mod, file);
       } catch {
-        // Corrupt file: keep it for inspection, start fresh. Never delete user data silently.
-        fs.renameSync(file, `${file}.corrupt-${Date.now()}`);
-        db = new SQL.Database();
+        if (!file) throw new Error("Could not open in-memory database");
+        quarantine(file);
+        backend = NodeBackend.open(mod, file);
+      }
+      if (file) {
+        try {
+          fs.chmodSync(file, 0o600);
+        } catch {
+          /* best effort */
+        }
       }
     } else {
-      db = new SQL.Database();
+      sqlPromise ??= initSqlJs({ locateFile: () => locateWasm() });
+      const SQL = await sqlPromise;
+      let db: Database;
+      if (file && fs.existsSync(file)) {
+        try {
+          db = new SQL.Database(fs.readFileSync(file));
+          db.exec("SELECT count(*) FROM sqlite_master");
+        } catch {
+          quarantine(file);
+          db = new SQL.Database();
+        }
+      } else db = new SQL.Database();
+      backend = new SqlJsBackend(db, file);
     }
-    const store = new Store(db, file);
+    const store = new Store(backend, file);
     store.migrate();
     return store;
   }
@@ -81,36 +224,28 @@ export class Store {
   }
 
   private migrate(): void {
-    const v = this.schemaVersion;
-    for (let i = v; i < MIGRATIONS.length; i++) {
-      this.db.exec("BEGIN");
-      try {
-        this.db.exec(MIGRATIONS[i]!);
-        this.db.exec(`PRAGMA user_version = ${i + 1}`);
-        this.db.exec("COMMIT");
-      } catch (e) {
-        this.db.exec("ROLLBACK");
-        throw e;
+    if (this.schemaVersion >= MIGRATIONS.length) return;
+    // IMMEDIATE takes the write lock up front, so two processes can't migrate at the same time.
+    this.b.exec("BEGIN IMMEDIATE");
+    try {
+      const v = this.schemaVersion; // re-read inside the lock
+      for (let i = v; i < MIGRATIONS.length; i++) {
+        this.b.exec(MIGRATIONS[i]!);
+        this.b.exec(`PRAGMA user_version = ${i + 1}`);
       }
+      this.b.exec("COMMIT");
+    } catch (e) {
+      this.b.exec("ROLLBACK");
+      throw e;
     }
-    if (MIGRATIONS.length > v) this.markDirty();
   }
 
   run(sql: string, params: SqlValue[] = []): void {
-    this.db.run(sql, params);
-    this.markDirty();
+    this.lastChanges = this.b.run(sql, params);
   }
 
   all<T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []): T[] {
-    const stmt = this.db.prepare(sql);
-    try {
-      stmt.bind(params);
-      const rows: T[] = [];
-      while (stmt.step()) rows.push(stmt.getAsObject() as T);
-      return rows;
-    } finally {
-      stmt.free();
-    }
+    return this.b.all(sql, params) as T[];
   }
 
   get<T = Record<string, SqlValue>>(sql: string, params: SqlValue[] = []): T | undefined {
@@ -122,35 +257,17 @@ export class Store {
     return row ? Object.values(row)[0] : undefined;
   }
 
+  /** Rows changed by the last run(). */
   changes(): number {
-    return this.db.getRowsModified();
+    return this.lastChanges;
   }
 
-  private markDirty(): void {
-    this.dirty = true;
-    if (!this.file || this.timer) return;
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.flush();
-    }, 750);
-  }
-
-  /** Atomic write: temp file then rename, owner-only permissions. */
   flush(): void {
-    if (!this.file || !this.dirty) return;
-    const data = this.db.export();
-    fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
-    const tmp = `${this.file}.tmp`;
-    fs.writeFileSync(tmp, data, { mode: 0o600 });
-    fs.renameSync(tmp, this.file);
-    this.dirty = false;
+    this.b.flush();
   }
 
   close(): void {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    this.flush();
-    this.db.close();
+    this.b.close();
   }
 
   /** User-facing data deletion. */

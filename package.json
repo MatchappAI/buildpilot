@@ -2,7 +2,7 @@
   "name": "buildpilot",
   "displayName": "BuildPilot",
   "description": "Mission control for building software with Claude Code: what's being built, what's broken, what to do next.",
-  "version": "0.2.1",
+  "version": "0.3.1",
   "publisher": "buildpilot-local",
   "license": "UNLICENSED",
   "private": true,
@@ -14,7 +14,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onUri"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -25,8 +26,8 @@
     "test:smoke": "node scripts/build.mjs && node test/smoke/run.mjs",
     "package": "node scripts/build.mjs && vsce package --no-dependencies --no-rewrite-relative-links --allow-missing-repository --out dist/buildpilot.vsix",
     "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke",
-    "guide": "\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --allow-file-access-from-files --no-pdf-header-footer --print-to-pdf=dist/START-HERE.pdf \"file://$PWD/docs/guide/guide.html\"",
-    "desktop": "npm run package && npm run guide && mkdir -p \"$HOME/Desktop/BuildPilot\" && cp dist/START-HERE.pdf \"$HOME/Desktop/BuildPilot/1 - START HERE.pdf\" && cp \"scripts/desktop/Install BuildPilot.command\" \"$HOME/Desktop/BuildPilot/2 - Install BuildPilot.command\" && cp \"scripts/desktop/Uninstall BuildPilot.command\" \"$HOME/Desktop/BuildPilot/3 - Uninstall BuildPilot.command\" && cp dist/buildpilot.vsix \"$HOME/Desktop/BuildPilot/BuildPilot $npm_package_version.vsix\""
+    "guide": "P=$(mktemp -d) && \"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --user-data-dir=\"$P\" --no-first-run --allow-file-access-from-files --no-pdf-header-footer --print-to-pdf=dist/START-HERE.pdf \"file://$PWD/docs/guide/guide.html\" 2>/dev/null; rm -rf \"$P\"",
+    "desktop": "npm run package && npm run guide && mkdir -p \"$HOME/Desktop/BuildPilot\" && rm -f \"$HOME/Desktop/BuildPilot/\"BuildPilot*.vsix && cp dist/START-HERE.pdf \"$HOME/Desktop/BuildPilot/1 - START HERE.pdf\" && cp \"scripts/desktop/Install BuildPilot.command\" \"$HOME/Desktop/BuildPilot/2 - Install BuildPilot.command\" && cp \"scripts/desktop/Uninstall BuildPilot.command\" \"$HOME/Desktop/BuildPilot/3 - Uninstall BuildPilot.command\" && cp dist/buildpilot.vsix \"$HOME/Desktop/BuildPilot/BuildPilot $npm_package_version.vsix\""
   },
   "dependencies": {
     "sql.js": "^1.13.0"
@@ -179,6 +180,16 @@
         "command": "buildpilot.walkthrough",
         "title": "Getting Started",
         "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.installShell",
+        "title": "Show in Every Terminal (bp command)",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.uninstallShell",
+        "title": "Remove from Terminal Startup",
+        "category": "BuildPilot"
       }
     ],
     "keybindings": [
@@ -248,6 +259,11 @@
           "type": "string",
           "default": "",
           "description": "Local address of your running app for Visual QA (e.g. http://localhost:3000). Empty = detect from package.json."
+        },
+        "buildpilot.openWithTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the BuildPilot panel whenever you open a terminal or a new Claude Code session starts in this project (your cursor stays in the terminal)."
         }
       }
     },

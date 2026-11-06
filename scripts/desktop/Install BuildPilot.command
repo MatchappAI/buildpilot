@@ -51,6 +51,15 @@ if command -v node >/dev/null 2>&1 && [ -n "$CLI" ]; then
   else
     echo "Skipped. You can click Connect inside BuildPilot anytime."
   fi
+  if [ -n "$BP_NONINTERACTIVE" ]; then sh_ans="${BP_SHELL:-n}"; else
+    say "Show BuildPilot every time you open a terminal?"
+    echo "Adds a short summary to new terminals (Claude sessions, what needs you, limits, next step) and the 'bp' command."
+    echo "It adds 3 lines to ~/.zshrc (backed up first). Silence anytime with: export BUILDPILOT_QUIET=1"
+    read -r -p "Turn on? (y/n) " sh_ans
+  fi
+  if [ "$sh_ans" = "y" ] || [ "$sh_ans" = "Y" ]; then
+    node "$CLI" shell install >/dev/null && echo "✓ BuildPilot will appear in every new terminal. Type 'bp' for details."
+  fi
 else
   echo "To connect Claude Code: open BuildPilot in VS Code and click Connect."
 fi
