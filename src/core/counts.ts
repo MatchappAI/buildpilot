@@ -10,7 +10,7 @@ import { randomUUID } from "crypto";
 export const COUNT_EVENTS = ["installed", "connected", "day7", "upgraded"] as const;
 export type CountEvent = (typeof COUNT_EVENTS)[number];
 /** The license Worker's /v1/count route. Placeholder = never sends. */
-export const COUNT_URL = "https://buildpilot-license.REPLACE.workers.dev/v1/count";
+export const COUNT_URL = "https://buildpilot-license.gupta-mohil.workers.dev/v1/count";
 
 interface CountsFile { consent?: boolean; firstSeen?: number; id?: string; sent?: Partial<Record<CountEvent, number>> }
 const file = (home: string) => path.join(home, "counts.json");

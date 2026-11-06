@@ -41,8 +41,8 @@ The plugin lives in `plugin/`, and the marketplace file is `.claude-plugin/marke
 
 ## Payments (Stripe → license key)
 Pro isn't on sale until you do this. Until then BuildPilot never blocks anything; everyone just has the full product.
-1. **Stripe:** create a product "BuildPilot Pro" at $5/month. Recommended: also offer $39/year. Create a **Payment Link**. Under *After payment*, set the confirmation page to `https://<your-worker>/success?session_id={CHECKOUT_SESSION_ID}`. Paste the `https://buy.stripe.com/...` link into `CHECKOUT_URL` in `src/core/license.ts`.
-2. **Worker:**
+1. **Stripe:** create a product "BuildPilot Pro" at $5/month. Recommended: also offer $39/year. Create a **Payment Link**. Under *After payment*, set the confirmation page to `https://buildpilot-license.gupta-mohil.workers.dev/success?session_id={CHECKOUT_SESSION_ID}`. Paste the `https://buy.stripe.com/...` link into `CHECKOUT_URL` in `src/core/license.ts`.
+2. **Worker: DONE 2026-11-06.** Live at https://buildpilot-license.gupta-mohil.workers.dev (Cloudflare account gupta.mohil@gmail.com; KV `LICENSES`; `LICENSE_PRIVATE_KEY` set; end-to-end tested: signed event → key → `bp license` unlocks). `STRIPE_WEBHOOK_SECRET` is a random placeholder until step 3. Commands, for reference:
    ```bash
    cd ~/buildpilot/server
    npx wrangler login
@@ -51,9 +51,12 @@ Pro isn't on sale until you do this. Until then BuildPilot never blocks anything
    npx wrangler secret put STRIPE_WEBHOOK_SECRET   # from step 3
    npx wrangler deploy
    ```
-3. **Stripe webhook:** add an endpoint at `https://<your-worker>/stripe/webhook` for the event `checkout.session.completed`. Copy its signing secret into step 2.
-4. **Optional anonymous counts:** set `COUNT_URL` in `src/core/counts.ts` to `https://<your-worker>/v1/count`.
+3. **Stripe webhook:** add an endpoint at `https://buildpilot-license.gupta-mohil.workers.dev/stripe/webhook` for the event `checkout.session.completed`. Copy its signing secret into step 2.
+4. **Anonymous counts: DONE.** `COUNT_URL` points to the live Worker (still opt-in, off by default).
 5. Test with Stripe test mode: buy → the thank-you page shows the key → `bp license <key>` → the "Pro" pill appears.
 6. To make a key by hand (gifts, refunds, press): `node scripts/issue-license.mjs "<name>" pro [days]`.
 
 The private key (`~/.buildpilot-issuer/private.pem`) is the only thing that can make keys. Back it up somewhere safe. If it's lost, existing keys keep working, but you can't make new ones without shipping a new public key.
+
+
+Signing key backup: macOS Keychain item "BuildPilot license signing key" (base64 of private.pem). Restore: `security find-generic-password -a buildpilot -s "BuildPilot license signing key" -w | base64 -d > private.pem`

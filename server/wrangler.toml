@@ -1,11 +1,11 @@
 name = "buildpilot-license"
 main = "src/index.ts"
-compatibility_date = "2026-10-01"
+compatibility_date = "2025-09-01"
 
 # wrangler kv namespace create LICENSES  → paste the id below
 [[kv_namespaces]]
 binding = "LICENSES"
-id = "REPLACE_WITH_KV_ID"
+id = "bfcf965c47574e7ba25eaffa8e5ca0b7"
 
 # Secrets (never in this file):
 #   wrangler secret put STRIPE_WEBHOOK_SECRET   (from Stripe → Developers → Webhooks)
