@@ -13,7 +13,7 @@ import { makeRepo, tmpDir } from "./helpers";
 const bundle = path.join(__dirname, "../../media/webview.js");
 let state: UiState;
 let built: unknown;
-const settings = { beginner: true, trusted: true, aiProvider: "none", aiModel: "", apiEnabled: true, apiAddress: "http://127.0.0.1:47821", apiAllowLan: false, notifications: "important", platform: "darwin", home: "~/.buildpilot", pocketUrl: "http://127.0.0.1:47821/pocket", screenshotUri: null };
+const settings = { beginner: true, trusted: true, aiProvider: "none", aiModel: "", apiEnabled: true, apiAddress: "http://127.0.0.1:47821", apiAllowLan: false, notifications: "important", platform: "darwin", home: "~/.buildpilot", pocketUrl: "http://127.0.0.1:47821/pocket", screenshotUri: null, shellInstalled: false, openWithTerminal: true };
 
 beforeAll(async () => {
   expect(fs.existsSync(bundle), "run `npm run build` first").toBe(true);
@@ -180,6 +180,71 @@ describe("sidebar UI (real bundle in jsdom)", () => {
     await tick();
     expect(doc.querySelector(".tab.active")?.getAttribute("data-tab")).toBe("supervisor");
     void sent;
+  });
+
+  it("every button on every tab posts a message the extension actually handles", async () => {
+    const ext = fs.readFileSync(path.join(__dirname, "../../src/extension/extension.ts"), "utf8");
+    const handled = new Set([...ext.matchAll(/case "([a-zA-Z]+)":/g)].map((m) => m[1]));
+    const errors: string[] = [];
+    const clicked = new Set<string>();
+    for (const tab of ["overview", "sessions", "supervisor", "prompts", "memory", "connect"]) {
+      const { w, doc, sent, tick } = mount({ tab, open: { "past-sessions": true } });
+      w.addEventListener("error", (e) => errors.push(String((e as ErrorEvent).message)));
+      await tick();
+      await tick();
+      if (tab === "prompts") {
+        (doc.querySelector('[data-act="build"]') as HTMLElement).click();
+        await tick();
+      }
+      // click each distinct action once (re-query: every click may re-render)
+      const keyOf = (el: Element) => `${tab}:${el.getAttribute("data-act")}:${el.getAttribute("data-script") ?? ""}`;
+      for (let guard = 0; guard < 80; guard++) {
+        if (doc.querySelector(".tab.active")?.getAttribute("data-tab") !== tab) (doc.querySelector(`[data-tab="${tab}"]`) as HTMLElement).click();
+        await tick();
+        const next = [...doc.querySelectorAll("[data-act]")].find((el) => !clicked.has(keyOf(el)) && !(el as HTMLButtonElement).disabled);
+        if (!next) break;
+        clicked.add(keyOf(next));
+        (next as HTMLElement).click();
+        await tick();
+      }
+      for (const m of sent) expect(handled.has(String(m.type)), `"${m.type}" (from ${tab}) has no handler in extension.ts`).toBe(true);
+    }
+    expect(errors).toEqual([]);
+    // sanity: we really went through a lot of buttons
+    expect(clicked.size).toBeGreaterThan(35);
+  });
+
+  it("live updates keep what you typed, your ticked files and your keyboard focus", async () => {
+    const { w, doc, tick } = mount({ tab: "memory" });
+    await tick();
+    await tick();
+    const goal = doc.getElementById("goal") as HTMLTextAreaElement;
+    goal.value = "half-typed goal";
+    goal.dispatchEvent(new doc.defaultView!.Event("input"));
+    const add = doc.querySelector('[data-act="addReq"]') as HTMLElement;
+    add.focus();
+    w.postMessage({ type: "state", state: { ...state, generatedAt: state.generatedAt + 5 * 60_000 }, settings }, "*");
+    await tick();
+    expect((doc.getElementById("goal") as HTMLTextAreaElement).value).toBe("half-typed goal");
+    expect(doc.activeElement?.getAttribute("data-act")).toBe("addReq");
+  });
+
+  it("adding a requirement with nothing typed explains why instead of doing nothing", async () => {
+    const { doc, sent, click, tick } = mount({ tab: "memory" });
+    await tick();
+    await tick();
+    await click('[data-act="addReq"]');
+    expect(sent.some((m) => m.type === "addRequirement")).toBe(false);
+    expect(doc.getElementById("flash")?.textContent).toMatch(/Type a requirement/);
+  });
+
+  it("copy shows a visible confirmation", async () => {
+    const { doc, click, tick } = mount({ tab: "memory" });
+    await tick();
+    await tick();
+    await click('[data-act="copyHandoff"]');
+    await tick();
+    expect(doc.getElementById("flash")?.textContent).toMatch(/copied/i);
   });
 });
 

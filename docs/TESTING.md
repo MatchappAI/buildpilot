@@ -7,9 +7,13 @@ Run everything: `npm run ci` (typecheck → lint → unit/engine tests → real 
 |---|---|
 | `tsc --noEmit` (strict, `noUncheckedIndexedAccess`) | ✅ clean |
 | ESLint (typescript-eslint recommended) | ✅ clean |
-| Vitest: 67 tests (core, engine, features, webview) | ✅ 67/67 |
-| Extension-host smoke (`test/smoke`), real VS Code, isolated profile | ✅ 25/25 checks (incl. Integration API + Pocket started from settings, status-line data) |
-| Sidebar click-through (real bundle in jsdom): tabs, Prompt Studio build/copy/start, actions, memory, connect, XSS escaping | ✅ 6/6 |
+| Vitest: 81 tests (core, engine, features, webview, accessibility) | ✅ 81/81 |
+| Extension-host smoke (`test/smoke`), real VS Code, isolated profile | ✅ 27/27 checks (incl. every contributed command registered, safe commands executed, Integration API + Pocket, status-line data) |
+| Sidebar click-through (real bundle in jsdom): tabs, Prompt Studio build/copy/start, actions, memory, connect, XSS escaping | ✅ 12/12 |
+| Exhaustive button sweep: every `data-act` button on all 6 tabs clicked; each posted message must have a handler in `extension.ts`; no runtime errors | ✅ (40+ distinct buttons) |
+| Live re-render safety: typed text, ticked rollback files and keyboard focus survive state pushes | ✅ |
+| CLI: every command and bad input (unknown command/goal/option → usage + exit 2) | ✅ manual, 2026-11-05 |
+| Integration API live: 5 GET endpoints 200, no/bad token 401, bad JSON 400, unknown 404, Pocket 200 | ✅ manual, 2026-11-05 |
 | Live `npm audit` on BuildPilot itself | ✅ found 2 critical + 1 high in dev tools → upgraded vitest 2→4 → 0 critical/high |
 | Visual check with real headless Chrome screenshot against a local server; error-page detection | ✅ |
 | Status-line script: saves data, chains an existing status line unchanged, restores exactly | ✅ |

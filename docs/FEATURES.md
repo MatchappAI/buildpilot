@@ -14,12 +14,14 @@ Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 
 ## Terminal
 - ✅ BuildPilot summary in every new terminal (zsh/bash; Terminal, iTerm, VS Code): all sessions across projects, needs-you first, context %, 5-hour limit, this folder's next step. Words, not color only; NO_COLOR respected; fits the width; ~0.3 s
-- ✅ `bp` command: status, sessions, brief, handoff, prompt, audit, visual, open (jumps to BuildPilot in VS Code via `vscode://` link), hooks/statusline/shell install|uninstall
+- ✅ `bp` command: status, sessions, brief, handoff, prompt, audit, visual, open (jumps to BuildPilot in VS Code via `vscode://` link), hooks/statusline/shell status|install|uninstall (plain sentences, `--json` for scripts); clear usage + exit code 2 on bad input
 - ✅ VS Code: panel opens beside new terminals and new Claude sessions without stealing focus (setting)
 
 ## Accessibility & metrics
 - ✅ Six metric tiles (sessions, context, 5h limit, tests, unsaved work, errors 1h). Unknown is shown as "—", each explains why it matters, each links to where you act
 - ✅ ARIA tabs with arrow/Home/End keys, roving tabindex, labelled panel; screen-reader announcements when a session needs you; labels on all inputs; forced-colors (high contrast) support; reduced motion
+- ✅ Live updates never disturb you: half-typed text, ticked files and keyboard focus survive every refresh; no re-render when nothing changed
+- ✅ Every action confirms visibly ("Prompt copied", "Saved", "Requirement added"), also announced to screen readers; empty submits explain what's missing; Enter/Escape work in inline fields
 
 ## Live sessions
 - ✅ Safe hook install/uninstall (user or project scope), backup, idempotent, refuses invalid JSON

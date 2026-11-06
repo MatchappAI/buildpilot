@@ -19,6 +19,9 @@ import {
   TestRun,
 } from "./types";
 
+const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+const files = (n: number): string => plural(n, "file");
+
 /**
  * Deterministic supervisor. Pure functions over observed facts -> inferences -> recommendations.
  * No LLM calls here. Every output carries the evidence it was derived from.
@@ -279,10 +282,10 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
   // --- sessions
   for (const s of sessions) {
     if (s.displayStatus === "awaiting_approval") {
-      recs.push(rec(`approve:${s.id}`, "high", `Session ${shortId(s.id)} is waiting for your approval`, "Claude Code is paused until you approve or deny in its terminal.", [{ kind: "observed", text: s.displayReason }], undefined, 20));
+      recs.push(rec(`approve:${s.id}`, "high", `Session ${shortId(s.id)} is waiting for your approval`, "Claude Code is paused until you approve or deny in its terminal.", [{ kind: "observed", text: s.displayReason }], { kind: "open_tab", tab: "sessions" }, 20));
     }
     if (s.displayStatus === "blocked") {
-      recs.push(rec(`blocked:${s.id}`, "high", `Session ${shortId(s.id)} needs your input`, "It can't continue without an answer from you.", [{ kind: "observed", text: s.displayReason }], undefined, 15));
+      recs.push(rec(`blocked:${s.id}`, "high", `Session ${shortId(s.id)} needs your input`, "It can't continue without an answer from you.", [{ kind: "observed", text: s.displayReason }], { kind: "open_tab", tab: "sessions" }, 15));
     }
     if (s.displayStatus === "failed" && i.now - s.lastEventAt < ACTIVE_MS) {
       issues.push({ key: `failed:${s.id}`, severity: "high", title: `Session ${shortId(s.id)}: last turn failed`, plain: "Claude Code hit an error from the AI service (for example a rate limit or outage), not necessarily a bug in your code.", evidence: [{ kind: "observed", text: s.displayReason }], sessionId: s.id });
@@ -294,7 +297,7 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
     }
     const uc = !s.endedAt && s.displayStatus === "idle" ? unverifiedCompletion(i.eventsBySession.get(s.id) ?? []) : null;
     if (uc && (uc.editsAfterTest > 0 || uc.lastTestFailed)) {
-      const why = uc.lastTestFailed ? "The last test it ran failed, but it stopped anyway." : uc.ranTests ? `It changed ${uc.editsAfterTest} file(s) after the last test run.` : `It changed ${uc.editsAfterTest} file(s) and didn't run any tests.`;
+      const why = uc.lastTestFailed ? "The last test it ran failed, but it stopped anyway." : uc.ranTests ? `It changed ${files(uc.editsAfterTest)} after the last test run.` : `It changed ${files(uc.editsAfterTest)} and didn't run any tests.`;
       issues.push({ key: `unverified:${s.id}`, severity: "medium", title: `Session ${shortId(s.id)} finished without proof it works`, plain: `${why} "Done" from an AI isn't the same as verified.`, evidence: [{ kind: "observed", text: why }], sessionId: s.id });
       if (f?.scripts.test) recs.push(rec(`verify:${s.id}`, "medium", "Verify the last change: run the tests", why, [{ kind: "observed", text: why }], { kind: "run_script", script: "test" }, 12));
     }
@@ -313,11 +316,11 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
     const realSecrets = (i.secrets ?? []).filter((x) => !x.likelyFixture);
     const fixtureSecrets = (i.secrets ?? []).filter((x) => x.likelyFixture);
     if (realSecrets.length > 0) {
-      issues.push({ key: "secrets", severity: "blocker", title: `Possible secrets in ${new Set(realSecrets.map((s) => s.file)).size} file(s)`, plain: "API keys or passwords appear to be written into your code. Anyone who sees the code can use them. Move them to a .env file and rotate the keys.", evidence: realSecrets.slice(0, 8).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}`, ref: `${s.file}:${s.line}` })) });
+      issues.push({ key: "secrets", severity: "blocker", title: `Possible secrets in ${files(new Set(realSecrets.map((s) => s.file)).size)}`, plain: "API keys or passwords appear to be written into your code. Anyone who sees the code can use them. Move them to a .env file and rotate the keys.", evidence: realSecrets.slice(0, 8).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}`, ref: `${s.file}:${s.line}` })) });
       recs.push(rec("secrets", "blocker", "Remove secrets from your code", "Leaked keys can be abused within minutes once code is public.", realSecrets.slice(0, 3).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}` })), { kind: "prompt", goal: "security", request: "Move hard-coded secrets into environment variables and document the variable names in .env.example." }, 30));
     }
     if (fixtureSecrets.length > 0) {
-      issues.push({ key: "secrets-fixtures", severity: "low", title: `Secret-like values in ${new Set(fixtureSecrets.map((s) => s.file)).size} test/example file(s)`, plain: "These look like test data. If any are real keys, remove and rotate them.", evidence: fixtureSecrets.slice(0, 5).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}`, ref: `${s.file}:${s.line}` })) });
+      issues.push({ key: "secrets-fixtures", severity: "low", title: `Secret-like values in ${plural(new Set(fixtureSecrets.map((s) => s.file)).size, "test/example file")}`, plain: "These look like test data. If any are real keys, remove and rotate them.", evidence: fixtureSecrets.slice(0, 5).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}`, ref: `${s.file}:${s.line}` })) });
     }
     for (const d of i.doctor) {
       if (d.status === "fail" || d.status === "warn") {
@@ -353,7 +356,7 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
     }
     const noAcceptance = i.requirements.filter((r) => r.status !== "dropped" && r.status !== "done" && !r.acceptance.trim());
     if (noAcceptance.length > 0) {
-      issues.push({ key: "missing-acceptance", severity: "low", title: `${noAcceptance.length} requirement(s) without acceptance criteria`, plain: "Without a clear \"this works when…\", AI agents declare victory early.", evidence: noAcceptance.slice(0, 5).map((r) => ({ kind: "observed" as const, text: r.title })) });
+      issues.push({ key: "missing-acceptance", severity: "low", title: `${plural(noAcceptance.length, "requirement")} without acceptance criteria`, plain: "Without a clear \"this works when…\", AI agents declare victory early.", evidence: noAcceptance.slice(0, 5).map((r) => ({ kind: "observed" as const, text: r.title })) });
     }
     if (f.todoCount >= 20) {
       issues.push({ key: "todos", severity: "low", title: `${f.todoCount} TODO/FIXME notes in code`, plain: "Unfinished spots left by you or an AI. Some may be incomplete features.", evidence: f.todos.slice(0, 5).map((t) => ({ kind: "observed" as const, text: t.text, ref: `${t.file}:${t.line}` })) });
@@ -379,8 +382,8 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
   if (i.audit?.ok) {
     const c = i.audit.counts;
     if (c.critical + c.high > 0) {
-      issues.push({ key: "vulns", severity: c.critical ? "high" : "medium", title: `${c.critical + c.high} high/critical dependency vulnerabilit${c.critical + c.high === 1 ? "y" : "ies"}`, plain: "Some libraries your app uses have known security holes. Most are fixed by upgrading.", evidence: i.audit.top.slice(0, 5).map((t) => ({ kind: "observed" as const, text: `${t.name} (${t.severity}): ${t.title}${t.fixAvailable ? " · fix available" : ""}` })) });
-      recs.push(rec("vulns", c.critical ? "high" : "medium", "Upgrade vulnerable dependencies", "Known vulnerabilities are the easiest way in for attackers, and fixes usually exist.", [{ kind: "observed", text: `${i.audit.tool}: ${c.critical} critical, ${c.high} high, ${c.moderate} moderate` }], { kind: "prompt", goal: "security", request: `Fix the high and critical vulnerabilities reported by ${i.audit.tool} with the smallest safe upgrades (no major-version jumps without asking). Packages: ${i.audit.top.filter((t) => t.severity === "critical" || t.severity === "high").map((t) => t.name).join(", ")}. Re-run the audit and the tests.` }, 9));
+      issues.push({ key: "vulns", severity: "high", title: `${c.critical + c.high} high/critical dependency vulnerabilit${c.critical + c.high === 1 ? "y" : "ies"}`, plain: "Some libraries your app uses have known security holes. Most are fixed by upgrading.", evidence: i.audit.top.slice(0, 5).map((t) => ({ kind: "observed" as const, text: `${t.name} (${t.severity}): ${t.title}${t.fixAvailable ? " · fix available" : ""}` })) });
+      recs.push(rec("vulns", "high", "Upgrade vulnerable dependencies", "Known vulnerabilities are the easiest way in for attackers, and fixes usually exist.", [{ kind: "observed", text: `${i.audit.tool}: ${c.critical} critical, ${c.high} high, ${c.moderate} moderate` }], { kind: "prompt", goal: "security", request: `Fix the high and critical vulnerabilities reported by ${i.audit.tool} with the smallest safe upgrades (no major-version jumps without asking). Packages: ${i.audit.top.filter((t) => t.severity === "critical" || t.severity === "high").map((t) => t.name).join(", ")}. Re-run the audit and the tests.` }, 9));
     }
   } else if (f && (f.lockfiles.includes("package-lock.json") || f.languages.includes("Python")) && !i.audit) {
     recs.push(rec("audit", "low", "Check dependencies for known vulnerabilities", "A one-minute check against public vulnerability databases.", [{ kind: "inferred", text: "no audit run yet" }], { kind: "audit" }, 2));
@@ -429,7 +432,7 @@ export function readiness(i: SupervisorInput): ReadinessItem[] {
   items.push(build ? { key: "build", label: "Build succeeds", status: build.passed ? "verified" : "failed", detail: `${build.command} → exit ${build.exitCode} (${new Date(build.startedAt).toLocaleDateString()})` } : { key: "build", label: "Build succeeds", status: "unknown", detail: f?.scripts.build ? "Run the build to check." : "No build command defined." });
   items.push(test ? { key: "tests", label: "Tests pass", status: test.passed ? "verified" : "failed", detail: `${test.command} → exit ${test.exitCode}` } : { key: "tests", label: "Tests pass", status: "unknown", detail: f?.testFileCount ? "Tests exist but haven't been run here." : "No tests found." });
   const real = (i.secrets ?? []).filter((x) => !x.likelyFixture);
-  items.push(i.secrets == null ? { key: "secrets", label: "No secrets in code", status: "unknown", detail: "Run a security scan." } : { key: "secrets", label: "No secrets in code", status: real.length ? "failed" : "verified", detail: real.length ? `${real.length} possible secret(s)` : `High-confidence patterns: none found outside tests (not a full audit)${i.secrets.length ? `; ${i.secrets.length} in test/example files` : ""}` });
+  items.push(i.secrets == null ? { key: "secrets", label: "No secrets in code", status: "unknown", detail: "Run a security scan." } : { key: "secrets", label: "No secrets in code", status: real.length ? "failed" : "verified", detail: real.length ? `${plural(real.length, "possible secret")}` : `High-confidence patterns: none found outside tests (not a full audit)${i.secrets.length ? `; ${i.secrets.length} in test/example files` : ""}` });
   const envCheck = i.doctor.find((d) => d.key === "env-vars");
   items.push({ key: "config", label: "Configuration documented", status: f?.envExampleVars.length ? (envCheck?.status === "ok" ? "verified" : "unverified") : "unknown", detail: f?.envExampleVars.length ? `${f.envExampleVars.length} variables in .env.example` : "No .env.example. Document required settings." });
   const a = i.audit;

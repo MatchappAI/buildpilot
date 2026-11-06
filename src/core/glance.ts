@@ -89,7 +89,7 @@ export function glance(engine: Engine, o: GlanceOptions): string {
     try {
       const sum = JSON.parse(String(raw ?? "")) as { next: string | null; health: string; name: string };
       const msg = sum.next ? `Next: ${sum.next}` : sum.health;
-      lines.push(`  ${bold("Here")} ${dim(fit(sum.name, 24).trim())}  ${fit(msg, W - 34)}`);
+      lines.push(`  ${bold("Here")} ${dim(fit(sum.name, 24).trim())}  ${fit(msg.replace(/\s+/g, " "), W - 34).trimEnd()}`);
     } catch {
       /* not analyzed yet */
     }

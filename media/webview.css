@@ -228,3 +228,9 @@ li.ew { padding: 4px 0; }
   .tab.active { border-bottom: 2px solid Highlight; }
   .bar span { background: Highlight; }
 }
+
+/* transient confirmation ("Copied", "Saved") */
+.flash { position: fixed; left: 50%; bottom: 12px; transform: translate(-50%, 8px); max-width: calc(100% - 24px); padding: 5px 12px; border-radius: 999px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s; z-index: 10; text-align: center; }
+.flash.on { opacity: 1; transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .flash { transition: none; } }
+@media (forced-colors: active) { .flash { border: 1px solid CanvasText; } }

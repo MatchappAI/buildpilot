@@ -260,7 +260,7 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
   lines.push(`# Goal: ${g.label}`);
   lines.push("");
   lines.push("## What I want");
-  lines.push(request || "(continue from the handoff below)");
+  lines.push(request || (g.id === "handoff" ? "(continue from the handoff below)" : "[Describe what you want here before sending]"));
   lines.push("");
 
   lines.push("## Project context");
@@ -280,7 +280,7 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
   }
   if (ctx.changes) {
     const n = ctx.changes.unstaged.length + ctx.changes.untracked.length + ctx.changes.staged.length;
-    lines.push(`- Git: branch \`${ctx.changes.branch ?? "detached"}\`, ${n} uncommitted change(s)${n > 0 ? ". Do not discard or overwrite them" : ""}.`);
+    lines.push(`- Git: branch \`${ctx.changes.branch ?? "detached"}\`, ${n} uncommitted change${n === 1 ? "" : "s"}${n > 0 ? ". Do not discard or overwrite them" : ""}.`);
   }
   const files = ctx.relevantFiles?.length ? ctx.relevantFiles : [];
   if (files.length) lines.push(`- Likely relevant files (check, don't assume): ${files.map((x) => `\`${x}\``).join(", ")}`);

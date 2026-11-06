@@ -88,6 +88,8 @@ export function cleanPrompt(raw: string): string {
   }
   t = t.replace(/<pasted_content[^>]*>[\s\S]*?<\/pasted_content[^>]*>/g, "[pasted text]");
   t = t.replace(/<\/?[a-z][\w-]*(\s[^>]*)?>/gi, " ").replace(/\s+/g, " ").trim();
+  // Text copied from a terminal often starts with the shell/Claude prompt glyph.
+  t = t.replace(/^(?:❯|›|»)\s*/, "");
   return t || "[pasted text]";
 }
 

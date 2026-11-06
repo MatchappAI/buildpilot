@@ -2,7 +2,7 @@
   "name": "buildpilot",
   "displayName": "BuildPilot",
   "description": "Mission control for building software with Claude Code: what's being built, what's broken, what to do next.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "buildpilot-local",
   "license": "UNLICENSED",
   "private": true,

@@ -41,9 +41,17 @@ exports.run = async function () {
   await check("demo data loads and is labelled", async () => { await vscode.commands.executeCommand("buildpilot.loadDemo"); assert.ok(engine.snapshot().demo); assert.ok(engine.snapshot().out.sessions.some((s) => s.id.startsWith("demo-"))); });
   await check("demo produces supervisor findings (loop + approval)", () => { const st = engine.snapshot(); assert.ok(st.out.issues.some((i) => i.key.startsWith("loop:demo-"))); assert.ok(st.out.recommendations.some((r) => r.key.startsWith("approve:demo-"))); });
   await check("demo data removable", async () => { await vscode.commands.executeCommand("buildpilot.clearDemo"); assert.ok(!engine.snapshot().out.sessions.some((s) => s.id.startsWith("demo-"))); });
-  for (const c of ["buildpilot.installStatusline", "buildpilot.audit", "buildpilot.visualCheck"]) {
-    await check(`command ${c} registered`, () => assert.ok(cmds.includes(c)));
-  }
+  await check("every contributed command (palette, menus, walkthrough) is registered", async () => {
+    const pkg = vscode.extensions.getExtension("buildpilot-local.buildpilot").packageJSON.contributes;
+    const all = await vscode.commands.getCommands(true);
+    const wanted = new Set([...pkg.commands.map((c) => c.command), ...JSON.stringify(pkg.walkthroughs ?? []).matchAll(/command:(buildpilot\.[a-zA-Z]+)/g)].map((x) => (Array.isArray(x) ? x[1] : x)));
+    const missing = [...wanted].filter((c) => !all.includes(c));
+    assert.deepStrictEqual(missing, []);
+    assert.ok(wanted.size >= 20);
+  });
+  await check("safe commands run without error (refresh, brief, newPrompt, walkthrough)", async () => {
+    for (const c of ["buildpilot.refresh", "buildpilot.newPrompt", "buildpilot.focus", "buildpilot.walkthrough"]) await vscode.commands.executeCommand(c);
+  });
   await check("Integration API + Pocket start from settings", async () => {
     await vscode.workspace.getConfiguration("buildpilot").update("integrationApi.port", 47911, vscode.ConfigurationTarget.Global);
     await vscode.workspace.getConfiguration("buildpilot").update("integrationApi.enabled", true, vscode.ConfigurationTarget.Global);

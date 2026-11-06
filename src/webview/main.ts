@@ -46,6 +46,11 @@ let cpFiles: Record<string, string[]> = {};
 let hasWebhook = false;
 const explanations: Record<string, string> = {};
 let lastAnnounce = "";
+let lastStateKey = "";
+/** Unsaved text the user typed (by element id). Survives live re-renders; cleared when saved. */
+const drafts: Record<string, string> = {};
+let editingAcc: string | null = null;
+let flashMsg: { text: string; at: number } | null = null;
 const persist = () => vscode.setState(vs);
 
 // ---------- messaging ----------
@@ -64,8 +69,12 @@ window.addEventListener("message", (e: MessageEvent) => {
     waiting.get(m.id)?.(m.result);
     waiting.delete(m.id);
   } else if (m.type === "state") {
+    // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
+    const key = JSON.stringify({ ...m.state!, generatedAt: Math.floor(m.state!.generatedAt / 60_000) }) + JSON.stringify(m.settings);
     S = m.state!;
     settings = m.settings!;
+    if (key === lastStateKey) return;
+    lastStateKey = key;
     render();
   } else if (m.type === "navigate" && m.tab) {
     vs.tab = m.tab;
@@ -116,6 +125,30 @@ function disclosure(key: string, summary: string, body: string, openDefault = fa
   return `<details data-key="${esc(key)}" ${open ? "open" : ""}><summary>${summary}</summary><div class="details-body">${body}</div></details>`;
 }
 
+/** A stable identity for an element so focus can be restored after a re-render. */
+const FOCUS_ATTRS = ["data-act", "data-tab", "data-key", "data-script", "data-id", "data-sha", "data-session", "data-goal-pick", "data-open", "data-req-status", "value"];
+function focusKey(el: Element | null): string | null {
+  if (!el || el === document.body) return null;
+  if (el.id) return `#${el.id}`;
+  const parts = FOCUS_ATTRS.map((a) => (el.hasAttribute(a) ? `[${a}="${CSS.escape(el.getAttribute(a)!)}"]` : "")).join("");
+  return parts ? el.tagName.toLowerCase() + parts : null;
+}
+
+/** Short visible confirmation (also spoken by screen readers). */
+function flash(text: string): void {
+  flashMsg = { text, at: Date.now() };
+  const el = document.getElementById("flash");
+  if (el) { el.textContent = text; el.classList.add("on"); }
+  const live = document.getElementById("live");
+  if (live) live.textContent = text;
+  setTimeout(() => {
+    if (flashMsg && Date.now() - flashMsg.at >= 2400) {
+      flashMsg = null;
+      document.getElementById("flash")?.classList.remove("on");
+    }
+  }, 2500);
+}
+
 // ---------- shell ----------
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "overview", label: "Overview", icon: "home" },
@@ -130,7 +163,8 @@ function render(): void {
   const app = document.getElementById("app")!;
   const scroll = document.querySelector(".content")?.scrollTop ?? 0;
   const focused = document.activeElement as HTMLElement | null;
-  const focusId = focused?.id;
+  const fKey = focusKey(focused);
+  const checked = new Set([...document.querySelectorAll<HTMLInputElement>("input.cpf:checked")].map((i) => `${i.dataset.sha}|${i.value}`));
   const selStart = (focused as HTMLInputElement | null)?.selectionStart ?? null;
   if (!S) {
     app.innerHTML = `<div class="loading">Starting BuildPilot…</div>`;
@@ -163,15 +197,22 @@ function render(): void {
     ${!settings?.trusted ? `<div class="demo-banner">${icon("shield")} Restricted Mode: BuildPilot can read, but won't run scripts or change files.</div>` : ""}
     <nav class="tabs" role="tablist" aria-label="BuildPilot sections">${TABS.map((t) => `<button role="tab" id="tab-${t.id}" aria-controls="panel" aria-selected="${vs.tab === t.id}" tabindex="${vs.tab === t.id ? 0 : -1}" class="tab ${vs.tab === t.id ? "active" : ""}" data-tab="${t.id}" title="${t.label}" aria-label="${t.label}${badgeText(t.id, waitingN, urgent, live.length)}">${icon(t.icon)}<span class="tab-label">${t.label}</span>${badge[t.id] ?? ""}</button>`).join("")}</nav>
   </header>
-  <main class="content" id="panel" role="tabpanel" aria-labelledby="tab-${vs.tab}" tabindex="-1">${S.errors.map((e) => `<div class="error-box">${icon("error")} ${esc(e)}</div>`).join("")}${renderTab()}</main>`;
+  <main class="content" id="panel" role="tabpanel" aria-labelledby="tab-${vs.tab}" tabindex="-1">${S.errors.map((e) => `<div class="error-box">${icon("error")} ${esc(e)}</div>`).join("")}${renderTab()}</main>
+  <div id="flash" class="flash ${flashMsg ? "on" : ""}" aria-hidden="true">${esc(flashMsg?.text ?? "")}</div>`;
+  for (const [id, v] of Object.entries(drafts)) {
+    const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null;
+    if (el) el.value = v;
+  }
+  document.querySelectorAll<HTMLInputElement>("input.cpf").forEach((i) => (i.checked = checked.has(`${i.dataset.sha}|${i.value}`)));
   bind();
   announce();
   const c = document.querySelector(".content");
   if (c) c.scrollTop = scroll;
-  if (focusId) {
-    const el = document.getElementById(focusId) as HTMLInputElement | null;
+  if (fKey) {
+    let el: HTMLInputElement | null = null;
+    try { el = document.querySelector(fKey.startsWith("#") ? `[id="${CSS.escape(fKey.slice(1))}"]` : fKey); } catch { /* invalid selector */ }
     if (el) {
-      el.focus();
+      el.focus({ preventScroll: true });
       if (selStart !== null && "setSelectionRange" in el) try { el.setSelectionRange(selStart, selStart); } catch { /* not a text input */ }
     }
   }
@@ -232,7 +273,7 @@ function actionButton(r: Recommendation, primary = true): string {
   if (a.kind === "audit") return `<button class="${cls}" data-act="audit">${icon("shield")} Check dependencies</button>`;
   if (a.kind === "visual_check") return `<button class="${cls}" data-act="visualCheck">${icon("eye")} Check the app</button>`;
   if (a.kind === "worktree") return `<button class="${cls}" data-act="worktree" data-session="${esc(a.sessionId)}">${icon("git-branch")} Separate the sessions</button>`;
-  if (a.kind === "open_tab") return `<button class="${cls}" data-tab="${a.tab}">Open ${a.tab[0]!.toUpperCase() + a.tab.slice(1)}</button>`;
+  if (a.kind === "open_tab") return `<button class="${cls}" data-tab="${a.tab}">${a.tab === "sessions" ? `${icon("terminal")} See the session` : `Open ${a.tab[0]!.toUpperCase() + a.tab.slice(1)}`}</button>`;
   return "";
 }
 
@@ -255,11 +296,11 @@ function overview(): string {
   const running = live.filter((s) => s.displayStatus === "running").length;
   const waitingN = live.filter((s) => s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked").length;
   const top = st.out.issues.filter((i) => i.severity === "blocker" || i.severity === "high");
-  const happening = !st.hooks.installed
-    ? `Not connected to Claude Code yet. <a href="#" data-act="installHooks">Connect</a>`
-    : live.length === 0
-      ? "No active Claude Code sessions in this project."
-      : `${running} session${running === 1 ? "" : "s"} working${waitingN ? `, <b>${waitingN} waiting for you</b>` : ""}. <a href="#" data-tab="sessions">See sessions</a>`;
+  const happening = live.length
+    ? `${running} session${running === 1 ? "" : "s"} working${waitingN ? `, <b>${waitingN} waiting for you</b>` : ""}. <a href="#" data-tab="sessions">See sessions</a>${st.hooks.installed ? "" : `<div class="muted small">Real sessions appear once you <a href="#" data-act="installHooks">connect</a>.</div>`}`
+    : !st.hooks.installed
+      ? `Not connected to Claude Code yet. <a href="#" data-act="installHooks">Connect</a>`
+      : "No active Claude Code sessions in this project.";
   const ewWait = st.elsewhere.filter((s) => s.status === "awaiting_approval" || s.status === "blocked");
   const happeningAll = happening + (ewWait.length ? `<div class="small warn-text">Also waiting for you: ${esc([...new Set(ewWait.map((s) => s.folder))].join(", "))}</div>` : st.elsewhere.length ? `<div class="muted small">${st.elsewhere.length} active in other projects · <a href="#" data-tab="sessions">see</a></div>` : "");
   const wrong = top.length === 0 ? "Nothing urgent found." : `${top.length} important issue${top.length === 1 ? "" : "s"}: ${esc(top[0]!.title)}${top.length > 1 ? ` <a href="#" data-tab="supervisor">+${top.length - 1} more</a>` : ""}`;
@@ -509,7 +550,7 @@ function memoryTab(): string {
     <p class="muted small">Progress is measured only against these. "Done" counts as verified once tests pass after you mark it.</p>
     ${st.requirements.length ? `<ul class="reqs">${st.requirements.map((r) => `<li>
       <div class="req-top"><select data-req-status="${r.id}" aria-label="Status for ${esc(r.title)}">${statusOpts(r)}</select><span class="req-title">${esc(r.title)}</span>${r.status === "done" ? conf(r.evidence, r.evidenceNote) : ""}<span class="spacer"></span><button class="icon-btn" data-act="delReq" data-id="${r.id}" aria-label="Delete requirement">${icon("trash")}</button></div>
-      <div class="muted small">${r.acceptance ? `Done when: ${esc(r.acceptance)}` : `<span class="warn-text">No acceptance criteria.</span> <a href="#" data-act="editAcc" data-id="${r.id}">Add</a>`}</div>
+      <div class="muted small">${r.acceptance ? `Done when: ${esc(r.acceptance)}` : editingAcc === r.id ? `<label class="lbl" for="acc-${esc(r.id)}">Done when… (Enter to save, Escape to cancel)</label><input id="acc-${esc(r.id)}" class="acc-edit" data-id="${esc(r.id)}" type="text" placeholder="e.g. a test payment succeeds">` : `<span class="warn-text">No acceptance criteria.</span> <a href="#" data-act="editAcc" data-id="${r.id}">Add</a>`}</div>
     </li>`).join("")}</ul>` : ""}
     <label class="lbl" for="newReq">New requirement</label>
     <input id="newReq" type="text" placeholder="e.g. Users can pay with a card">
@@ -599,7 +640,7 @@ function bind(): void {
       persist();
       if (vs.tab === "connect") void call<boolean>("hasWebhook").then((v) => { hasWebhook = v; render(); });
       render();
-      (document.querySelector(".content") as HTMLElement | null)?.scrollTo(0, 0);
+      (document.querySelector(".content") as HTMLElement | null)?.scrollTo?.(0, 0);
     }),
   );
   const tabEls = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
@@ -623,6 +664,20 @@ function bind(): void {
   bindInput("must", "mustNotChange");
   bindInput("acc", "acceptance");
   document.getElementById("planFirst")?.addEventListener("change", (e) => { vs.planFirst = (e.target as HTMLInputElement).checked; persist(); });
+  // Remember unsaved typing so live updates never wipe it.
+  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("#goal, #prefs, #newReq, #newAcc, #newDec, #newDecD, #appUrl, .acc-edit").forEach((el) =>
+    el.addEventListener("input", () => { drafts[el.id] = el.value; }),
+  );
+  document.querySelectorAll<HTMLInputElement>(".acc-edit").forEach((input) =>
+    input.addEventListener("keydown", async (e) => {
+      if (e.key === "Escape") { delete drafts[input.id]; editingAcc = null; return render(); }
+      if (e.key !== "Enter" || !input.value.trim()) return;
+      await call("updateRequirement", { id: input.dataset.id, patch: { acceptance: input.value.trim() } });
+      delete drafts[input.id];
+      editingAcc = null;
+      flash("Saved");
+    }),
+  );
   document.getElementById("ptext")?.addEventListener("input", (e) => { promptText = (e.target as HTMLTextAreaElement).value; });
   document.getElementById("openWithTerminal")?.addEventListener("change", (e) => void call("openWithTerminal", { value: (e.target as HTMLInputElement).checked }));
   document.getElementById("apiToggle")?.addEventListener("change", (e) => void call("apiToggle", { value: (e.target as HTMLInputElement).checked }));
@@ -630,6 +685,9 @@ function bind(): void {
   document.querySelectorAll<HTMLSelectElement>("[data-req-status]").forEach((el) => el.addEventListener("change", () => void call("updateRequirement", { id: el.dataset.reqStatus, patch: { status: el.value } })));
   document.getElementById("req")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter" && ((e as KeyboardEvent).metaKey || (e as KeyboardEvent).ctrlKey)) void buildNow(); });
   document.getElementById("newAcc")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addReq(); });
+  document.getElementById("newReq")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") document.getElementById("newAcc")?.focus(); });
+  document.getElementById("newDecD")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") document.querySelector<HTMLElement>('[data-act="addDec"]')?.click(); });
+  document.getElementById("appUrl")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") document.querySelector<HTMLElement>('[data-act="visualCheck"]')?.click(); });
   document.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); void act(el); }));
 }
 
@@ -646,8 +704,20 @@ async function buildNow(): Promise<void> {
 
 async function addReq(): Promise<void> {
   const t = val("newReq");
-  if (!t) return;
+  if (!t) {
+    flash("Type a requirement first");
+    document.getElementById("newReq")?.focus();
+    return;
+  }
   await call("addRequirement", { title: t, acceptance: val("newAcc") });
+  delete drafts.newReq;
+  delete drafts.newAcc;
+  for (const id of ["newReq", "newAcc"]) {
+    const input = document.getElementById(id) as HTMLInputElement | null;
+    if (input) input.value = "";
+  }
+  flash("Requirement added");
+  document.getElementById("newReq")?.focus();
 }
 
 async function act(el: HTMLElement): Promise<void> {
@@ -662,7 +732,7 @@ async function act(el: HTMLElement): Promise<void> {
       if (vs.request) return buildNow();
       built = null;
       return render();
-    case "copyPrompt": return void call("copy", { text: promptText });
+    case "copyPrompt": await call("copy", { text: promptText }); return flash("Prompt copied");
     case "sendPrompt": return void call("sendToClaude", { text: promptText });
     case "refine": {
       const r = await call<{ text: string } | null>("refine", { text: promptText });
@@ -671,7 +741,8 @@ async function act(el: HTMLElement): Promise<void> {
     }
     case "copyHandoff": {
       const h = await call<string>("handoff");
-      return void call("copy", { text: h });
+      await call("copy", { text: h });
+      return flash("Handoff copied. Paste it into a new Claude Code session");
     }
     case "handoffPrompt":
       vs.tab = "prompts";
@@ -681,24 +752,28 @@ async function act(el: HTMLElement): Promise<void> {
       return buildNow();
     case "runScript": return void call("runScript", { script: el.dataset.script });
     case "dismiss": return void call("dismiss", { key: el.dataset.key });
-    case "saveNote": return void call("setNote", { key: el.dataset.key, value: val(el.dataset.src!) });
+    case "saveNote":
+      await call("setNote", { key: el.dataset.key, value: val(el.dataset.src!) });
+      delete drafts[el.dataset.src!];
+      return flash("Saved");
     case "addReq": return addReq();
     case "delReq": return void call("deleteRequirement", { id: el.dataset.id });
-    case "editAcc": {
-      const li = el.closest("li");
-      const title = li?.querySelector(".req-title")?.textContent ?? "";
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = `Done when… (for "${title}")`;
-      el.replaceWith(input);
-      input.focus();
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter" && input.value.trim()) void call("updateRequirement", { id: el.dataset.id, patch: { acceptance: input.value.trim() } }); });
+    case "editAcc":
+      editingAcc = el.dataset.id!;
+      render();
+      document.getElementById(`acc-${editingAcc}`)?.focus();
       return;
-    }
     case "addDec": {
       const t = val("newDec");
-      if (t) await call("addDecision", { title: t, detail: val("newDecD") });
-      return;
+      if (!t) { flash("Type a decision first"); document.getElementById("newDec")?.focus(); return; }
+      await call("addDecision", { title: t, detail: val("newDecD") });
+      delete drafts.newDec;
+      delete drafts.newDecD;
+      for (const id of ["newDec", "newDecD"]) {
+        const input = document.getElementById(id) as HTMLInputElement | null;
+        if (input) input.value = "";
+      }
+      return flash("Decision recorded");
     }
     case "delDec": return void call("deleteDecision", { id: Number(el.dataset.id) });
     case "cpDiff": {
@@ -708,7 +783,7 @@ async function act(el: HTMLElement): Promise<void> {
     case "rollback": {
       const sha = el.dataset.sha!;
       const files = [...document.querySelectorAll<HTMLInputElement>(`input.cpf[data-sha="${sha}"]:checked`)].map((i) => i.value);
-      if (!files.length) return;
+      if (!files.length) return flash("Tick the files to restore first");
       await call("rollback", { sha, files });
       cpFiles = {};
       return render();

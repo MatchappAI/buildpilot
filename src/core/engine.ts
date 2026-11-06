@@ -697,11 +697,13 @@ export class Engine extends EventEmitter {
   /** At-a-glance numbers. Every one is observed or explicitly marked unknown/estimate, and each says why it matters. */
   metrics(projectId: string | null, sessions: Session[], live: Record<string, LiveStatus | null>, runs: TestRun[], now: number, out: SupervisorOutput): Metric[] {
     const m: Metric[] = [];
-    const active = sessions.filter((s) => !s.endedAt && now - s.lastEventAt < 3600_000 && !s.id.startsWith("demo-"));
+    // Same set the Sessions tab counts (demo sessions only exist while the DEMO banner is shown).
+    const active = sessions.filter((s) => !s.endedAt && now - s.lastEventAt < 3600_000);
+    const demo = active.some((s) => s.id.startsWith("demo-")) ? " (demo)" : "";
     const views = out.sessions.filter((s) => active.some((a) => a.id === s.id));
     const waiting = views.filter((s) => s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked").length;
     const working = views.filter((s) => s.displayStatus === "running").length;
-    m.push({ key: "sessions", label: "Sessions", value: active.length ? `${working} working` : "0", detail: waiting ? `${waiting} waiting for you` : active.length ? `${active.length} active` : "none active", why: "How many Claude Code agents are working on this project right now, and whether any are blocked on you.", tone: waiting ? "warn" : "neutral", confidence: "verified", tab: "sessions" });
+    m.push({ key: "sessions", label: "Sessions", value: active.length ? `${working} working` : "0", detail: (waiting ? `${waiting} waiting for you` : active.length ? `${active.length} active` : "none active") + demo, why: "How many Claude Code agents are working on this project right now, and whether any are blocked on you.", tone: waiting ? "warn" : "neutral", confidence: "verified", tab: "sessions" });
     const ctx = active.map((s) => live[s.id]?.contextPct).filter((v): v is number => typeof v === "number");
     const maxCtx = ctx.length ? Math.max(...ctx) : null;
     m.push({ key: "context", label: "Context", value: maxCtx == null ? "—" : `${Math.round(maxCtx)}%`, detail: maxCtx == null ? "turn on in Connect" : ctx.length > 1 ? "fullest session" : "active session", why: "When a session's memory fills up, Claude summarizes and forgets details. Above 80%, start a fresh session with a handoff.", tone: maxCtx == null ? "neutral" : maxCtx >= 80 ? "bad" : maxCtx >= 60 ? "warn" : "good", confidence: maxCtx == null ? "unknown" : "verified", tab: "sessions" });

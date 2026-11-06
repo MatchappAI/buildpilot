@@ -24,8 +24,15 @@ import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
 import { GoalType } from "./core/types";
 
+function usage(msg: string): void {
+  console.error(msg);
+  process.exitCode = 2;
+}
+
 async function main(): Promise<void> {
-  const [cmd = "status", ...rest] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const json = args.includes("--json");
+  const [cmd = "status", ...rest] = args.filter((a) => a !== "--json");
   if (cmd === "glance") {
     // Fast path for new terminals: no project analysis, no tool probing.
     const engine = new Engine({ light: true });
@@ -52,24 +59,41 @@ async function main(): Promise<void> {
     } else if (sub === "uninstall") {
       const r = uninstallShell();
       console.log(r.changed.length ? `Removed from ${r.changed.join(", ")}.` : "Nothing to remove.");
-    } else console.log(shellStatus());
+    } else if (sub === "status") {
+      const st = shellStatus();
+      console.log(json ? JSON.stringify(st) : st.installed ? `On: BuildPilot appears in new terminals (${st.files.join(", ")}). Turn off: bp shell uninstall` : "Off. Turn on: bp shell install");
+    } else return usage(`Unknown option "${sub}". Use: bp shell status | install | uninstall`);
     return;
   }
   if (cmd === "hooks") {
     const pi = rest.indexOf("--project");
     const file = pi >= 0 ? claudeSettingsPath("project", path.resolve(rest[pi + 1] ?? ".")) : claudeSettingsPath("user");
-    const sub = rest[0] ?? "status";
-    if (sub === "install") console.log(installHooks(file));
-    else if (sub === "uninstall") console.log(uninstallHooks(file));
-    else console.log(hookStatus(file));
+    const sub = rest[0] && !rest[0].startsWith("--") ? rest[0] : "status";
+    if (sub === "install") {
+      const r = installHooks(file);
+      console.log(json ? JSON.stringify(r) : r.changed ? `Connected to Claude Code (${file}).${r.backup ? ` Backup: ${r.backup}` : ""}` : "Already connected.");
+    } else if (sub === "uninstall") {
+      const r = uninstallHooks(file);
+      console.log(json ? JSON.stringify(r) : r.changed ? `Disconnected. Only BuildPilot's hooks were removed from ${file}.` : "Wasn't connected. Nothing changed.");
+    } else if (sub === "status") {
+      const st = hookStatus(file);
+      console.log(json ? JSON.stringify(st) : st.settingsError ? `Problem reading ${file}: ${st.settingsError}` : st.installed ? `Connected (${file}).` : `Not connected${st.missingEvents.length && st.scriptPresent ? ` (missing ${st.missingEvents.length} events)` : ""}. Connect: bp hooks install`);
+    } else return usage(`Unknown option "${sub}". Use: bp hooks status | install | uninstall [--project <folder>]`);
     return;
   }
   if (cmd === "statusline") {
     const file = claudeSettingsPath("user");
     const sub = rest[0] ?? "status";
-    if (sub === "install") console.log(installStatusline(file));
-    else if (sub === "uninstall") console.log(uninstallStatusline(file));
-    else console.log(statuslineStatus(file));
+    if (sub === "install") {
+      const r = installStatusline(file);
+      console.log(json ? JSON.stringify(r) : r.changed ? `Exact context % on.${r.chained ? " Your existing status line keeps showing." : ""} New or resumed Claude Code sessions will report it.` : "Already on.");
+    } else if (sub === "uninstall") {
+      const r = uninstallStatusline(file);
+      console.log(json ? JSON.stringify(r) : r.changed ? "Status line restored to what you had before." : "Wasn't on. Nothing changed.");
+    } else if (sub === "status") {
+      const st = statuslineStatus(file);
+      console.log(json ? JSON.stringify(st) : st.installed ? `On${st.chainedOriginal ? " (your own status line is preserved)" : ""}.` : st.otherStatusline ? "Off (you have your own status line; turning on keeps it)." : "Off. Turn on: bp statusline install");
+    } else return usage(`Unknown option "${sub}". Use: bp statusline status | install | uninstall`);
     return;
   }
   if (cmd === "help" || cmd === "--help") {
@@ -84,10 +108,13 @@ async function main(): Promise<void> {
   bp handoff               context handoff for a new session
   bp audit                 check dependencies for known vulnerabilities
   bp visual [url]          check your running app + screenshot
-  bp hooks|statusline|shell  status | install | uninstall
+  bp hooks|statusline|shell  status | install | uninstall   (add --json for scripts)
   bp serve                 Integration API without VS Code`);
-    console.log(`goals: ${GOALS.map((g) => g.id).join(", ")}`);
+    console.log(`\ngoals: ${GOALS.map((g) => g.id).join(", ")}`);
     return;
+  }
+  if (cmd === "prompt" && (!rest[0] || !GOALS.some((g) => g.id === rest[0]))) {
+    return usage(`${rest[0] ? `Unknown goal "${rest[0]}". ` : ""}Usage: bp prompt <goal> "<what you want>"\n\nGoals:\n${GOALS.map((g) => `  ${g.id.padEnd(14)} ${g.label}`).join("\n")}\n\nExample: bp prompt bugfix "the login button does nothing on mobile"`);
   }
   const folderArg = cmd === "prompt" ? rest[2] : cmd === "visual" ? rest[0] && !/^https?:/.test(rest[0]) ? rest[0] : undefined : rest[0];
   const folder = path.resolve(folderArg ?? process.cwd());
@@ -138,7 +165,7 @@ async function main(): Promise<void> {
       break;
     }
     case "prompt": {
-      const goal = (GOALS.some((g) => g.id === rest[0]) ? rest[0] : "feature") as GoalType;
+      const goal = rest[0] as GoalType;
       console.log(engine.prompt({ goal, request: rest[1] ?? "" }, st).text);
       break;
     }

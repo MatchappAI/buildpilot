@@ -218,9 +218,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       case "checkpoint": {
         if (!st?.facts?.isGit) return void vscode.window.showWarningMessage("Checkpoints need Git. Ask Prompt Studio to set up Git first.");
         if (!(await confirm("Save a checkpoint?", "Saves a snapshot of every file (including uncommitted and new files) as a private Git ref. Your branch, staging area and files are NOT changed.", "Save checkpoint"))) return;
-        const label = (await vscode.window.showInputBox({ prompt: "Checkpoint name (optional)", value: "before next change" })) ?? "checkpoint";
+        const label = await vscode.window.showInputBox({ prompt: "Checkpoint name (optional). Press Escape to cancel.", value: "before next change" });
+        if (label === undefined) return;
         try {
-          const cp = await eng.checkpoint(label);
+          const cp = await eng.checkpoint(label.trim() || "checkpoint");
           void vscode.window.showInformationMessage(`Checkpoint saved (${cp.sha.slice(0, 8)}).`);
         } catch (e) {
           void vscode.window.showErrorMessage(`Checkpoint failed: ${(e as Error).message}`);
@@ -237,10 +238,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const files = (m.files as string[]) ?? [];
         if (!root || files.length === 0) return;
         if (!requireTrust("change files")) return;
-        if (!(await confirm(`Restore ${files.length} file(s) to the checkpoint?`, `${files.slice(0, 15).join("\n")}${files.length > 15 ? "\n…" : ""}\n\nThe current versions are saved in a new checkpoint first, so this can be undone. Other files are not touched.`, "Restore files"))) return;
+        if (!(await confirm(`Restore ${files.length === 1 ? "1 file" : `${files.length} files`} to the checkpoint?`, `${files.slice(0, 15).join("\n")}${files.length > 15 ? "\n…" : ""}\n\nThe current versions are saved in a new checkpoint first, so this can be undone. Other files are not touched.`, "Restore files"))) return;
         try {
           const r = await restoreFiles(root, String(m.sha), files);
-          void vscode.window.showInformationMessage(`Restored ${r.restored.length} file(s). Safety checkpoint ${r.safety.sha.slice(0, 8)} saved.`);
+          void vscode.window.showInformationMessage(`Restored ${r.restored.length === 1 ? "1 file" : `${r.restored.length} files`}. Safety checkpoint ${r.safety.sha.slice(0, 8)} saved.`);
           await eng.analyze();
         } catch (e) {
           void vscode.window.showErrorMessage(`Restore failed: ${(e as Error).message}`);
@@ -299,7 +300,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         return;
       case "importChecklist": {
         const n = eng.importChecklist();
-        void vscode.window.showInformationMessage(n ? `Imported ${n} requirement(s) from your docs. Items checked in docs count as unverified until tests pass.` : "No new checklist items found in your docs.");
+        void vscode.window.showInformationMessage(n ? `Imported ${n === 1 ? "1 requirement" : `${n} requirements`} from your docs. Items checked in docs count as unverified until tests pass.` : "No new checklist items found in your docs.");
         return;
       }
       case "addDecision":
@@ -388,7 +389,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       case "visualCheck": {
         const url = String(m.url ?? st?.appUrl.url ?? "").trim();
         if (!url || !isLocalUrl(url)) return void vscode.window.showWarningMessage("Enter your app's local address, e.g. http://localhost:3000");
-        await cfg().update("visualQa.url", url, vscode.ConfigurationTarget.Workspace);
+        await cfg().update("visualQa.url", url, vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global).then(undefined, () => undefined);
         try {
           const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `BuildPilot: opening ${url}…` }, () => eng.visualCheck(url));
           void vscode.window.showInformationMessage(`Visual check: ${r.note}`);
@@ -432,8 +433,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const sid = String(m.sessionId ?? "");
         if (!(await confirm("Give one session its own copy of the code?", "Creates a Git worktree, a separate folder on a new branch next to your project, and opens a terminal there. Your current folder, branch and files are not changed. Then stop the overlapping session and continue it in the new terminal with the handoff prompt.", "Create worktree"))) return;
         try {
-          const label = (await vscode.window.showInputBox({ prompt: "Short name for this line of work", value: sid.startsWith("demo-") ? "demo" : "parallel" })) ?? "parallel";
-          const w = await eng.createWorktree(label);
+          const label = await vscode.window.showInputBox({ prompt: "Short name for this line of work. Press Escape to cancel.", value: sid.startsWith("demo-") ? "demo" : "parallel" });
+          if (label === undefined) return;
+          const w = await eng.createWorktree(label.trim() || "parallel");
           const term = vscode.window.createTerminal({ name: `Worktree · ${path.basename(w.dir)}`, cwd: w.dir });
           term.show();
           await vscode.env.clipboard.writeText(eng.prompt({ goal: "handoff", request: "Continue where the previous session left off, in this separate worktree." }).text);
@@ -555,19 +557,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
   });
   reg("buildpilot.uninstallHooks", async () => {
     const files = [claudeSettingsPath("user"), ...(eng.currentProject ? [claudeSettingsPath("project", eng.currentProject.root)] : [])];
+    if (!(await confirm("Disconnect BuildPilot from Claude Code?", `Removes only BuildPilot's hooks (and its status line, restoring yours) from:\n${files.join("\n")}\nEverything else in those files stays. A backup is saved first.`, "Disconnect"))) return;
     try {
       uninstallStatusline(claudeSettingsPath("user"), eng.home);
     } catch {
       /* reported below if the file is broken */
     }
-    if (!(await confirm("Disconnect BuildPilot from Claude Code?", `Removes only BuildPilot's hooks (and its status line, restoring yours) from:\n${files.join("\n")}\nEverything else in those files stays. A backup is saved first.`, "Disconnect"))) return;
+    let removed = false;
     for (const f of files) {
       try {
-        if (fs.existsSync(f)) uninstallHooks(f, eng.home);
+        if (fs.existsSync(f) && uninstallHooks(f, eng.home).changed) removed = true;
       } catch (e) {
         void vscode.window.showErrorMessage((e as Error).message);
       }
     }
+    void vscode.window.showInformationMessage(removed ? "Disconnected. Your other Claude Code settings are unchanged." : "BuildPilot wasn't connected, so nothing changed.");
     push();
   });
   reg("buildpilot.newPrompt", () => {

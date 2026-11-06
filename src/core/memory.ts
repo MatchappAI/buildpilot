@@ -24,6 +24,7 @@ export interface HandoffInput {
 
 const ago = (now: number, ts: number): string => {
   const m = Math.round((now - ts) / 60000);
+  if (m < 1) return "just now";
   if (m < 60) return `${m} min ago`;
   if (m < 48 * 60) return `${Math.round(m / 60)} h ago`;
   return `${Math.round(m / 1440)} d ago`;
