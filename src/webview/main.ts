@@ -54,12 +54,6 @@ window.addEventListener("message", (e: MessageEvent) => {
 // ---------- helpers ----------
 const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-function until(t: number): string {
-  const m = Math.max(0, Math.round((t - Date.now()) / 60_000));
-  if (m < 60) return `in ${m} min`;
-  if (m < 24 * 60) return `in ${Math.floor(m / 60)} h`;
-  return new Date(t).toLocaleDateString([], { weekday: "long" });
-}
 function ago(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
   if (s < 60) return "just now";
@@ -94,10 +88,11 @@ function render(): void {
       <h1>BuildPilot</h1>
       ${planPill()}
     </header>
+    ${trialNotice()}
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
     <footer class="foot">
-      ${P.connected ? `<a href="#" data-act="more">More tools</a> · <a href="#" data-act="disconnect">Disconnect</a>` : `<a href="#" data-act="more">More tools</a>`}
+      <a href="#" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</a> · <a href="#" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</a>${P.connected ? ` · <a href="#" data-act="disconnect">Disconnect</a>` : ""}
     </footer>
   </main>
   <div id="flash" class="flash" aria-hidden="true"></div>`;
@@ -117,8 +112,15 @@ function planPill(): string {
   const p = P!.plan;
   if (p.licensed) return `<span class="pill">Pro</span>`;
   if (!p.sellable) return "";
-  if (p.trialDaysLeft != null) return `<span class="pill soft" title="Every Pro feature is on during your trial. After it, watching builds, limits and tips stays free.">Pro trial · ${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? "" : "s"} left</span>`;
+  if (p.trialDaysLeft != null) return `<span class="pill soft" title="Every Pro feature is on during your trial. After it, watching builds, limits, tips, 20 prompts and 2 builds at once stay free; the run-out forecast and per-build usage need Pro.">Pro trial · ${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? "" : "s"} left</span>`;
   return "";
+}
+
+function trialNotice(): string {
+  const p = P!.plan;
+  if (!p.sellable || p.licensed || p.trialDaysLeft == null || p.trialDaysLeft > 3) return "";
+  const day = p.trialEndsAt ? new Date(p.trialEndsAt).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }) : "soon";
+  return `<p class="note">Your Pro trial ends ${esc(day)}. After that the run-out forecast and per-build usage turn off, and you can run 2 builds at once. Everything else stays free. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
 }
 
 function connectCard(): string {
@@ -141,8 +143,8 @@ function buildsSection(): string {
     ${b.length ? `<ul class="builds">${b
       .map((x) => `<li class="${x.needsYou ? "needs" : ""}">
         <span class="dot dot-${x.status}" aria-hidden="true"></span>
-        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub">${esc(x.needsYou ? x.reason || STATUS_WORD[x.status] : x.task || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}</div></div>
-        <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.share != null ? `<span class="share" title="Share of today's usage (Claude Code's own estimate)">${x.share}% of today</span>` : ""}</div>
+        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub" title="${esc(x.cwd)}">${esc(x.needsYou ? x.reason || STATUS_WORD[x.status] : x.task || STATUS_WORD[x.status] || x.word)} · ${x.needsYou ? `waiting ${ago(x.lastEventAt).replace(" ago", "")}` : ago(x.lastEventAt)}</div></div>
+        <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude usage today (Claude Code's own estimate)">${x.share}% of your usage today</span>` : ""}</div>
         <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>
       </li>`)
       .join("")}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
@@ -174,9 +176,9 @@ function limitsSection(): string {
   if (L.fullAt) {
     const gap = L.fiveHourResetsAt && L.fiveHourResetsAt > L.fullAt ? Math.round((L.fiveHourResetsAt - L.fullAt) / 60_000) : 0;
     const urgent = L.fullAt - Date.now() < 3600_000;
-    forecast = `<p class="forecast ${urgent ? "urgent" : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}.</p>`;
+    forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}.</p>`;
   } else if (L.forecastLocked && P!.plan.sellable) {
-    forecast = `<p class="muted small">See when you'll run out and what's using your limit — <a href="#" data-act="upgrade">Pro</a></p>`;
+    forecast = `<p class="locked">At this pace you'll run out around <span class="blur" aria-hidden="true">0:00 PM</span> <a href="#" data-act="upgrade" class="lock-link">Unlock with Pro</a></p>`;
   }
   return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
 }
@@ -200,7 +202,7 @@ function paywallCard(): string {
 
 function promptSection(): string {
   const p = P!.plan;
-  const counter = !p.pro && p.freeLeft != null && !paywalled ? `<span class="muted small">${p.freeLeft} of ${FREE} free prompts left</span>` : "";
+  const counter = !p.pro && p.freeLeft != null && !paywalled ? `<span class="muted small" title="A prompt only counts when you start or copy it">${p.freeLeft} of ${FREE} free prompts left</span>` : "";
   const folder = S?.facts?.name ?? S?.project?.name ?? "this project";
   return `<section class="block" aria-label="Prompt">
     <h2><label for="req">What do you want to build next?</label></h2>
@@ -210,8 +212,9 @@ function promptSection(): string {
     ${built ? `
       <p class="summary">This asks Claude to <b>${esc(vs.request.trim().replace(/[.!]+$/, ""))}</b> in ${esc(folder)}, using your project's setup, with a short plan first and checks at the end.${built.missingInfo.length ? ` Worth adding: ${esc(built.missingInfo[0]!)}` : ""}</p>
       <label class="lbl" for="ptext">Your prompt. Edit anything.</label>
-      <textarea id="ptext" class="mono" rows="16"></textarea>
-      <div class="actions"><button class="primary" data-act="sendPrompt" title="Opens a new terminal in ${esc(folder)} and starts Claude with this prompt">Start Claude with this</button><button class="secondary" data-act="copyPrompt">Copy</button></div>` : ""}
+      <textarea id="ptext" class="mono" rows="${Math.min(40, Math.max(12, promptText.split("\n").length + 1))}"></textarea>
+      <div class="actions"><button class="primary" data-act="sendPrompt">Start Claude with this</button><button class="secondary" data-act="useInOpen" title="Copies it and switches to your open terminal, so you can paste it into the Claude chat you already have">Use in my open Claude</button><button class="link" data-act="copyPrompt">Copy</button></div>
+      <p class="muted tiny">"Start Claude with this" opens a new terminal in ${esc(folder)}. Your running builds aren't touched.</p>` : ""}
   </section>`;
 }
 
@@ -249,12 +252,14 @@ async function act(el: HTMLElement): Promise<void> {
   switch (a) {
     case "build": return buildNow();
     case "copyPrompt": await call("copy", { text: promptText }); void call("promptUsed"); return flash("Copied");
+    case "useInOpen": void call("promptUsed"); await call("useInOpen", { text: promptText }); return flash("Copied. Paste it into Claude (Cmd/Ctrl+V)");
     case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
     case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd });
     case "tip": {
       const t = el.dataset.tip;
       if (t === "startFresh") return void call("startFresh", { cwd: el.dataset.cwd });
       if (t === "setupUndo") return void call("setupUndo");
+      if (t === "pause") { await call("openBuild", { cwd: el.dataset.cwd }); return flash("Press Esc in that terminal to pause Claude"); }
       if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
       if (t === "newBuild") return void call("newBuild");
       if (t === "planMode") {

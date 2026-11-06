@@ -114,3 +114,6 @@ body.match { --bg: var(--vscode-editor-background, #1f1f1f); --card: var(--vscod
 body.match textarea, body.match button.secondary { background: var(--vscode-input-background, #313131); color: var(--ink); border-color: var(--line); }
 body.match .track { background: var(--line); }
 body.match .summary, body.match .paywall, body.match code { background: var(--card); }
+.locked { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+.blur { filter: blur(4px); user-select: none; color: var(--ink); }
+.lock-link { margin-left: 6px; font-weight: 600; }

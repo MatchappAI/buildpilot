@@ -20,9 +20,11 @@ export interface Limits {
   fullAt: number | null;
   /** The forecast exists but is a Pro feature (free plan after the trial). */
   forecastLocked: boolean;
+  /** Minutes of history the forecast is based on. */
+  basisMin?: number | null;
 }
 /** A build plus its share of today's usage (from Claude Code's own per-session estimate; Pro). */
-export type PageBuild = WidgetSession & { share: number | null };
+export type PageBuild = WidgetSession & { share: number | null; costUsd?: number | null };
 export interface PageData {
   connected: boolean;
   builds: PageBuild[];
@@ -33,7 +35,7 @@ export interface PageData {
   /** Claude Code's own list-price estimate, summed over today's builds. Only meaningful for API billing. */
   costTodayUsd: number | null;
   tips: Tip[];
-  plan: { pro: boolean; licensed: boolean; trialDaysLeft: number | null; sellable: boolean; freeLeft: number | null; price: string; points: string[] };
+  plan: { pro: boolean; licensed: boolean; trialDaysLeft: number | null; trialEndsAt?: number | null; sellable: boolean; freeLeft: number | null; price: string; points: string[] };
 }
 
 const DAY = 86_400_000;
@@ -125,21 +127,21 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
   const samples = recordLimitSample(engine.home, five.pct, five.resetsAt, now);
   const p = planOf(engine.home, env, now);
   const forecast = forecastFullAt(samples, now);
-  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: p.pro ? forecast : null, forecastLocked: !p.pro && five.pct != null };
+  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: p.pro ? forecast : null, forecastLocked: !p.pro && five.pct != null, basisMin: samples.samples.length >= 2 ? Math.round((samples.samples[samples.samples.length - 1]![0] - samples.samples[0]![0]) / 60_000) : null };
   const midnight = new Date(now).setHours(0, 0, 0, 0);
   const today = statuses.filter((s) => s.updatedAt >= midnight && s.costUsd != null);
   const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd!, 0) : null;
   // Share of today's usage per build, from Claude Code's own per-session estimate (a proxy for limit use).
   const costById = new Map(today.map((s) => [s.sessionId, s.costUsd!]));
   const total = [...costById.values()].reduce((a, b) => a + b, 0);
-  const builds: PageBuild[] = w.sessions.map((b) => ({ ...b, share: p.pro && total > 0 && costById.has(b.id) ? Math.round((costById.get(b.id)! / total) * 100) : null }));
+  const builds: PageBuild[] = w.sessions.map((b) => ({ ...b, share: (p.pro || billing === "api") && total > 0 && costById.has(b.id) ? Math.round((costById.get(b.id)! / total) * 100) : null, costUsd: billing === "api" ? costById.get(b.id) ?? null : null }));
   const top = builds.filter((b) => b.share != null).sort((a, b) => b.share! - a.share!)[0];
   const changes = st?.changes;
   const tipList = tips({
     now,
     builds,
-    limits: { ...limits, fullAt: forecast },
-    biggest: top && builds.length > 1 ? { folder: top.folder, share: top.share! } : null,
+    limits,
+    biggest: top && builds.length > 1 ? { folder: top.folder, share: top.share!, cwd: top.cwd } : null,
     isGit: st?.facts ? st.facts.isGit : null,
     unsaved: changes ? changes.staged.length + changes.unstaged.length + changes.untracked.length : null,
     stuck: (st?.out.issues ?? []).filter((i) => i.key.startsWith("loop:")).map((i) => i.title),
@@ -153,7 +155,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     limits,
     costTodayUsd,
     tips: tipList,
-    plan: { pro: p.pro, licensed: p.licensed, trialDaysLeft: p.trialDaysLeft, sellable: p.sellable, freeLeft: p.freeLeft, price: PRICE, points: PRO_POINTS },
+    plan: { pro: p.pro, licensed: p.licensed, trialDaysLeft: p.trialDaysLeft, trialEndsAt: p.trialDaysLeft != null ? now + p.trialDaysLeft * DAY : null, sellable: p.sellable, freeLeft: p.freeLeft, price: PRICE, points: PRO_POINTS },
   };
 }
 

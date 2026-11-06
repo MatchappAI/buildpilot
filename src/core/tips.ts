@@ -4,7 +4,7 @@ import type { WidgetSession } from "./glance";
  * "Tips for right now": current Claude Code best practices, shown only when the data says they apply.
  * Deterministic. Each tip carries the observation that triggered it (never a generic lecture).
  */
-export type TipAction = "startFresh" | "checkpoint" | "newBuild" | "planMode" | "setupUndo" | null;
+export type TipAction = "startFresh" | "checkpoint" | "newBuild" | "planMode" | "setupUndo" | "pause" | null;
 export interface Tip { key: string; text: string; why: string; action: TipAction; actionLabel?: string; cwd?: string }
 
 export interface TipInput {
@@ -12,7 +12,7 @@ export interface TipInput {
   builds: WidgetSession[];
   limits: { fiveHourPct: number | null; sevenDayPct: number | null; fullAt: number | null; fiveHourResetsAt: number | null };
   /** The build using the most of today's usage (when more than one build ran). */
-  biggest?: { folder: string; share: number } | null;
+  biggest?: { folder: string; share: number; cwd?: string } | null;
   isGit: boolean | null;
   unsaved: number | null;
   stuck: string[];
@@ -23,14 +23,15 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric
 export function tips(i: TipInput, max = 3): Tip[] {
   const out: Tip[] = [];
   const full = i.builds.filter((b) => (b.contextPct ?? 0) >= 80).sort((a, b) => (b.contextPct ?? 0) - (a.contextPct ?? 0))[0];
-  if (full) out.push({ key: "memory", text: `${full.folder}'s chat is ${Math.round(full.contextPct!)}% full, so Claude will start forgetting details. Start a fresh chat that picks up where it left off.`, why: "Near full, Claude summarizes and loses details. A fresh chat with a summary keeps it sharp and uses less of your limit per message.", action: "startFresh", actionLabel: "Start fresh", cwd: full.cwd });
+  if (full) out.push({ key: "memory", text: `${full.folder}'s chat is ${Math.round(full.contextPct!)}% full, so Claude will start forgetting details. Start a fresh chat that picks up where it left off.`, why: "Near full, Claude summarizes and loses details. A fresh chat with a summary keeps it sharp and uses less of your limit per message.", action: "startFresh", actionLabel: "Start fresh chat", cwd: full.cwd });
   if (i.stuck.length) out.push({ key: "stuck", text: "A build keeps repeating a fix that fails. Stop it and ask Claude for a plan first.", why: i.stuck[0]!, action: "planMode", actionLabel: "Write a plan prompt" });
   const soon = i.limits.fullAt != null && i.limits.fullAt - i.now < 60 * 60_000;
   if (soon || (i.limits.fiveHourPct ?? 0) >= 85) {
-    const when = i.limits.fullAt ? `around ${clock(i.limits.fullAt)}` : "soon";
-    const back = i.limits.fiveHourResetsAt ? ` It's back at ${clock(i.limits.fiveHourResetsAt)}.` : "";
-    const big = i.biggest && i.biggest.share >= 40 ? ` ${i.biggest.folder} is using ${i.biggest.share}% today; pause it if it can wait.` : " Fresh chats and smaller asks make it last longer.";
-    out.push({ key: "limit", text: `You'll hit your 5-hour limit ${when}.${back}${big}`, why: `5-hour usage is at ${Math.round(i.limits.fiveHourPct ?? 0)}%.`, action: null });
+    // The limits card already shows the run-out time; the tip says what to do about it.
+    const head = `You've used ${Math.round(i.limits.fiveHourPct ?? 0)}% of your 5-hour limit${i.limits.fiveHourResetsAt ? ` (back at ${clock(i.limits.fiveHourResetsAt)})` : ""}.`;
+    const pausable = i.biggest && i.biggest.share >= 40 && i.builds.length > 1;
+    const big = pausable ? ` ${i.biggest!.folder} is using ${i.biggest!.share}% of your usage today; pause it if it can wait (press Esc in its terminal; your files are kept).` : " A fresh chat for each small task uses less per message.";
+    out.push({ key: "limit", text: `${head}${big}`, why: `5-hour usage is at ${Math.round(i.limits.fiveHourPct ?? 0)}%.`, action: pausable ? "pause" : null, actionLabel: pausable ? `Open ${i.biggest!.folder}` : undefined, cwd: pausable ? i.biggest!.cwd : undefined });
   }
   if ((i.limits.sevenDayPct ?? 0) >= 85) out.push({ key: "week", text: `You've used ${Math.round(i.limits.sevenDayPct!)}% of this week. Save it for the important work; use a lighter model (/model) for small tasks.`, why: "Weekly limits take days to reset.", action: null });
   const byFolder = new Map<string, number>();

@@ -69,8 +69,10 @@ describe("tips for right now", () => {
 
   it("limit soon (forecast < 1 h or ≥85%) → limit tip", () => {
     expect(tips({ ...base, limits: { ...base.limits, fiveHourPct: 87 } })[0]!.key).toBe("limit");
-    expect(tips({ ...base, limits: { ...base.limits, fullAt: base.now + 30 * 60_000 } })[0]!.text).toMatch(/around/);
-    expect(tips({ ...base, limits: { ...base.limits, fiveHourPct: 90 }, biggest: { folder: "shop", share: 61 } })[0]!.text).toMatch(/shop is using 61% today; pause it/);
+    expect(tips({ ...base, limits: { ...base.limits, fullAt: base.now + 30 * 60_000 } })[0]!.text).toMatch(/You've used 20% of your 5-hour limit/);
+    const lt = tips({ ...base, builds: [b({}), b({ id: "y", folder: "blog", cwd: "/p/blog" })], limits: { ...base.limits, fiveHourPct: 90 }, biggest: { folder: "shop", share: 61, cwd: "/p/shop" } })[0]!;
+    expect(lt.text).toMatch(/shop is using 61% of your usage today; pause it/);
+    expect(lt).toMatchObject({ action: "pause", cwd: "/p/shop" });
   });
 
   it("two builds in one folder → new build tip; no git → undo tip; many unsaved → save point", () => {

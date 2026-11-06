@@ -317,12 +317,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         }
         const label = await vscode.window.showInputBox({ title: "New build", prompt: "What's this build for? (a few words)", placeHolder: "e.g. checkout page", ignoreFocusOut: true });
         if (label === undefined) return;
-        if (!(await confirm("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy of your project next to it and opens Claude there, so the two builds can't undo each other's work. Your current files are not touched.\n\nTip: two builds use your plan limit about twice as fast.", "Start build"))) return;
+        if (!(await confirm("Start a new build in its own copy of the project?", `BuildPilot makes a separate copy of your project next to it (with your .env files), installs its packages, and opens Claude there, so the two builds can't undo each other's work. Your current files are not touched.\n\nTip: two builds use your plan limit about twice as fast. When it's done, merge its branch and remove it (BuildPilot: Remove Finished Builds).`, "Start build"))) return;
         try {
           const w = await eng.createWorktree(label.trim() || "build");
           const term = vscode.window.createTerminal({ name: `Build · ${label.trim() || "build"}`, cwd: w.dir });
           term.show();
-          term.sendText("claude");
+          const pm = cached?.facts?.packageManager;
+          const install = fs.existsSync(path.join(w.dir, "package.json")) ? `${pm === "pnpm" ? "pnpm" : pm === "yarn" ? "yarn" : pm === "bun" ? "bun" : "npm"} install && ` : "";
+          term.sendText(`${install}claude`);
         } catch (e) {
           void vscode.window.showErrorMessage(`Couldn't start the build: ${(e as Error).message}`);
         }
@@ -344,6 +346,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         await vscode.env.clipboard.writeText(eng.handoff());
         void vscode.window.setStatusBarMessage("$(check) Handoff copied. Paste it into a new Claude session.", 4000);
         return;
+      case "useInOpen": {
+        await vscode.env.clipboard.writeText(String(m.text ?? ""));
+        const t = vscode.window.activeTerminal ?? vscode.window.terminals[vscode.window.terminals.length - 1];
+        if (t) t.show(false);
+        else void vscode.window.showInformationMessage("No terminal is open. The prompt is on your clipboard; open Claude and paste it.");
+        return;
+      }
+      case "toggleTheme": {
+        const next = cfg().get<string>("theme", "white") === "match" ? "white" : "match";
+        await cfg().update("theme", next, vscode.ConfigurationTarget.Global);
+        push();
+        return;
+      }
       case "promptUsed":
         recordUse(eng.home);
         push();
@@ -352,8 +367,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const cwd = String(m.cwd ?? eng.currentProject?.root ?? "");
         if (!cwd || !fs.existsSync(cwd)) return;
         if (!requireTrust("start Claude Code")) return;
-        if (!(await confirm("Start a fresh chat that picks up where this one left off?", "BuildPilot copies a short summary of the work so far, then opens a new terminal running Claude in the same folder. Paste the summary as your first message (Cmd/Ctrl+V). You can close the old chat once the new one is going.", "Start fresh"))) return;
-        await vscode.env.clipboard.writeText(eng.handoff());
+        const summary = eng.handoff();
+        if (!(await confirm("Start a fresh chat that picks up where this one left off?", `Your files are kept. BuildPilot copies this summary, then opens a new terminal running \`claude\` in ${path.basename(cwd)}. Paste it as your first message (Cmd/Ctrl+V), then close the old chat.\n\n${summary.length > 600 ? summary.slice(0, 600) + "…" : summary}`, "Start fresh"))) return;
+        await vscode.env.clipboard.writeText(summary);
         const t = vscode.window.createTerminal({ name: `Fresh · ${path.basename(cwd)}`, cwd });
         t.show();
         t.sendText("claude");
@@ -738,6 +754,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     push();
   });
   reg("buildpilot.enterLicense", () => enterLicense());
+  reg("buildpilot.removeBuilds", async () => {
+    const builds = await eng.extraBuilds();
+    if (!builds.length) return void vscode.window.showInformationMessage("No extra builds to remove.");
+    const pick = await vscode.window.showQuickPick(builds.map((b) => ({ label: path.basename(b.dir), description: b.branch, detail: b.dirty ? "Has unsaved changes: commit or discard them first" : "Clean: safe to remove (the branch is kept so you can merge it)", b })), { canPickMany: true, placeHolder: "Pick finished builds to remove (their branches are kept)" });
+    if (!pick?.length) return;
+    for (const p of pick) {
+      try {
+        await eng.removeBuild(p.b.dir);
+      } catch (e) {
+        void vscode.window.showWarningMessage(`${p.label}: ${(e as Error).message}`);
+      }
+    }
+    void vscode.window.setStatusBarMessage("$(check) Removed. Merge a branch any time with: git merge <branch>", 6000);
+    push();
+  });
   reg("buildpilot.newPrompt", () => {
     void vscode.commands.executeCommand("buildpilot.focus");
     sidebar.post({ type: "navigate", tab: "prompts" });

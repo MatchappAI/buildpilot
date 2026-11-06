@@ -518,14 +518,53 @@ export class Engine extends EventEmitter {
     const head = await run("git", ["rev-parse", "--verify", "-q", "HEAD"], p.root);
     if (head.code !== 0) throw new Error("Worktrees need at least one commit. Commit your work first.");
     const ts = Date.now();
-    const safe = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "work";
-    const branch = `buildpilot/${safe}-${ts}`;
-    const dir = path.join(path.dirname(p.root), `${path.basename(p.root)}-${safe}-${ts}`);
+    const safe = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "build";
+    // Readable names: invoice-app-checkout / bp/checkout, with -2, -3… only when taken.
+    const branches = (await run("git", ["branch", "--list", "--format=%(refname:short)"], p.root)).stdout.split("\n").map((x) => x.trim());
+    let n = 1;
+    const name = () => (n === 1 ? safe : `${safe}-${n}`);
+    while (branches.includes(`bp/${name()}`) || fs.existsSync(path.join(path.dirname(p.root), `${path.basename(p.root)}-${name()}`))) n++;
+    const branch = `bp/${name()}`;
+    const dir = path.join(path.dirname(p.root), `${path.basename(p.root)}-${name()}`);
     const r = await run("git", ["worktree", "add", "-b", branch, dir], p.root, { timeoutMs: 60_000 });
     if (r.code !== 0) throw new Error(r.stderr.trim() || "git worktree add failed");
+    // A fresh copy has no local secrets: copy untracked .env files so the new build can run (same machine, same permissions).
+    for (const f of fs.readdirSync(p.root)) {
+      if (!/^\.env(\..+)?$/.test(f) || f === ".env.example") continue;
+      const src = path.join(p.root, f);
+      try {
+        if (fs.statSync(src).isFile() && !fs.existsSync(path.join(dir, f))) fs.copyFileSync(src, path.join(dir, f));
+      } catch {
+        /* best effort */
+      }
+    }
     this.store.run("INSERT INTO approvals (project_id, action, detail, approved_at, outcome) VALUES (?, 'worktree', ?, ?, ?)", [p.id, dir, ts, branch]);
     this.addDecision(`Separate worktree for parallel work: ${path.basename(dir)}`, `Branch ${branch}. Merge it back when that session's work is done.`);
     return { dir, branch };
+  }
+
+  /** BuildPilot-made builds (worktrees on bp/ or buildpilot/ branches) for this project. */
+  async extraBuilds(): Promise<{ dir: string; branch: string; dirty: boolean }[]> {
+    const p = this.project;
+    if (!p) return [];
+    const out = (await run("git", ["worktree", "list", "--porcelain"], p.root)).stdout;
+    const items: { dir: string; branch: string; dirty: boolean }[] = [];
+    for (const block of out.split("\n\n")) {
+      const dir = /^worktree (.+)$/m.exec(block)?.[1];
+      const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1];
+      if (!dir || !branch || dir === p.root || !/^(bp|buildpilot)\//.test(branch)) continue;
+      const st = await run("git", ["status", "--porcelain"], dir);
+      items.push({ dir, branch, dirty: st.stdout.trim().length > 0 });
+    }
+    return items;
+  }
+
+  /** Removes a finished build's folder. Never deletes uncommitted work (git refuses dirty worktrees) and keeps the branch. */
+  async removeBuild(dir: string): Promise<void> {
+    const p = this.project;
+    if (!p) throw new Error("Open a project first");
+    const r = await run("git", ["worktree", "remove", dir], p.root, { timeoutMs: 60_000 });
+    if (r.code !== 0) throw new Error(/modified or untracked/.test(r.stderr) ? "It has unsaved changes. Commit or discard them in that folder first." : r.stderr.trim() || "git worktree remove failed");
   }
 
   /** Redacted, compact digest of a session for an (opt-in) AI explanation. No file contents. */

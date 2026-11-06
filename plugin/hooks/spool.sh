@@ -3,6 +3,8 @@
 # Never blocks, never prints, never sends anything anywhere. Uninstalling the plugin removes it.
 d="${BUILDPILOT_HOME:-$HOME/.buildpilot}/spool"
 mkdir -p "$d/tmp" 2>/dev/null || exit 0
+# Safety cap: if BuildPilot isn't reading the spool (e.g. removed), stop writing after 5000 events.
+[ "$(ls -1 "$d" 2>/dev/null | wc -l)" -gt 5000 ] && exit 0
 t=$(mktemp "$d/tmp/evt.XXXXXX" 2>/dev/null) || exit 0
 head -c 1048576 > "$t"
 mv "$t" "$d/$(basename "$t").json" 2>/dev/null || rm -f "$t"

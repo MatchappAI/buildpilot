@@ -18,7 +18,7 @@ export const FREE_PROMPTS = 20;
 export const FREE_EXTRA_BUILDS = 1;
 export const TRIAL_DAYS = 14;
 export const PRICE = "$9/mo";
-export const PRO_POINTS = ["See when you'll run out, and what's using your limit", "Unlimited builds side by side", "Unlimited prompts"];
+export const PRO_POINTS = ["See when you'll run out, and which build is using your limit", "Run as many builds at once as you like (free: 2)", "Unlimited prompts (free: 20)"];
 /** Stripe Payment Link. Replace with the real buy.stripe.com link; BUILDPILOT_CHECKOUT_URL overrides. */
 export const CHECKOUT_URL = "https://buy.stripe.com/REPLACE_WITH_PAYMENT_LINK";
 
@@ -153,5 +153,5 @@ export function recordUse(home: string, env: NodeJS.ProcessEnv = process.env): n
 
 /** Terminal paywall: short and scannable. */
 export function paywallText(p: Paywall): string {
-  return [p.message, "", ...PRO_POINTS.map((x) => `  + ${x}`), "  Watching builds, limits and tips stays free. Cancel anytime.", "  Already paid?  bp license <your-key>"].join("\n");
+  return [p.message, "", ...PRO_POINTS.map((x) => `  + ${x}`), "  Watching builds, limits and tips stays free. Separate from your Claude plan. Cancel anytime.", "  Already paid?  bp license <your-key>"].join("\n");
 }

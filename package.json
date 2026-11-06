@@ -151,7 +151,7 @@
       },
       {
         "command": "buildpilot.setWebhook",
-        "title": "Set Notification URL (phone, glasses, Slack…)",
+        "title": "Set Notification URL (phone, glasses, Slack\u2026)",
         "category": "BuildPilot"
       },
       {
@@ -219,6 +219,11 @@
       {
         "command": "buildpilot.enterLicense",
         "title": "Enter License Key",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.removeBuilds",
+        "title": "Remove Finished Builds",
         "category": "BuildPilot"
       }
     ],

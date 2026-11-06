@@ -1,10 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
-import { readUsage } from "./license";
+import { randomUUID } from "crypto";
 
 /**
  * Optional anonymous product counts. OFF until the user says yes (asked once, on the page).
- * Exactly four events, each sent at most once per install, with the random install id and nothing else:
+ * Exactly four events, each sent at most once per install, with a random id used only for counts (not the checkout id):
  * no project names, paths, prompts, code or IPs stored. See docs/SECURITY.md.
  */
 export const COUNT_EVENTS = ["installed", "connected", "day7", "upgraded"] as const;
@@ -12,7 +12,7 @@ export type CountEvent = (typeof COUNT_EVENTS)[number];
 /** The license Worker's /v1/count route. Placeholder = never sends. */
 export const COUNT_URL = "https://buildpilot-license.REPLACE.workers.dev/v1/count";
 
-interface CountsFile { consent?: boolean; firstSeen?: number; sent?: Partial<Record<CountEvent, number>> }
+interface CountsFile { consent?: boolean; firstSeen?: number; id?: string; sent?: Partial<Record<CountEvent, number>> }
 const file = (home: string) => path.join(home, "counts.json");
 
 export function readCounts(home: string): CountsFile {
@@ -45,11 +45,11 @@ export async function count(home: string, ev: CountEvent, opts: { url?: string; 
   const url = opts.url ?? process.env.BUILDPILOT_COUNT_URL ?? COUNT_URL;
   const now = opts.now ?? Date.now();
   const c = readCounts(home);
-  if (!c.firstSeen) write(home, (c.firstSeen = now, c));
+  if (!c.firstSeen || !c.id) write(home, ((c.firstSeen = c.firstSeen ?? now), (c.id = c.id ?? randomUUID()), c));
   if (c.consent !== true || url.includes("REPLACE") || c.sent?.[ev]) return false;
   if (ev === "day7" && now - (c.firstSeen ?? now) < 7 * 86_400_000) return false;
   try {
-    const r = await (opts.fetchFn ?? fetch)(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: ev, id: readUsage(home).installId }), signal: AbortSignal.timeout(5000) });
+    const r = await (opts.fetchFn ?? fetch)(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: ev, id: c.id }), signal: AbortSignal.timeout(5000) });
     if (!r.ok) return false;
     write(home, { ...c, sent: { ...c.sent, [ev]: now } });
     return true;

@@ -1,71 +1,62 @@
-# BuildPilot: Mission Control for AI builders
+# BuildPilot for Claude Code
 
-**Know what's being built, what's broken, what matters next, and how to ship it correctly.**
+**One calm page beside your terminal: every Claude build, what needs you, how full each chat is, your plan limits (and when you'll run out), and tips for right now.**
 
-BuildPilot is a VS Code extension that sits next to Claude Code and acts like a calm senior engineer looking over your shoulder. It watches your Claude Code sessions through Claude Code's official hooks, analyzes your project locally, and tells you in plain English:
+Made for people who build with Claude Code and don't want to babysit it, including people who aren't engineers.
 
-1. **What's happening**: each Claude Code session's live status, task, changed files, errors and token usage
-2. **Is anything wrong**: failing tests, loops, two agents editing the same file, leaked secrets, missing config, "done" without proof
-3. **What to do next**: one prioritized next step, plus a ready-to-use Claude Code prompt to do it
+- **Builds:** every Claude Code chat across your projects, needs-you first, with **Review in terminal**. Nothing is approved until you approve it there.
+- **Plan limits:** 5-hour and weekly usage, when each resets, and on Pro, *"At this pace you'll run out around 5:47 PM, then wait 1 h 37 min."* API-key users see spend instead.
+- **Tips for right now:** only when they apply, each with one button. Chat nearly full → **Start fresh chat**. A build stuck repeating a fix → plan first. Two builds in one folder → **New build**. No Git → **Turn on undo**.
+- **+ New build:** another Claude in its own copy of the project, so builds can't undo each other's work. It copies your `.env` files and installs packages.
+- **Prompt box:** plain words in, an expert prompt out, with your project's setup, guardrails, checks and "settle these first" questions.
 
-Everything runs on your computer. No account, no cloud, no AI calls unless you turn them on.
+Everything stays on your computer. [How it compares](docs/COMPARISON.md) · [Privacy](docs/SECURITY.md)
 
-## Install (local)
+## Install
 
-```bash
-cd ~/buildpilot
-npm install
-npm run package                       # builds dist/buildpilot.vsix
-code --install-extension dist/buildpilot.vsix
+**VS Code, Cursor or Windsurf:** search the Extensions view for **BuildPilot for Claude Code** (VS Code Marketplace or Open VSX). Open a terminal and the page opens beside it. Click **Connect**.
+
+**Inside Claude Code (any editor, or none):**
+
+```
+/plugin marketplace add buildpilot/buildpilot
+/plugin install buildpilot@buildpilot
 ```
 
-If `code` isn't on your PATH, use VS Code → Command Palette → *Extensions: Install from VSIX…* and pick `dist/buildpilot.vsix`.
+Then use `/bp` (builds, limits, tips), `/bp-connect` (exact chat % and limits), `/bp-new <name>`, `/bp-prompt <idea>` and `/bp-license <key>`.
 
-## First run (2 minutes)
+**Terminal:** `bp limits` · `bp new "<name>"` · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
 
-1. Open your project folder in VS Code and click the **BuildPilot** icon in the Activity Bar.
-2. Click **Connect** to let BuildPilot see Claude Code sessions. It shows exactly what it changes and backs up your settings first. (Want to look around first? *Connect → Load demo data*. Demo sessions are clearly labelled.)
-3. Start Claude Code as usual (`claude` in a terminal). The session appears in **Sessions** within a second.
-4. Follow the **Next step** card on **Overview**, or open **Prompts** and describe what you want.
+From source: `npm install && npm run package && code --install-extension dist/buildpilot.vsix`
 
-## The six tabs
+## Free and Pro
 
-| Tab | What it's for |
+| Free forever | Pro, $9/mo, cancel anytime |
 |---|---|
-| **Overview** | Next step · what's happening · anything wrong · project summary, stage, progress vs. requirements, tests, Git |
-| **Sessions** | Every observed Claude Code session: status, current task, exact context % (optional status-line integration), timeline, changed files, errors, overlaps, Explain with AI |
-| **Supervisor** | Issues (with evidence), ranked recommendations, run tests/build, dependency audit, visual check with screenshot, ship-readiness checklist, environment doctor, checkpoints & scoped rollback, worktree for conflicting sessions |
-| **Prompts** | Prompt Studio: pick a goal (feature, bug, integration, tests, refactor, UI, security, deploy, performance, explain, handoff), describe it, get a best-practice prompt. **Copy** it, or **Start in Claude Code** (opens a terminal running `claude` with it, after you confirm) |
-| **Memory** | Goal, requirements with acceptance criteria, decisions, preferences, session handoff, CLAUDE.md draft, data deletion |
-| **Connect** | Claude Code connection, phone/glasses/Slack alerts, Integration API, optional AI refinement, beginner mode |
+| Builds and what needs you · chat % full · plan limits and reset times · tips with one-click fixes · Start fresh chat · Turn on undo · terminal, plugin and menu bar · 20 prompts · 2 builds at once | When you'll run out, and which build is using your limit · as many builds at once as you like · unlimited prompts |
 
-## Phones, smart glasses and other tools
+Everyone gets a **14-day Pro trial**. Nothing is ever blocked before Pro is on sale. Pro is separate from your Claude plan. After checkout, the thank-you page shows your key. Paste it with **BuildPilot: Enter License Key** or `bp license <key>`.
 
-- **Alerts anywhere:** *Connect → Set up notifications* sends short alerts ("Claude needs your approval", "Tests failing") to ntfy (phone push), Slack, Discord or any webhook. Smart glasses that announce phone notifications (e.g. Meta Ray-Ban paired with your phone) will read them out. Only short alerts and the project name are sent, never code.
-- **Pocket (phone & glasses):** turn on the Integration API, then *Connect → Copy link for my phone*. The page shows live status and can **read it aloud**, including automatically when Claude needs you. Audio plays through your phone's output, so Bluetooth smart glasses or earbuds work.
-- **Ask BuildPilot from anything:** turn on the **Integration API** (token-protected, localhost by default). `GET /v1/brief?format=text` returns a one-sentence spoken-style status, for Siri Shortcuts, Raycast, Stream Deck, a glasses companion app, or a bot. `POST /v1/prompt` generates prompts. It's read-only: it cannot run commands or change files. See `docs/ARCHITECTURE.md#integration-api`.
+## Privacy, in one paragraph
 
-## Command line (same engine, no VS Code)
+**Connect** adds hooks and a status-line reporter to `~/.claude/settings.json`. You see the exact lines first ("See exactly what changes"), your settings are backed up, and **Disconnect** removes exactly those lines. Hooks copy each Claude Code event to `~/.buildpilot/spool`. BuildPilot then:
+- reads the events
+- redacts secrets
+- stores a short log: tool names, commands, file names and errors, but no file contents
+- deletes the copies
+- keeps the log at most 30 days
 
-```bash
-node dist/cli.js status [folder]      # stage, health, issues, next step
-node dist/cli.js sessions [folder]    # observed Claude Code sessions
-node dist/cli.js brief [folder]       # one-line status
-node dist/cli.js handoff [folder]     # context handoff for a new session
-node dist/cli.js prompt bugfix "Checkout page is blank after paying" [folder]
-node dist/cli.js audit [folder]       # dependency vulnerabilities
-node dist/cli.js visual [folder] [url]  # check the running app + screenshot
-node dist/cli.js hooks status|install|uninstall [--project <folder>]
-node dist/cli.js statusline status|install|uninstall   # exact context % from Claude Code
-node dist/cli.js serve [folder]       # Integration API without VS Code
-```
+Nothing is uploaded. There's no telemetry unless you say yes to a one-time question (4 anonymous counts, with a random ID used only for that).
 
-## What BuildPilot will never do
-- Pretend: unknown things say **Unknown**; inferred things say **Inferred**; progress only counts requirements proven by a passing test.
-- Act without asking: running scripts, starting Claude Code, checkpoints, rollbacks, writing files and sending to AI all require a confirmation.
-- Destroy work: no resets, force-pushes or deletions. Checkpoints don't touch your branch, index or files. Rollback is per-file and takes a safety checkpoint first.
-- Send your code anywhere.
+## Develop
 
-More: [PRD](docs/PRD.md) · [Architecture](docs/ARCHITECTURE.md) · [Features](docs/FEATURES.md) · [Security](docs/SECURITY.md) · [Testing](docs/TESTING.md) · [Roadmap](docs/ROADMAP.md) · [Decisions](docs/DECISIONS.md) · [Progress](docs/PROGRESS.md)
+`npm run build` · `npm run typecheck` · `npm run lint` · `npm test` · `npm run test:smoke` · `npm run ci` · `npm run package` · `npm run desktop`
 
-_Designed & built by Mohil Gupta._
+- `src/core`: the engine, with no vscode imports. That includes `page.ts`, `tips.ts`, `license.ts` and `counts.ts`.
+- `src/extension`: the VS Code glue and the page panel.
+- `src/webview`: the page itself.
+- `src/cli.ts`: the `bp` command.
+- `plugin/`: the Claude Code plugin. The marketplace file is `.claude-plugin/marketplace.json`.
+- `server/`: the license Worker (Stripe → signed key).
+
+More: [docs/](docs/), with [PUBLISHING.md](docs/PUBLISHING.md) for the steps that need your accounts.

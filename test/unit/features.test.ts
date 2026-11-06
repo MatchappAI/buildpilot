@@ -197,13 +197,20 @@ describe("worktree assistant", () => {
     await engine.start();
     const repo = makeRepo({ "a.txt": "1\n" });
     fs.writeFileSync(path.join(repo, "a.txt"), "dirty\n");
+    fs.writeFileSync(path.join(repo, ".env"), "SECRET=1\n");
+    fs.writeFileSync(path.join(repo, ".env.example"), "SECRET=\n");
     await engine.openProject(repo);
     const w = await engine.createWorktree("Invoice PDF");
+    expect(fs.readFileSync(path.join(w.dir, ".env"), "utf8")).toBe("SECRET=1\n"); // local secrets come along
+    expect(fs.existsSync(path.join(w.dir, ".env.example"))).toBe(false); // tracked/example files are not copied
     expect(fs.existsSync(path.join(w.dir, "a.txt"))).toBe(true);
     expect(fs.readFileSync(path.join(w.dir, "a.txt"), "utf8")).toBe("1\n");
     expect(fs.readFileSync(path.join(repo, "a.txt"), "utf8")).toBe("dirty\n"); // untouched
     expect(execFileSync("git", ["branch", "--show-current"], { cwd: repo }).toString().trim()).not.toBe(w.branch);
-    expect(w.branch).toMatch(/^buildpilot\/invoice-pdf-\d+$/);
+    expect(w.branch).toBe("bp/invoice-pdf");
+    expect(path.basename(w.dir)).toMatch(/-invoice-pdf$/);
+    expect((await engine.createWorktree("invoice pdf")).branch).toBe("bp/invoice-pdf-2"); // readable, de-duplicated
+    expect((await engine.extraBuilds()).map((b) => b.branch).sort()).toEqual(["bp/invoice-pdf", "bp/invoice-pdf-2"]);
     expect(engine.decisions()[0]!.title).toMatch(/worktree/);
   });
 });

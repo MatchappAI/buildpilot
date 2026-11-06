@@ -147,7 +147,8 @@ async function main(): Promise<void> {
 Everyday
   bp limits                 your builds, chat % full, plan limits + forecast, tips
   bp new "<name>"           start another build in its own copy of this project
-  bp prompt auto "<what>"   turn plain words into an expert Claude Code prompt
+  bp builds · bp done <name>  list extra builds · remove a finished one (branch kept)
+  bp prompt auto "<what>"   turn plain words into an expert prompt (prints it; run: claude "$(bp prompt auto '...')")
   bp license [key]          show your plan, or unlock Pro with a key
 
 Setup
@@ -170,7 +171,34 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     if (p.needs) bits.push(`${p.needs}!`);
     if (L.fiveHourPct != null) bits.push(`5h ${Math.round(L.fiveHourPct)}%`);
     if (L.fullAt) bits.push(`out ~${new Date(L.fullAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+    if (p.plan.sellable && p.plan.trialDaysLeft != null && p.plan.trialDaysLeft <= 3) bits.push(`trial ${p.plan.trialDaysLeft}d`);
     process.stdout.write(bits.join(" "));
+    return;
+  }
+  if (cmd === "builds" || cmd === "done") {
+    const folder = path.resolve(process.cwd());
+    const engine = new Engine();
+    await engine.start();
+    await engine.openProject(folder);
+    const builds = await engine.extraBuilds();
+    if (cmd === "builds") {
+      console.log(builds.length ? builds.map((b) => `  ${path.basename(b.dir).padEnd(32)} ${b.branch}${b.dirty ? "  (unsaved changes)" : ""}`).join("\n") : "No extra builds. Start one: bp new \"<name>\"");
+    } else {
+      const target = builds.find((b) => path.basename(b.dir) === rest[0] || b.branch === rest[0] || b.branch === `bp/${rest[0]}` || path.basename(b.dir).endsWith(`-${rest[0]}`));
+      if (!target) {
+        console.log(`No build called "${rest[0] ?? ""}". Yours:\n${builds.map((b) => `  ${path.basename(b.dir)}`).join("\n") || "  (none)"}`);
+        process.exitCode = 1;
+      } else {
+        try {
+          await engine.removeBuild(target.dir);
+          console.log(`Removed ${path.basename(target.dir)}. Its branch ${target.branch} is kept. Merge it with:  git merge ${target.branch}`);
+        } catch (e) {
+          console.log(`Couldn't remove it: ${(e as Error).message}`);
+          process.exitCode = 1;
+        }
+      }
+    }
+    engine.stop();
     return;
   }
   if (cmd === "new") {
@@ -191,8 +219,8 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
       engine.stop();
       if (process.env.TMUX) {
         execFile("tmux", ["new-window", "-c", w.dir, "-n", path.basename(w.dir).slice(0, 20), "claude"], () => {});
-        console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).`);
-      } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast.`);
+        console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).\nTwo builds use your plan limit about twice as fast. When done: git merge ${w.branch} && bp done ${path.basename(w.dir)}`);
+      } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast. When done: git merge ${w.branch} && bp done ${path.basename(w.dir)}`);
     } catch (e) {
       engine.stop();
       const msg = (e as Error).message;
@@ -300,9 +328,9 @@ main().catch((e) => {
 function limitsText(p: PageData): string {
   const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const lines: string[] = [];
-  if (p.limits.forecastLocked && p.plan.sellable) lines.push("(Forecast and per-build usage are Pro: bp license <key>)");
+  if (p.plan.sellable && !p.plan.licensed) lines.push(p.plan.trialDaysLeft != null ? `Pro trial: ${p.plan.trialDaysLeft} day${p.plan.trialDaysLeft === 1 ? "" : "s"} left (after it, the forecast and per-build usage need Pro; the rest stays free)` : "Free plan. Forecast and per-build usage: Pro ($9/mo) · bp license <key>");
   lines.push(p.builds.length ? `${p.builds.length} build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
-  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? b.reason || b.word : b.word}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.share != null ? ` · ${b.share}% of today` : ""}`);
+  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? b.reason || b.word : b.word}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.costUsd != null ? ` · ~$${b.costUsd.toFixed(2)} today` : b.share != null ? ` · ${b.share}% of your usage today` : ""}`);
   const L = p.limits;
   if (p.billing === "api") lines.push("", `Spend today   ${p.costTodayUsd != null ? `~$${p.costTodayUsd.toFixed(2)}` : "unknown"}`);
   else if (L.fiveHourPct != null || L.sevenDayPct != null) {

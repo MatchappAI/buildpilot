@@ -259,7 +259,7 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
 
   const title = request ? clip(request.replace(/\s+/g, " ").replace(/[.!]+$/, ""), 80) : g.label;
   lines.push(`# ${title.charAt(0).toUpperCase()}${title.slice(1)}`);
-  lines.push(`_Type: ${g.label}_`);
+  lines.push(`Type: ${g.label}`);
   lines.push("");
   lines.push("## What I want");
   lines.push(request || (g.id === "handoff" ? "(continue from the handoff below)" : "[Describe what you want here before sending]"));

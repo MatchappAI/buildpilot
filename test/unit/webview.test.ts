@@ -197,7 +197,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     await tick();
     expect(doc.body.textContent).toMatch(/17 of 20 free prompts left/);
-    expect(doc.body.textContent).toMatch(/See when you'll run out and what's using your limit — Pro/);
+    expect(doc.querySelector(".locked")?.textContent).toMatch(/At this pace you'll run out around .* Unlock with Pro/);
     const t = mount(full({ plan: { ...freePlan, pro: true, trialDaysLeft: 9, freeLeft: null } }));
     await t.tick();
     await t.tick();

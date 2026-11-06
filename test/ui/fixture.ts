@@ -31,7 +31,7 @@ import { pageData, PageData } from "../../src/core/page";
 
   const scenarios: Record<string, { page: PageData; paywall?: boolean; request?: string; buildFirst?: boolean }> = {
     "1-first-run": { page: { ...base, connected: false } },
-    "2-one-build": { page: S({ builds: [b({})], working: 1 }) },
+    "2-one-build": { page: S({ builds: [b({})], working: 1, plan: { ...free, pro: true, trialDaysLeft: 2, trialEndsAt: now + 2 * 86400_000, freeLeft: null } }) },
     "3-parallel-needs-you": {
       page: S({
         builds: [
@@ -46,7 +46,7 @@ import { pageData, PageData } from "../../src/core/page";
       }),
     },
     "4-near-limit": {
-      page: S({ builds: [b({})], working: 1, limits: plan(88, 61, now + 35 * 60_000), tips: [{ key: "limit", text: "You'll hit your 5-hour limit around " + new Date(now + 35 * 60_000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + ". It's back at " + new Date(now + 2.2 * 3600_000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + ". invoice-app is using 64% today; pause it if it can wait.", why: "", action: null }] }),
+      page: S({ builds: [b({ share: 64 }), b({ id: "q", folder: "landing-page", task: "Writing the pricing section", share: 36 })], working: 2, limits: plan(88, 61, now + 35 * 60_000), tips: [{ key: "limit", text: "You\'ve used 88% of your 5-hour limit (back at " + new Date(now + 2.2 * 3600_000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + "). invoice-app is using 64% of your usage today; pause it if it can wait (press Esc in its terminal; your files are kept).", why: "", action: "pause", actionLabel: "Open invoice-app", cwd: repo }] }),
     },
     "5-prompt-written": { page: S({ builds: [b({})], working: 1, plan: { ...free, freeLeft: 14 }, limits: { ...plan(22, 14, null), forecastLocked: true } }), request: "Add a contact form that emails me", buildFirst: true },
     "6-paywalled": { page: S({ builds: [b({})], working: 1, plan: { ...free, freeLeft: 0 }, limits: { ...plan(22, 14, null), forecastLocked: true } }), request: "Add dark mode", buildFirst: true, paywall: true },
