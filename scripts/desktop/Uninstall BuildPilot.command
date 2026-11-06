@@ -47,7 +47,8 @@ CODE=""
 for c in "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" "$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" "$(command -v code 2>/dev/null)"; do
   [ -n "$c" ] && [ -x "$c" ] && CODE="$c" && break
 done
-if [ -n "$CODE" ]; then
+# Only if BuildPilot is actually installed in THIS user's extensions folder (never touch another setup).
+if [ -n "$CODE" ] && ls -d "$EXT_DIR"/$EXT_ID-* >/dev/null 2>&1; then
   "$CODE" "${EXT_ARGS[@]}" --uninstall-extension "$EXT_ID" 2>&1 | grep -v -E "DEP0169|trace-deprecation" | tail -n 1
   echo "✓ VS Code extension removed (if it was installed)."
 else
