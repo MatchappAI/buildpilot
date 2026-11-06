@@ -359,3 +359,41 @@ describe("metrics", () => {
     expect(engine.snapshot().metrics.find((x) => x.key === "tests")).toMatchObject({ value: "Passing", tone: "good", confidence: "verified" });
   });
 });
+
+describe("side builds: review and merge", () => {
+  it("lists changes, saves, merges cleanly; aborts conflicts without touching the project; refuses when main is unsaved", async () => {
+    const home = tmpDir();
+    const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    engines.push(engine);
+    await engine.start();
+    const repo = makeRepo({ "a.txt": "1\n", "b.txt": "x\n" });
+    await engine.openProject(repo);
+    const w = await engine.createWorktree("feature");
+    fs.writeFileSync(path.join(w.dir, "a.txt"), "2\n");
+    fs.writeFileSync(path.join(w.dir, "new.txt"), "hi\n");
+    const ch = await engine.buildChanges(w.dir, w.branch);
+    expect(ch.files.map((f) => `${f.status} ${f.path}`).sort()).toEqual(["A new.txt", "M a.txt"]);
+    expect(ch.unsaved).toBe(2);
+    await engine.saveBuild(w.dir, "Feature work");
+    expect((await engine.buildChanges(w.dir, w.branch)).commits).toBe(1);
+    // main has unsaved changes → refuse
+    fs.writeFileSync(path.join(repo, "b.txt"), "dirty\n");
+    expect((await engine.mergeBuild(w.branch)).merged).toBe(false);
+    execFileSync("git", ["checkout", "--", "b.txt"], { cwd: repo });
+    const m = await engine.mergeBuild(w.branch);
+    expect(m.merged).toBe(true);
+    expect(fs.readFileSync(path.join(repo, "a.txt"), "utf8")).toBe("2\n");
+    expect(fs.readFileSync(path.join(repo, "new.txt"), "utf8")).toBe("hi\n");
+    // conflict: both change b.txt
+    const w2 = await engine.createWorktree("other");
+    fs.writeFileSync(path.join(w2.dir, "b.txt"), "from build\n");
+    await engine.saveBuild(w2.dir, "Other");
+    fs.writeFileSync(path.join(repo, "b.txt"), "from main\n");
+    execFileSync("git", ["-c", "user.name=a", "-c", "user.email=a@a", "commit", "-qam", "main change"], { cwd: repo });
+    const c = await engine.mergeBuild(w2.branch);
+    expect(c).toMatchObject({ merged: false, conflicts: ["b.txt"] });
+    expect(fs.readFileSync(path.join(repo, "b.txt"), "utf8")).toBe("from main\n");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo }).toString().trim()).toBe("");
+    await expect(engine.mergeBuild("main")).rejects.toThrow(/Not a BuildPilot build branch/);
+  });
+});

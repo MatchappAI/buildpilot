@@ -50,11 +50,41 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       pending = null;
       const st = state();
       if (st) {
-        sidebar.post({ type: "state", state: st, settings: uiSettings(), page: pageData(eng, st) });
+        sidebar.post({ type: "state", state: st, settings: uiSettings(), page: { ...pageData(eng, st), side } });
         updateStatus(st);
+        if (Date.now() - sideAt > 5000) void refreshSide();
       }
     }, 150);
   };
+  // Side builds (BuildPilot worktrees) with what each changed; refreshed at most every 5 s.
+  let side: { name: string; dir: string; branch: string; changed: number; unsaved: number; commits: number }[] = [];
+  let sideAt = 0;
+  const refreshSide = async () => {
+    sideAt = Date.now();
+    try {
+      const next = [];
+      for (const b of await eng.extraBuilds()) {
+        const c = await eng.buildChanges(b.dir, b.branch);
+        next.push({ name: path.basename(b.dir), dir: b.dir, branch: b.branch, changed: c.files.length, unsaved: c.unsaved, commits: c.commits });
+      }
+      if (JSON.stringify(next) !== JSON.stringify(side)) {
+        side = next;
+        push();
+      }
+    } catch (e) {
+      log(`side builds: ${(e as Error).message}`);
+    }
+  };
+  // Original version of a file in a side build, for side-by-side review.
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider("bp-base", {
+      provideTextDocumentContent: async (uri) => {
+        const q = new URLSearchParams(uri.query);
+        const r = await runCmd("git", ["show", `${q.get("base")}:${q.get("path")}`], q.get("root") ?? "", { timeoutMs: 15_000 });
+        return r.code === 0 ? r.stdout : "";
+      },
+    }),
+  );
   const uiSettings = () => ({
     beginner: cfg().get<boolean>("beginnerMode", true),
     trusted: vscode.workspace.isTrusted,
@@ -356,6 +386,65 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       case "toggleTheme": {
         const next = cfg().get<string>("theme", "white") === "match" ? "white" : "match";
         await cfg().update("theme", next, vscode.ConfigurationTarget.Global);
+        push();
+        return;
+      }
+      case "reviewBuild": {
+        const dir = String(m.dir ?? "");
+        const branch = String(m.branch ?? "");
+        const root = eng.currentProject?.root;
+        if (!root || !dir) return;
+        const ch = await eng.buildChanges(dir, branch);
+        if (!ch.files.length || !ch.base) return void vscode.window.showInformationMessage(`${path.basename(dir)} hasn't changed anything yet.`);
+        const word: Record<string, string> = { A: "added", M: "changed", D: "deleted" };
+        const pick = await vscode.window.showQuickPick(ch.files.map((f) => ({ label: f.path, description: word[f.status] ?? f.status, f })), { placeHolder: `${path.basename(dir)}: ${ch.files.length} file${ch.files.length === 1 ? "" : "s"} changed. Pick one to see before → after.` });
+        if (!pick) return;
+        const left = vscode.Uri.from({ scheme: "bp-base", path: `/${pick.f.path}`, query: new URLSearchParams({ root, base: ch.base, path: pick.f.path }).toString() });
+        const right = vscode.Uri.file(path.join(dir, pick.f.path));
+        if (pick.f.status === "D") return vscode.commands.executeCommand("vscode.open", left);
+        return vscode.commands.executeCommand("vscode.diff", left, right, `${pick.f.path}: before ↔ ${path.basename(dir)}`);
+      }
+      case "mergeBuild": {
+        const dir = String(m.dir ?? "");
+        const branch = String(m.branch ?? "");
+        if (!eng.currentProject || !dir) return;
+        if (!requireTrust("merge a build")) return;
+        const ch = await eng.buildChanges(dir, branch);
+        if (!ch.files.length) return void vscode.window.showInformationMessage(`${path.basename(dir)} has nothing to merge yet.`);
+        const list = ch.files.slice(0, 12).map((f) => `• ${f.path}`).join("\n") + (ch.files.length > 12 ? `\n…and ${ch.files.length - 12} more` : "");
+        if (!(await confirm(`Bring ${path.basename(dir)}'s work into your main project?`, `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} will change in your main project:\n${list}\n\n${ch.unsaved ? "Its unsaved work is saved first. " : ""}If both builds changed the same lines, nothing is changed and BuildPilot tells you which files. You can undo a merge with a save point.`, "Merge"))) return;
+        try {
+          if (ch.unsaved) await eng.saveBuild(dir, `Work from ${path.basename(dir)} (saved by BuildPilot before merging)`);
+          const r = await eng.mergeBuild(branch);
+          if (r.merged) {
+            const c = await vscode.window.showInformationMessage(`${r.message} Remove the ${path.basename(dir)} folder now? (Its branch is kept.)`, "Remove it", "Keep it");
+            if (c === "Remove it") await eng.removeBuild(dir);
+          } else if (r.conflicts.length) {
+            const c = await vscode.window.showWarningMessage(`${r.message} Files: ${r.conflicts.join(", ")}`, "Copy a fix prompt");
+            if (c) {
+              const mainBranch = (await runCmd("git", ["branch", "--show-current"], eng.currentProject.root)).stdout.trim() || "main";
+              await vscode.env.clipboard.writeText(`In this folder (${dir}), bring in the latest ${mainBranch} with \`git merge ${mainBranch}\` and resolve the conflicts in: ${r.conflicts.join(", ")}. Keep both sides' intent; ask me if they truly contradict. Run the tests, commit, then tell me it's ready to merge.`);
+              void vscode.window.showInformationMessage(`Fix prompt copied. Paste it into the Claude running in ${path.basename(dir)}, then merge again.`);
+            }
+          } else void vscode.window.showWarningMessage(r.message);
+        } catch (e) {
+          void vscode.window.showErrorMessage(`Merge failed: ${(e as Error).message}`);
+        }
+        sideAt = 0;
+        await eng.analyze();
+        push();
+        return;
+      }
+      case "removeBuild": {
+        const dir = String(m.dir ?? "");
+        if (!dir) return;
+        if (!(await confirm(`Remove the ${path.basename(dir)} folder?`, "Its branch is kept, so nothing is lost. Folders with unsaved changes are never removed.", "Remove"))) return;
+        try {
+          await eng.removeBuild(dir);
+        } catch (e) {
+          void vscode.window.showWarningMessage((e as Error).message);
+        }
+        sideAt = 0;
         push();
         return;
       }

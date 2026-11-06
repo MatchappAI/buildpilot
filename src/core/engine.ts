@@ -563,6 +563,49 @@ export class Engine extends EventEmitter {
     return items;
   }
 
+  /** What a side build changed compared with where it started (committed + not yet saved). */
+  async buildChanges(dir: string, branch: string): Promise<{ files: { status: string; path: string }[]; unsaved: number; commits: number; base: string | null }> {
+    const p = this.project;
+    if (!p) throw new Error("Open a project first");
+    const base = (await run("git", ["merge-base", "HEAD", branch], p.root)).stdout.trim() || null;
+    if (!base) return { files: [], unsaved: 0, commits: 0, base: null };
+    const diff = await run("git", ["diff", "--name-status", "--no-renames", base], dir);
+    const files = diff.stdout.split("\n").filter(Boolean).map((l) => { const [status, ...rest] = l.split("\t"); return { status: status!.charAt(0), path: rest.join("\t") }; });
+    const st = await run("git", ["status", "--porcelain"], dir);
+    const untracked = st.stdout.split("\n").filter((l) => l.startsWith("?? ")).map((l) => ({ status: "A", path: l.slice(3) }));
+    for (const u of untracked) if (!files.some((f) => f.path === u.path)) files.push(u);
+    const commits = Number((await run("git", ["rev-list", "--count", `${base}..${branch}`], p.root)).stdout.trim()) || 0;
+    return { files, unsaved: st.stdout.split("\n").filter(Boolean).length, commits, base };
+  }
+
+  /** Saves everything in a side build as one commit on its own branch. */
+  async saveBuild(dir: string, message: string): Promise<void> {
+    for (const a of [["add", "-A"], ["-c", "user.name=BuildPilot", "-c", "user.email=buildpilot@localhost", "commit", "-q", "-m", message]]) {
+      const r = await run("git", a, dir, { timeoutMs: 60_000 });
+      if (r.code !== 0 && !/nothing to commit/.test(r.stdout + r.stderr)) throw new Error(r.stderr.trim() || "git commit failed");
+    }
+  }
+
+  /**
+   * Merges a side build's branch into the project's current branch. Never leaves the project half-merged:
+   * on conflicts it aborts and reports the conflicting files. Refuses if the main project has unsaved changes.
+   */
+  async mergeBuild(branch: string): Promise<{ merged: boolean; conflicts: string[]; message: string }> {
+    const p = this.project;
+    if (!p) throw new Error("Open a project first");
+    if (!/^(bp|buildpilot)\/[A-Za-z0-9._\/-]+$/.test(branch)) throw new Error("Not a BuildPilot build branch");
+    const dirty = (await run("git", ["status", "--porcelain", "--untracked-files=no"], p.root)).stdout.trim();
+    if (dirty) return { merged: false, conflicts: [], message: "Your main project has unsaved changes. Make a save point (or commit) first, then merge." };
+    const r = await run("git", ["-c", "user.name=BuildPilot", "-c", "user.email=buildpilot@localhost", "merge", "--no-ff", "-m", `Merge build ${branch} (BuildPilot)`, branch], p.root, { timeoutMs: 120_000 });
+    if (r.code === 0) {
+      this.addDecision(`Merged ${branch}`, "Merged by BuildPilot after review.");
+      return { merged: true, conflicts: [], message: `Merged ${branch}.` };
+    }
+    const conflicts = (await run("git", ["diff", "--name-only", "--diff-filter=U"], p.root)).stdout.split("\n").filter(Boolean);
+    await run("git", ["merge", "--abort"], p.root);
+    return { merged: false, conflicts, message: conflicts.length ? `Both builds changed the same lines in ${conflicts.length} file${conflicts.length === 1 ? "" : "s"}. Nothing was changed.` : r.stderr.trim() || "Merge failed. Nothing was changed." };
+  }
+
   /** Removes a finished build's folder. Never deletes uncommitted work (git refuses dirty worktrees) and keeps the branch. */
   async removeBuild(dir: string): Promise<void> {
     const p = this.project;

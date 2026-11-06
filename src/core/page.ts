@@ -22,6 +22,8 @@ export interface Limits {
   forecastLocked: boolean;
   /** Minutes of history the forecast is based on. */
   basisMin?: number | null;
+  /** How accurate past forecasts were (null until at least one window was graded). */
+  accuracy?: string | null;
 }
 /** A build plus its share of today's usage (from Claude Code's own per-session estimate; Pro). */
 export type PageBuild = WidgetSession & { share: number | null; costUsd?: number | null };
@@ -35,6 +37,8 @@ export interface PageData {
   /** Claude Code's own list-price estimate, summed over today's builds. Only meaningful for API billing. */
   costTodayUsd: number | null;
   tips: Tip[];
+  /** BuildPilot side builds (worktrees) with their changes; filled in by the extension. */
+  side?: { name: string; dir: string; branch: string; changed: number; unsaved: number; commits: number }[];
   plan: { pro: boolean; licensed: boolean; trialDaysLeft: number | null; trialEndsAt?: number | null; sellable: boolean; freeLeft: number | null; price: string; points: string[] };
 }
 
@@ -69,7 +73,30 @@ function pickLimit(st: LiveStatus[], pct: "fiveHourPct" | "sevenDayPct", at: "fi
 }
 
 // ---------- forecast ----------
-interface SampleFile { resetsAt: number | null; samples: [number, number][] }
+/** One finished 5-hour window: did the forecast get it right? */
+export interface WindowResult { endedAt: number; hit: boolean; errorMin: number | null; falseAlarm: boolean }
+export interface SampleFile { resetsAt: number | null; samples: [number, number][]; forecasts?: [number, number][]; history?: WindowResult[] }
+
+/** Grade a finished window: compare forecasts made 20–90 min before the limit was hit with when it really was. */
+export function gradeWindow(f: SampleFile, endedAt: number): WindowResult | null {
+  const preds = f.forecasts ?? [];
+  if (!preds.length) return null;
+  const hitAt = f.samples.find(([, p]) => p >= 99)?.[0] ?? null;
+  if (hitAt == null) return { endedAt, hit: false, errorMin: null, falseAlarm: preds.some(([made, at]) => at < (f.resetsAt ?? endedAt) && at - made < 60 * 60_000) };
+  const near = preds.filter(([made]) => made <= hitAt - 20 * 60_000 && made >= hitAt - 90 * 60_000);
+  if (!near.length) return { endedAt, hit: true, errorMin: null, falseAlarm: false };
+  const err = near.reduce((a, [, at]) => a + Math.abs(at - hitAt), 0) / near.length / 60_000;
+  return { endedAt, hit: true, errorMin: Math.round(err), falseAlarm: false };
+}
+
+/** Plain summary of past accuracy, or null until there's evidence. */
+export function accuracyText(history: WindowResult[] | undefined): string | null {
+  const graded = (history ?? []).filter((h) => h.errorMin != null);
+  if (!graded.length) return null;
+  const errs = graded.map((h) => h.errorMin!).sort((a, b) => a - b);
+  const median = errs[Math.floor(errs.length / 2)]!;
+  return `Past forecasts were off by about ${median} min (${graded.length} window${graded.length === 1 ? "" : "s"}).`;
+}
 const samplesPath = (home: string) => path.join(home, "limit-samples.json");
 
 /** Remember 5-hour usage over time (one window at a time) so we can forecast when it runs out. */
@@ -82,9 +109,12 @@ export function recordLimitSample(home: string, pct: number | null, resetsAt: nu
     /* first run */
   }
   if (pct == null) return f;
-  // A new window (different reset time, or usage dropped) starts a fresh series.
+  // A new window (different reset time, or usage dropped) starts a fresh series; grade the old one first.
   const last = f.samples[f.samples.length - 1];
-  if ((resetsAt != null && f.resetsAt != null && Math.abs(resetsAt - f.resetsAt) > 60_000) || (last && pct < last[1] - 1)) f = { resetsAt, samples: [] };
+  if ((resetsAt != null && f.resetsAt != null && Math.abs(resetsAt - f.resetsAt) > 60_000) || (last && pct < last[1] - 1)) {
+    const g = gradeWindow(f, now);
+    f = { resetsAt, samples: [], forecasts: [], history: [...(f.history ?? []), ...(g ? [g] : [])].slice(-10) };
+  }
   f.resetsAt = resetsAt ?? f.resetsAt;
   if (!last || now - last[0] >= 60_000 || pct !== last[1]) f.samples.push([now, pct]);
   f.samples = f.samples.slice(-120);
@@ -94,6 +124,21 @@ export function recordLimitSample(home: string, pct: number | null, resetsAt: nu
     /* read-only home: forecast just stays unknown */
   }
   return f;
+}
+
+/** Remember what we predicted (at most every 5 minutes) so the window can be graded later. */
+export function recordForecast(home: string, f: SampleFile, fullAt: number | null, now: number): void {
+  if (fullAt == null) return;
+  const fc = (f.forecasts ??= []);
+  const last = fc[fc.length - 1];
+  if (last && now - last[0] < 5 * 60_000) return;
+  fc.push([now, fullAt]);
+  f.forecasts = fc.slice(-80);
+  try {
+    fs.writeFileSync(samplesPath(home), JSON.stringify(f));
+  } catch {
+    /* read-only */
+  }
 }
 
 /** Least-squares line through the samples. Needs ≥3 points over ≥10 minutes and rising usage. */
@@ -127,7 +172,8 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
   const samples = recordLimitSample(engine.home, five.pct, five.resetsAt, now);
   const p = planOf(engine.home, env, now);
   const forecast = forecastFullAt(samples, now);
-  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: p.pro ? forecast : null, forecastLocked: !p.pro && five.pct != null, basisMin: samples.samples.length >= 2 ? Math.round((samples.samples[samples.samples.length - 1]![0] - samples.samples[0]![0]) / 60_000) : null };
+  recordForecast(engine.home, samples, forecast, now);
+  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: p.pro ? forecast : null, forecastLocked: !p.pro && five.pct != null, accuracy: accuracyText(samples.history), basisMin: samples.samples.length >= 2 ? Math.round((samples.samples[samples.samples.length - 1]![0] - samples.samples[0]![0]) / 60_000) : null };
   const midnight = new Date(now).setHours(0, 0, 0, 0);
   const today = statuses.filter((s) => s.updatedAt >= midnight && s.costUsd != null);
   const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd!, 0) : null;

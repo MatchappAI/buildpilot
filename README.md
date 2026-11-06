@@ -7,7 +7,7 @@ Made for people who build with Claude Code and don't want to babysit it, includi
 - **Builds:** every Claude Code chat across your projects, needs-you first, with **Review in terminal**. Nothing is approved until you approve it there.
 - **Plan limits:** 5-hour and weekly usage, when each resets, and on Pro, *"At this pace you'll run out around 5:47 PM, then wait 1 h 37 min."* API-key users see spend instead.
 - **Tips for right now:** only when they apply, each with one button. Chat nearly full → **Start fresh chat**. A build stuck repeating a fix → plan first. Two builds in one folder → **New build**. No Git → **Turn on undo**.
-- **+ New build:** another Claude in its own copy of the project, so builds can't undo each other's work. It copies your `.env` files and installs packages.
+- **+ New build → Review → Merge:** another Claude in its own copy of the project (it copies your `.env` files and installs packages), so builds can't undo each other's work. When it's done, **Review** shows each changed file before ↔ after and **Merge** brings it in. On a conflict nothing changes, and you get a ready fix prompt.
 - **Prompt box:** plain words in, an expert prompt out, with your project's setup, guardrails, checks and "settle these first" questions.
 
 Everything stays on your computer. [How it compares](docs/COMPARISON.md) · [Privacy](docs/SECURITY.md)
@@ -19,13 +19,13 @@ Everything stays on your computer. [How it compares](docs/COMPARISON.md) · [Pri
 **Inside Claude Code (any editor, or none):**
 
 ```
-/plugin marketplace add buildpilot/buildpilot
+/plugin marketplace add MatchappAI/buildpilot
 /plugin install buildpilot@buildpilot
 ```
 
 Then use `/bp` (builds, limits, tips), `/bp-connect` (exact chat % and limits), `/bp-new <name>`, `/bp-prompt <idea>` and `/bp-license <key>`.
 
-**Terminal:** `bp limits` · `bp new "<name>"` · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
+**Terminal:** `bp limits` · `bp new "<name>"` · `bp go` (jump to the build that needs you) · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
 
 From source: `npm install && npm run package && code --install-extension dist/buildpilot.vsix`
 

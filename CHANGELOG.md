@@ -5,6 +5,9 @@
 - **Limits:** 5-hour and weekly use with reset times. Pro adds when you'll run out at your pace (and how long until it's back) and which build is using your limit. API-key users see spend per build.
 - **Tips with one-click fixes:** Start fresh chat, Turn on undo, pause the biggest build, plan first when stuck, New build when two builds share a folder.
 - **+ New build:** another Claude in its own copy of the project, with readable names. It copies `.env` files and installs packages. Remove Finished Builds, plus `bp new`, `bp builds` and `bp done`.
+- **Review & merge side builds:** see each changed file before ↔ after, then Merge (it saves first; on conflicts nothing changes and you get a fix prompt). Remove the folder after (the branch is kept).
+- **Forecast grades itself:** after each 5-hour window, "past forecasts were off by about N min".
+- `bp go [name]` jumps to the waiting build's tmux pane.
 - **Prompts:** titled from your words, with "settle these first" questions. Start Claude with it, or use it in your open Claude. Prompts count only when used.
 - **Free and Pro ($9/mo):** a 14-day Pro trial for everyone; nothing is blocked before Pro is on sale. Signed license keys, a Stripe → key license Worker (`server/`), `bp license`.
 - **Claude Code plugin:** `/plugin install buildpilot@buildpilot` adds `/bp`, `/bp-prompt`, `/bp-new`, `/bp-connect` and `/bp-license`. Also `bp limits` and `bp tmux`.

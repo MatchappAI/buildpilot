@@ -148,6 +148,7 @@ Everyday
   bp limits                 your builds, chat % full, plan limits + forecast, tips
   bp new "<name>"           start another build in its own copy of this project (--no-env: don't copy .env files)
   bp builds · bp done <name>  list extra builds · remove a finished one (branch kept)
+  bp go [name]              jump to the build that needs you (its tmux pane, or prints cd)
   bp prompt auto "<what>"   turn plain words into an expert prompt (prints it; run: claude "$(bp prompt auto '...')")
   bp license [key]          show your plan, or unlock Pro with a key
 
@@ -173,6 +174,30 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     if (L.fullAt) bits.push(`out ~${new Date(L.fullAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
     if (p.plan.sellable && p.plan.trialDaysLeft != null && p.plan.trialDaysLeft <= 3) bits.push(`trial ${p.plan.trialDaysLeft}d`);
     process.stdout.write(bits.join(" "));
+    return;
+  }
+  if (cmd === "go") {
+    const engine = new Engine({ light: true });
+    await engine.start();
+    const w = widgetData(engine);
+    engine.stop();
+    const want = rest[0]?.toLowerCase();
+    const target = want ? w.sessions.find((s) => s.folder.toLowerCase() === want || s.folder.toLowerCase().includes(want)) : w.sessions.find((s) => s.needsYou) ?? w.sessions[0];
+    if (!target) {
+      console.log(want ? `No build matching "${rest[0]}". Running: ${w.sessions.map((s) => s.folder).join(", ") || "none"}` : "No builds running.");
+      process.exitCode = 1;
+      return;
+    }
+    if (process.env.TMUX) {
+      const panes = await new Promise<string>((resolve) => execFile("tmux", ["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_path}"], { timeout: 5000 }, (_e, out) => resolve(String(out ?? ""))));
+      const hit = panes.split("\n").map((l) => l.split("\t")).find(([, p]) => p && path.resolve(p) === path.resolve(target.cwd));
+      if (hit?.[0]) {
+        execFile("tmux", ["select-window", "-t", hit[0]], () => execFile("tmux", ["select-pane", "-t", hit[0]!], () => {}));
+        console.log(`→ ${target.folder}${target.needsYou ? ` (waiting: ${target.reason || target.word})` : ""}`);
+        return;
+      }
+    }
+    console.log(`${target.folder}${target.needsYou ? ` is waiting: ${target.reason || target.word}` : ""}\n  cd "${target.cwd}"`);
     return;
   }
   if (cmd === "builds" || cmd === "done") {
@@ -338,6 +363,7 @@ function limitsText(p: PageData): string {
   else if (L.fiveHourPct != null || L.sevenDayPct != null) {
     lines.push("", `Next 5 hours  ${L.fiveHourPct != null ? `${Math.round(L.fiveHourPct)}%` : "unknown"}${L.fiveHourResetsAt ? ` · resets ${t(L.fiveHourResetsAt)}` : ""}${L.fullAt ? ` · runs out ~${t(L.fullAt)} at this pace` : ""}`);
     lines.push(`This week     ${L.sevenDayPct != null ? `${Math.round(L.sevenDayPct)}%` : "unknown"}`);
+    if (L.fullAt) lines.push(`              (forecast = straight line through your last ${L.basisMin ?? "?"} min${L.accuracy ? `; ${L.accuracy.toLowerCase()}` : ""})`);
   } else lines.push("", "Plan limits   not reported yet. Turn on with /bp-connect (plugin) or: bp statusline install");
   if (p.tips.length) lines.push("", "Tips", ...p.tips.map((x) => `  → ${x.text}`));
   return lines.join("\n");

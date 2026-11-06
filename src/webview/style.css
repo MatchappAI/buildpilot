@@ -118,3 +118,5 @@ body.match .summary, body.match .paywall, body.match code { background: var(--ca
 .locked { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
 .blur { filter: blur(4px); user-select: none; color: var(--ink); }
 .lock-link { margin-left: 6px; font-weight: 600; }
+.side { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.side h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }

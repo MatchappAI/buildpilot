@@ -30,6 +30,7 @@ const full = (o: Partial<PageData> = {}): PageData => ({
   limits: { fiveHourPct: 72, fiveHourResetsAt: now + 2 * 3600_000, sevenDayPct: 30, sevenDayResetsAt: now + 3 * 86400_000, fullAt: now + 40 * 60_000, forecastLocked: false },
   tips: [{ key: "memory", text: "blog's chat is 88% full, so Claude will start forgetting details.", why: "x", action: "startFresh", actionLabel: "Start fresh", cwd: "/p/blog" }],
   plan: freePlan,
+  side: [{ name: "shop-checkout", dir: "/p/shop-checkout", branch: "bp/checkout", changed: 3, unsaved: 1, commits: 0 }, { name: "shop-empty", dir: "/p/shop-empty", branch: "bp/empty", changed: 0, unsaved: 0, commits: 0 }],
   ...o,
 });
 
@@ -135,6 +136,19 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     expect(doc.body.textContent).toMatch(/~\$4\.20/);
     expect(doc.body.textContent).not.toMatch(/Next 5 hours/);
+  });
+
+  it("side builds: review and merge a build with changes; remove an empty one", async () => {
+    const { doc, sent, tick, click } = mount(full());
+    await tick();
+    await tick();
+    expect(doc.querySelector(".side")?.textContent).toMatch(/3 files changed · not saved yet/);
+    await click('[data-act="reviewBuild"]');
+    await click('[data-act="mergeBuild"]');
+    await click('[data-act="removeBuild"]');
+    expect(sent.find((m) => m.type === "mergeBuild")).toMatchObject({ dir: "/p/shop-checkout", branch: "bp/checkout" });
+    expect(sent.find((m) => m.type === "removeBuild")).toMatchObject({ dir: "/p/shop-empty" });
+    expect(sent.some((m) => m.type === "reviewBuild")).toBe(true);
   });
 
   it("tips have one clear action", async () => {

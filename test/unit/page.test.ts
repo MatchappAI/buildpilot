@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { describe, expect, it } from "vitest";
-import { billingOf, forecastFullAt, recentStatuses, recordLimitSample } from "../../src/core/page";
+import { accuracyText, billingOf, forecastFullAt, gradeWindow, recentStatuses, recordForecast, recordLimitSample } from "../../src/core/page";
 import { tips, TipInput } from "../../src/core/tips";
 import { readLiveStatus } from "../../src/core/hooks";
 import { tmpDir } from "./helpers";
@@ -85,5 +85,29 @@ describe("tips for right now", () => {
     const t = tips({ ...base, stuck: ["Same error 4 times"], builds: [b({ contextPct: 95 }), b({ id: "y" })], limits: { ...base.limits, fiveHourPct: 95, sevenDayPct: 95 }, unsaved: 30 });
     expect(t.length).toBe(3);
     expect(t.map((x) => x.key)).toContain("stuck");
+  });
+});
+
+describe("forecast accuracy", () => {
+  it("grades a finished window: forecasts 20–90 min before the hit vs the real hit time", () => {
+    const t0 = 1_000_000_000_000;
+    const f = { resetsAt: t0 + 5 * 3600_000, samples: [[t0, 50], [t0 + 60 * 60_000, 80], [t0 + 120 * 60_000, 99]] as [number, number][], forecasts: [[t0 + 60 * 60_000, t0 + 130 * 60_000], [t0 + 80 * 60_000, t0 + 110 * 60_000]] as [number, number][] };
+    const g = gradeWindow(f, t0 + 300 * 60_000)!;
+    expect(g).toMatchObject({ hit: true, falseAlarm: false });
+    expect(g.errorMin).toBe(10); // |130-120| and |110-120| → 10 min
+    expect(accuracyText([g])).toBe("Past forecasts were off by about 10 min (1 window).");
+    expect(accuracyText([])).toBeNull();
+  });
+
+  it("a new window grades the old one and keeps history; a predicted-but-never-hit window is a false alarm", () => {
+    const home = tmpDir();
+    const t0 = 1_000_000_000_000;
+    const reset1 = t0 + 2 * 3600_000;
+    let f = recordLimitSample(home, 70, reset1, t0);
+    recordForecast(home, f, t0 + 30 * 60_000, t0);
+    f = recordLimitSample(home, 75, reset1, t0 + 10 * 60_000);
+    f = recordLimitSample(home, 2, reset1 + 5 * 3600_000, reset1 + 60_000); // new window
+    expect(f.samples).toEqual([[reset1 + 60_000, 2]]);
+    expect(f.history?.[0]).toMatchObject({ hit: false, falseAlarm: true });
   });
 });

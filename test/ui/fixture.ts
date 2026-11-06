@@ -42,6 +42,7 @@ import { PRO_POINTS } from "../../src/core/license";
         ],
         needs: 1,
         working: 2,
+        side: [{ name: "invoice-app-checkout", dir: repo + "-checkout", branch: "bp/checkout", changed: 4, unsaved: 2, commits: 1 }],
         limits: plan(58, 31, null),
         tips: [{ key: "memory", text: "landing-page's chat is 84% full, so Claude will start forgetting details. Start a fresh chat that picks up where it left off.", why: "", action: "startFresh", actionLabel: "Start fresh chat", cwd: repo }],
       }),

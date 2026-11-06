@@ -90,7 +90,7 @@
     <li>Open a terminal. On the page, click <b>Connect</b>. Want to check first? <b>See exactly what changes</b> shows the exact lines it adds.</li>
   </ol>
   <h3>Inside Claude Code (any editor, or none)</h3>
-  <pre>/plugin marketplace add buildpilot/buildpilot
+  <pre>/plugin marketplace add MatchappAI/buildpilot
 /plugin install buildpilot@buildpilot</pre>
   <p class="small">Then <code>/bp</code> shows your builds, limits and tips. Also <code>/bp-connect</code>, <code>/bp-new</code>, <code>/bp-prompt</code> and <code>/bp-license</code>.</p>
   <h3>What Connect changes</h3>
@@ -112,7 +112,7 @@
       <p>Each Claude chat you have running, the one that needs you first. <b>Review in terminal</b> opens its terminal. Nothing is approved until you approve it there. <b>Open terminal</b> jumps to any build.</p>
       <p><b>chat 46% full</b> means how much of this chat Claude can still keep in mind. Near 100% it starts forgetting details, so start a fresh chat.</p>
       <h3>+ New build</h3>
-      <p>Starts another Claude in its own copy of the project, so two builds can't undo each other's work. It copies your <code>.env</code> files and installs packages. Two builds use your limit about twice as fast. When it's finished, merge its branch and use <b>BuildPilot: Remove Finished Builds</b>.</p>
+      <p>Starts another Claude in its own copy of the project, so two builds can't undo each other's work. It copies your <code>.env</code> files and installs packages. Two builds use your limit about twice as fast. When it's done it shows under <b>Side builds</b>: <b>Review</b> shows each changed file before ↔ after, and <b>Merge</b> brings the work into your main project. If both builds changed the same lines, nothing changes and you get a ready "fix it" prompt for Claude. Then <b>Remove</b> the folder (its branch is kept).</p>
       <p class="small">No Git yet? BuildPilot offers <b>Turn on undo</b> first, which sets up Git and a first save point in one click.</p>
     </div>
   </div>
@@ -182,6 +182,7 @@
   <h2>The same in your terminal</h2>
   <pre>bp limits                  builds, chat % full, plan limits + forecast, tips
 bp new "checkout"          another build in its own copy (opens a tmux window in tmux)
+bp go [NAME]               jump to the build that needs you (tmux)
 bp builds · bp done NAME   list extra builds · remove a finished one (branch kept)
 bp prompt auto "..."       expert prompt from plain words
 bp tmux                    one-line status for your tmux bar

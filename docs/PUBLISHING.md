@@ -34,7 +34,7 @@ The package is ready: `npm run package` builds `dist/buildpilot.vsix` with the M
 
 ## Claude Code plugin (one-line install for every Claude Code user)
 The plugin lives in `plugin/`, and the marketplace file is `.claude-plugin/marketplace.json`, both in this repo. Claude Code's validator passes both (`claude plugin validate ./plugin`, `claude plugin validate .`). It was installed and checked in a scratch config: hooks fired, and events reached the spool.
-1. Push this repo to a **public** GitHub repo. The README assumes `buildpilot/buildpilot`; if yours differs, change the two install lines in `README.md` and `docs/marketplace/README.md`.
+1. Done 2026-11-06: public repo https://github.com/MatchappAI/buildpilot (plugin marketplace = this repo).
 2. Users run `/plugin marketplace add <owner>/<repo>` and then `/plugin install buildpilot@buildpilot`. On Claude Code 2.1.275 or later, `/plugin install buildpilot --marketplace <owner>/<repo>` does both in one step.
 3. Every release: `npm run build` (it refreshes `plugin/bin/cli.js`), then bump `version` in `plugin/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, then commit and push.
 4. Optional: submit to Anthropic's plugin directory once the repo is public.

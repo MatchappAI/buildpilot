@@ -148,7 +148,19 @@ function buildsSection(): string {
         <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>
       </li>`)
       .join("")}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
+    ${sideSection()}
   </section>`;
+}
+
+function sideSection(): string {
+  const side = P!.side ?? [];
+  if (!side.length) return "";
+  return `<div class="side"><h3>Side builds</h3><ul class="builds">${side
+    .map((s) => `<li>
+      <div class="b-main"><div class="b-name">${esc(s.name)}</div><div class="b-sub">${s.changed ? `${s.changed} file${s.changed === 1 ? "" : "s"} changed${s.unsaved ? " · not saved yet" : ""}` : "No changes yet"}</div></div>
+      ${s.changed ? `<button class="link" data-act="reviewBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="See each changed file, before and after">Review</button><button class="secondary small-btn" data-act="mergeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="Bring this build's work into your main project">Merge</button>` : `<button class="link" data-act="removeBuild" data-dir="${esc(s.dir)}" title="Remove this folder (its branch is kept)">Remove</button>`}
+    </li>`)
+    .join("")}</ul></div>`;
 }
 
 function bar(label: string, pct: number | null, right: string): string {
@@ -176,7 +188,7 @@ function limitsSection(): string {
   if (L.fullAt) {
     const gap = L.fiveHourResetsAt && L.fiveHourResetsAt > L.fullAt ? Math.round((L.fiveHourResetsAt - L.fullAt) / 60_000) : 0;
     const urgent = L.fullAt - Date.now() < 3600_000;
-    forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}. <span class="muted small">Estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}.</span></p>`;
+    forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}. <span class="muted small">Estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}.${L.accuracy ? ` ${esc(L.accuracy)}` : ""}</span></p>`;
   } else if (L.forecastLocked && P!.plan.sellable) {
     forecast = `<p class="locked">At this pace you'll run out around <span class="blur" aria-hidden="true">0:00 PM</span> <a href="#" data-act="upgrade" class="lock-link">Unlock with Pro</a></p>`;
   }
@@ -255,6 +267,7 @@ async function act(el: HTMLElement): Promise<void> {
     case "useInOpen": void call("promptUsed"); await call("useInOpen", { text: promptText }); return flash("Copied. Paste it into Claude (Cmd/Ctrl+V)");
     case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
     case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd });
+    case "reviewBuild": case "mergeBuild": case "removeBuild": return void call(a, { dir: el.dataset.dir, branch: el.dataset.branch });
     case "tip": {
       const t = el.dataset.tip;
       if (t === "startFresh") return void call("startFresh", { cwd: el.dataset.cwd });

@@ -47,7 +47,7 @@
     "lint": "eslint src test",
     "test": "vitest run",
     "test:smoke": "node scripts/build.mjs && node test/smoke/run.mjs",
-    "package": "node scripts/build.mjs && ([ \"$(uname)\" != Darwin ] || bash scripts/build-widget.sh) && vsce package --no-dependencies --readme-path docs/marketplace/README.md --no-rewrite-relative-links --allow-missing-repository --out dist/buildpilot.vsix",
+    "package": "node scripts/build.mjs && ([ \"$(uname)\" != Darwin ] || bash scripts/build-widget.sh) && vsce package --no-dependencies --readme-path docs/marketplace/README.md --no-rewrite-relative-links --out dist/buildpilot.vsix",
     "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke",
     "guide": "P=$(mktemp -d) && \"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --user-data-dir=\"$P\" --no-first-run --allow-file-access-from-files --no-pdf-header-footer --print-to-pdf=dist/START-HERE.pdf \"file://$PWD/docs/guide/guide.html\" 2>/dev/null; rm -rf \"$P\"",
     "desktop": "npm run package && npm run guide && node scripts/desktop.mjs",
@@ -384,5 +384,13 @@
         }
       ]
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MatchappAI/buildpilot"
+  },
+  "homepage": "https://github.com/MatchappAI/buildpilot#readme",
+  "bugs": {
+    "url": "https://github.com/MatchappAI/buildpilot/issues"
   }
 }

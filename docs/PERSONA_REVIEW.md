@@ -64,12 +64,12 @@ Caveat: some round-3 reviewers saw screenshots built from stale fixture text (ol
 ## What would make them pay (round-3 verdicts)
 | Ask | Who | Status |
 |---|---|---|
-| Diff/merge review for parallel builds (finish a build from the page) | Designer, Staff engineer, Cursor user | Not built. This is the strongest Pro candidate. |
+| Diff/merge review for parallel builds (finish a build from the page) | Designer, Staff engineer, Cursor user | **Built (v0.5.0):** Side builds → Review (before ↔ after) → Merge (conflicts abort safely, with a fix prompt) |
 | One-click pause/queue, plus the new run-out time if paused | Indie hacker | Not built (Claude Code exposes no pause API to hooks). Today it's guidance plus an Open button. |
-| Forecast accuracy history (predicted vs actual) | Indie hacker, Terminal user | Not built. Cheap to add from the existing samples. |
+| Forecast accuracy history (predicted vs actual) | Indie hacker, Terminal user | **Built:** each window is graded and shown as "past forecasts were off by about N min" |
 | Per-repo usage export (CSV) and a team/seat plan | Agency developer | Not built. |
 | Annual ($79) or student price | Student, Terminal user | Stripe setup only (see PUBLISHING.md). |
 | Dark by default | Staff engineer, Designer | Deliberately white by default (owner's call). One click: "Match my theme". |
-| `bp go <name>` to jump to the waiting tmux pane | Terminal user | Not built. |
+| `bp go <name>` to jump to the waiting tmux pane | Terminal user | **Built** |
 
 **Bottom line:** the free product is easy, clear and trusted by all 8 user types. Pro doesn't yet have a feature people would pay $9/mo for. The diff/merge review and a provably accurate forecast are the best bets.
