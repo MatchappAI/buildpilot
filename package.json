@@ -81,28 +81,10 @@
     }
   },
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "buildpilot",
-          "title": "BuildPilot",
-          "icon": "media/activity.svg"
-        }
-      ]
-    },
-    "views": {
-      "buildpilot": [
-        {
-          "type": "webview",
-          "id": "buildpilot.main",
-          "name": "Mission Control"
-        }
-      ]
-    },
     "commands": [
       {
         "command": "buildpilot.focus",
-        "title": "Open Mission Control",
+        "title": "Open",
         "category": "BuildPilot"
       },
       {
@@ -377,23 +359,6 @@
       }
     ],
     "menus": {
-      "view/title": [
-        {
-          "command": "buildpilot.newPrompt",
-          "when": "view == buildpilot.main",
-          "group": "navigation@1"
-        },
-        {
-          "command": "buildpilot.refresh",
-          "when": "view == buildpilot.main",
-          "group": "navigation@2"
-        },
-        {
-          "command": "buildpilot.walkthrough",
-          "when": "view == buildpilot.main",
-          "group": "overflow"
-        }
-      ],
       "commandPalette": [
         {
           "command": "buildpilot.widgetLogin",

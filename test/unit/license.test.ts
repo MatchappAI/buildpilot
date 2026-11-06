@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { describe, expect, it } from "vitest";
-import { checkoutUrl, FREE_PROMPTS, gate, paywallText, readLicense, recordUse, saveLicense, verifyKey } from "../../src/core/license";
+import { checkoutUrl, gateParallel, FREE_PROMPTS, gate, paywallText, readLicense, recordUse, saveLicense, verifyKey } from "../../src/core/license";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "bp-lic-"));
 const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
@@ -25,7 +25,7 @@ describe("license gate", () => {
     expect(g.allowed).toBe(false);
     if (g.allowed) return;
     const id = JSON.parse(fs.readFileSync(path.join(home, "usage.json"), "utf8")).installId;
-    expect(g.paywall.message.startsWith("🔴 Free limit reached. Upgrade to unlock unlimited premium generations: https://")).toBe(true);
+    expect(g.paywall.message).toMatch(/^You've used your 20 free prompts\. Go unlimited for \$9\/mo: https:\/\//);
     expect(g.paywall.url).toContain(`client_reference_id=${id}`);
     expect(paywallText(g.paywall)).toContain("bp license");
   });
@@ -51,6 +51,12 @@ describe("license gate", () => {
     expect(fs.existsSync(path.join(home, "license.json"))).toBe(false);
     recordUse(home, {});
     expect(gate(home, { BUILDPILOT_AUTH_TOKEN: "nope" })).toMatchObject({ allowed: true, licensed: false, remaining: FREE_PROMPTS - 1 });
+  });
+
+  it("parallel builds: one extra free, more needs Pro", () => {
+    const home = tmp();
+    expect(gateParallel(home, 0, {}).allowed).toBe(true);
+    expect(gateParallel(home, 1, {}).allowed).toBe(false);
   });
 
   it("recovers from a corrupt usage file", () => {

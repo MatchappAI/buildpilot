@@ -292,9 +292,18 @@ export interface LiveStatus {
   model: string | null;
   fiveHourPct: number | null;
   sevenDayPct: number | null;
+  /** Epoch ms when each window resets (null = unknown). Present only on Claude plan (subscription) sessions. */
+  fiveHourResetsAt: number | null;
+  sevenDayResetsAt: number | null;
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+/** resets_at arrives as epoch seconds (or an ISO string); normalize to ms. */
+const epochMs = (v: unknown): number | null => {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return v < 1e12 ? v * 1000 : v;
+  if (typeof v === "string") { const t = Date.parse(v); return Number.isFinite(t) ? t : null; }
+  return null;
+};
 
 export function readLiveStatus(sessionId: string, home = buildpilotHome()): LiveStatus | null {
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(sessionId)) return null;
@@ -315,6 +324,8 @@ export function readLiveStatus(sessionId: string, home = buildpilotHome()): Live
       model: typeof d.model?.display_name === "string" ? (d.model.display_name as string).slice(0, 60) : typeof d.model?.id === "string" ? (d.model.id as string).slice(0, 60) : null,
       fiveHourPct: num(rl.five_hour?.used_percentage),
       sevenDayPct: num(rl.seven_day?.used_percentage),
+      fiveHourResetsAt: epochMs(rl.five_hour?.resets_at),
+      sevenDayResetsAt: epochMs(rl.seven_day?.resets_at),
     };
   } catch {
     return null;

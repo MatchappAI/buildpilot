@@ -7,42 +7,54 @@ export interface WebviewMessage {
   [k: string]: unknown;
 }
 
-/** Hosts the single BuildPilot webview. Strict CSP: only our bundled script/style, no remote content. */
-export class SidebarProvider implements vscode.WebviewViewProvider {
-  private view: vscode.WebviewView | null = null;
+/**
+ * Hosts the single BuildPilot page as an editor tab beside the terminal (no sidebar).
+ * Strict CSP: only our bundled script/style, no remote content.
+ */
+export class BuildPilotPanel {
+  private panel: vscode.WebviewPanel | null = null;
   private queue: unknown[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly _getState: () => unknown,
     private readonly onMessage: (m: WebviewMessage) => Promise<unknown>,
     private readonly extraRoots: vscode.Uri[] = [],
+    private readonly onOpen: () => void = () => {},
   ) {}
 
-  /** Webview-safe URI for a local file inside an allowed root (e.g. a Visual QA screenshot). */
   get visible(): boolean {
-    return !!this.view?.visible;
+    return !!this.panel?.visible;
   }
 
+  get isOpen(): boolean {
+    return !!this.panel;
+  }
+
+  /** Webview-safe URI for a local file inside an allowed root (e.g. a Visual QA screenshot). */
   toUri(file: string): string | null {
-    return this.view ? this.view.webview.asWebviewUri(vscode.Uri.file(file)).toString() : null;
+    return this.panel ? this.panel.webview.asWebviewUri(vscode.Uri.file(file)).toString() : null;
   }
 
-  resolveWebviewView(view: vscode.WebviewView): void {
-    this.view = view;
+  show(preserveFocus = false): void {
+    if (this.panel) {
+      this.panel.reveal(undefined, preserveFocus);
+      return;
+    }
     const media = vscode.Uri.joinPath(this.extensionUri, "media");
-    view.webview.options = { enableScripts: true, localResourceRoots: [media, ...this.extraRoots] };
+    const panel = vscode.window.createWebviewPanel("buildpilot.page", "BuildPilot", { viewColumn: vscode.ViewColumn.Beside, preserveFocus }, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media, ...this.extraRoots] });
+    this.panel = panel;
+    panel.iconPath = vscode.Uri.joinPath(media, "icon.png");
     const nonce = randomBytes(16).toString("base64");
-    const js = view.webview.asWebviewUri(vscode.Uri.joinPath(media, "webview.js"));
-    const css = view.webview.asWebviewUri(vscode.Uri.joinPath(media, "webview.css"));
-    const codicons = view.webview.asWebviewUri(vscode.Uri.joinPath(media, "codicon.css"));
-    view.webview.html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${view.webview.cspSource}; style-src ${view.webview.cspSource}; font-src ${view.webview.cspSource}; script-src 'nonce-${nonce}';">
+    const w = panel.webview;
+    const js = w.asWebviewUri(vscode.Uri.joinPath(media, "webview.js"));
+    const css = w.asWebviewUri(vscode.Uri.joinPath(media, "webview.css"));
+    w.html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${w.cspSource}; style-src ${w.cspSource}; font-src ${w.cspSource}; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="${codicons}"><link rel="stylesheet" href="${css}"><title>BuildPilot</title></head>
-<body><div id="app" role="application" aria-label="BuildPilot"><div class="loading">Starting BuildPilot…</div></div>
+<link rel="stylesheet" href="${css}"><title>BuildPilot</title></head>
+<body><div id="app" aria-label="BuildPilot"><div class="loading">Starting BuildPilot…</div></div>
 <script nonce="${nonce}" src="${js}"></script></body></html>`;
-    view.webview.onDidReceiveMessage(async (m: WebviewMessage) => {
+    w.onDidReceiveMessage(async (m: WebviewMessage) => {
       let result: unknown;
       let error: string | undefined;
       try {
@@ -50,14 +62,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       } catch (e) {
         error = (e as Error).message;
       }
-      if (m.id !== undefined) void view.webview.postMessage({ type: "reply", id: m.id, result, error });
+      if (m.id !== undefined) void w.postMessage({ type: "reply", id: m.id, result, error });
     });
-    view.onDidDispose(() => (this.view = null));
-    for (const q of this.queue.splice(0)) void view.webview.postMessage(q);
+    panel.onDidDispose(() => (this.panel = null));
+    for (const q of this.queue.splice(0)) void w.postMessage(q);
+    this.onOpen();
   }
 
   post(msg: unknown): void {
-    if (this.view) void this.view.webview.postMessage(msg);
+    if (this.panel) void this.panel.webview.postMessage(msg);
     else {
       this.queue = this.queue.filter((q) => (q as { type?: string }).type !== (msg as { type?: string }).type);
       this.queue.push(msg);

@@ -30,7 +30,7 @@ exports.run = async function () {
   for (const c of ["buildpilot.focus", "buildpilot.installHooks", "buildpilot.newPrompt", "buildpilot.copyHandoff", "buildpilot.checkpoint", "buildpilot.loadDemo"]) {
     await check(`command ${c} registered`, () => assert.ok(cmds.includes(c)));
   }
-  await check("sidebar view opens", async () => { await vscode.commands.executeCommand("buildpilot.main.focus"); await wait(800); });
+  await check("one-page view opens as an editor tab (no sidebar)", async () => { await vscode.commands.executeCommand("buildpilot.focus"); await wait(800); assert.ok(vscode.window.tabGroups.all.some((g) => g.tabs.some((t) => t.label === "BuildPilot")), "BuildPilot tab not found"); const pkg = require(require("path").join(__dirname, "../../../package.json")); assert.ok(!pkg.contributes.viewsContainers && !pkg.contributes.views, "sidebar still contributed"); });
   await check("hooks not installed in isolated config → recommendation shown", () => assert.ok(engine.snapshot().out.recommendations.some((r) => r.key === "hooks-missing")));
   // simulate a Claude Code hook event arriving via the spool exactly as hook.sh writes it
   const spool = path.join(process.env.BUILDPILOT_HOME, "spool");

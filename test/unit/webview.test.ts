@@ -1,50 +1,63 @@
 /**
- * Runs the REAL bundled sidebar (media/webview.js) in jsdom with a mocked VS Code API,
- * feeds it a state produced by the real engine, and clicks through it.
+ * Runs the REAL bundled page (media/webview.js) in jsdom with a mocked VS Code API,
+ * feeds it state + page data produced by the real engine, and clicks through it.
  */
 import * as fs from "fs";
 import * as path from "path";
 import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Engine, UiState } from "../../src/core/engine";
-import { GOALS } from "../../src/core/prompts";
+import { pageData, PageData } from "../../src/core/page";
 import { makeRepo, tmpDir } from "./helpers";
 
 const bundle = path.join(__dirname, "../../media/webview.js");
+const ext = fs.readFileSync(path.join(__dirname, "../../src/extension/extension.ts"), "utf8");
+const handled = new Set([...ext.matchAll(/case "([a-zA-Z]+)":/g)].map((m) => m[1]));
 let state: UiState;
+let page: PageData;
 let built: unknown;
-let paywallNext = false;
-const settings = { beginner: true, trusted: true, aiProvider: "none", aiModel: "", apiEnabled: true, apiAddress: "http://127.0.0.1:47821", apiAllowLan: false, notifications: "important", platform: "darwin", home: "~/.buildpilot", pocketUrl: "http://127.0.0.1:47821/pocket", screenshotUri: null, shellInstalled: false, openWithTerminal: true, widget: { supported: true, installed: false, running: false, startAtLogin: false } };
+
+const now = Date.now();
+const session = (o: Partial<PageData["builds"][number]>): PageData["builds"][number] => ({ id: "s1", folder: "shop", cwd: "/p/shop", status: "running", word: "working", reason: "", task: "Adding checkout", contextPct: 34, lastEventAt: now - 60_000, needsYou: false, next: null, ...o });
+const full = (o: Partial<PageData> = {}): PageData => ({
+  ...page,
+  connected: true,
+  builds: [session({}), session({ id: "s2", folder: "blog", cwd: "/p/blog", status: "awaiting_approval", word: "needs approval", reason: "Wants to run npm install", needsYou: true, contextPct: 88 })],
+  needs: 1,
+  working: 1,
+  billing: "plan",
+  limits: { fiveHourPct: 72, fiveHourResetsAt: now + 2 * 3600_000, sevenDayPct: 30, sevenDayResetsAt: now + 3 * 86400_000, fullAt: now + 40 * 60_000 },
+  tips: [{ key: "memory", text: "blog's memory is 88% full. Start a fresh build and paste the handoff.", why: "x", action: "handoff", actionLabel: "Copy handoff" }],
+  plan: { pro: false, freeLeft: 3, price: "$9/mo" },
+  ...o,
+});
 
 beforeAll(async () => {
   expect(fs.existsSync(bundle), "run `npm run build` first").toBe(true);
   const home = tmpDir();
   const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
   await engine.start();
-  const repo = makeRepo({ "package.json": JSON.stringify({ name: "ui-app", scripts: { test: "node -e 0", dev: "next dev" }, dependencies: { next: "15" } }), "src/a.ts": "1" });
+  const repo = makeRepo({ "package.json": JSON.stringify({ name: "ui-app", scripts: { test: "node -e 0" } }), "src/a.ts": "1" });
   await engine.openProject(repo);
-  engine.loadDemo();
-  // hostile content must render as text, never as HTML
-  engine.store.run("UPDATE events SET summary = ? WHERE session_id = 'demo-d4e5f6' AND hook_event = 'UserPromptSubmit'", ['<img src=x onerror="window.__xss=1">']);
   state = engine.snapshot();
+  page = pageData(engine, state, now, {});
   built = engine.prompt({ goal: "bugfix", request: "The login button does nothing on mobile Safari" }, state);
   engine.stop();
 });
 
-function mount(initial: Record<string, unknown> = {}) {
+function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean } = {}) {
   const sent: Record<string, unknown>[] = [];
   const dom = new JSDOM(`<!doctype html><html><body><div id="app"></div></body></html>`, { runScripts: "outside-only", url: "https://webview.local/" });
   const w = dom.window as unknown as Window & typeof globalThis & { acquireVsCodeApi: unknown; eval(s: string): unknown; __xss?: number };
-  let st: unknown = { tab: "overview", open: {}, goal: "feature", request: "", mustNotChange: "", acceptance: "", planFirst: true, ...initial };
+  let st: unknown = {};
   w.acquireVsCodeApi = () => ({
     getState: () => st,
     setState: (s: unknown) => (st = s),
     postMessage: (m: Record<string, unknown>) => {
       sent.push(m);
       const reply = (result: unknown) => setTimeout(() => w.postMessage({ type: "reply", id: m.id, result }, "*"), 0);
-      if (m.type === "goals") reply(GOALS);
-      else if (m.type === "buildPrompt") reply(paywallNext ? { paywall: { url: "https://buy.stripe.com/x" } } : { prompt: built, remaining: 3 });
-      else if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, settings }, "*"), 0);
+      if (m.type === "buildPrompt") reply(opts.paywall ? { paywall: { url: "https://buy.stripe.com/x" } } : { prompt: built, remaining: 3 });
+      else if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: opts.trusted ?? true } }, "*"), 0);
       else if (m.id) reply(null);
     },
   });
@@ -57,217 +70,164 @@ function mount(initial: Record<string, unknown> = {}) {
     el.click();
     await tick();
   };
-  return { w, doc, sent, tick, click };
+  const type = (id: string, v: string) => {
+    const ta = doc.getElementById(id) as HTMLTextAreaElement;
+    ta.value = v;
+    ta.dispatchEvent(new doc.defaultView!.Event("input"));
+  };
+  return { w, doc, sent, tick, click, type };
 }
 
-describe("sidebar UI (real bundle in jsdom)", () => {
-  it("renders the overview with the next step and DEMO banner", async () => {
-    const { doc, tick } = mount();
+describe("one-page UI (real bundle in jsdom)", () => {
+  it("is one page: no tabs, no sidebar chrome, white background", async () => {
+    const { doc, tick } = mount(full());
     await tick();
     await tick();
-    expect(doc.querySelector(".project")?.textContent).toContain("ui-app");
-    expect(doc.querySelector(".next-title")?.textContent?.length).toBeGreaterThan(5);
-    expect(doc.querySelector(".demo-banner")?.textContent).toMatch(/DEMO/);
-    expect(doc.querySelectorAll(".tab").length).toBe(6);
+    expect(doc.querySelectorAll("[role=tab], .tabs").length).toBe(0);
+    expect(doc.querySelector("h1")?.textContent).toBe("BuildPilot");
+    const css = fs.readFileSync(path.join(__dirname, "../../src/webview/style.css"), "utf8");
+    expect(css).toMatch(/--bg:\s*#fafafa/);
+    expect(css).not.toMatch(/--vscode-/);
   });
 
-  it("navigates tabs and shows live sessions with escaped content (no XSS)", async () => {
-    const { doc, w, click, tick } = mount();
+  it("not connected: one Connect card, nothing else to figure out", async () => {
+    const { doc, sent, tick, click } = mount({ ...page, connected: false });
     await tick();
-    await click('[data-tab="sessions"]');
-    expect(doc.querySelector(".tab.active")?.getAttribute("data-tab")).toBe("sessions");
-    expect(doc.querySelectorAll("article.session").length).toBe(2);
-    await click('details[data-key="sess:demo-d4e5f6"] summary');
+    await tick();
+    expect(doc.querySelector(".card.connect")?.textContent).toMatch(/Connect Claude Code/);
+    await click('[data-act="connectAll"]');
+    expect(sent.some((m) => m.type === "connectAll")).toBe(true);
+  });
+
+  it("builds: needs-you first with a Go button, memory shown in plain words, content escaped", async () => {
+    const { doc, w, sent, tick, click } = mount(full({ builds: [session({ folder: '<img src=x onerror="window.__xss=1">', needsYou: true, status: "blocked" })], needs: 1 }));
+    await tick();
+    await tick();
+    expect(doc.querySelector(".status")?.textContent).toMatch(/1 needs you/);
     expect(doc.body.innerHTML).toContain("&lt;img src=x");
-    expect(doc.querySelector("article.session img")).toBeNull();
     expect(w.__xss).toBeUndefined();
-    expect(doc.body.textContent).toMatch(/Needs approval/);
+    expect(doc.querySelector(".mem")?.textContent).toBe("34% memory");
+    await click('[data-act="openBuild"]');
+    expect(sent.find((m) => m.type === "openBuild")?.cwd).toBe("/p/shop");
   });
 
-  it("Prompt Studio: picks a goal, builds, and copies / starts Claude Code", async () => {
-    const { doc, sent, click, tick } = mount({ tab: "prompts" });
+  it("plan users see limits + reset + forecast, never dollars", async () => {
+    const { doc, tick } = mount(full());
     await tick();
     await tick();
-    await click('[data-goal-pick="bugfix"]');
-    const ta = doc.getElementById("req") as HTMLTextAreaElement;
-    ta.value = "The login button does nothing on mobile Safari";
-    ta.dispatchEvent(new doc.defaultView!.Event("input"));
+    const t = doc.body.textContent ?? "";
+    expect(t).toMatch(/Next 5 hours/);
+    expect(t).toMatch(/72% · resets/);
+    expect(t).toMatch(/This week/);
+    expect(t).toMatch(/At this pace you'll run out around/);
+    expect(t).not.toMatch(/\$\d/);
+  });
+
+  it("API users see today's spend instead of plan bars", async () => {
+    const { doc, tick } = mount(full({ billing: "api", costTodayUsd: 4.2, limits: { fiveHourPct: null, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null, fullAt: null } }));
+    await tick();
+    await tick();
+    expect(doc.body.textContent).toMatch(/~\$4\.20/);
+    expect(doc.body.textContent).not.toMatch(/Next 5 hours/);
+  });
+
+  it("tips have one clear action", async () => {
+    const { doc, sent, tick, click } = mount(full());
+    await tick();
+    await tick();
+    expect(doc.querySelectorAll(".tips li").length).toBe(1);
+    await click('[data-act="tip"]');
+    expect(sent.some((m) => m.type === "copyHandoff")).toBe(true);
+  });
+
+  it("prompt: plain words in, goal picked automatically, then Send to Claude / Copy", async () => {
+    const { doc, sent, tick, click, type } = mount(full());
+    await tick();
+    await tick();
+    type("req", "The login button is broken on mobile");
     await click('[data-act="build"]');
     await tick();
-    const req = sent.find((m) => m.type === "buildPrompt")!;
-    expect(req).toMatchObject({ goal: "bugfix", request: "The login button does nothing on mobile Safari" });
+    expect(sent.find((m) => m.type === "buildPrompt")).toMatchObject({ goal: "bugfix", request: "The login button is broken on mobile" });
     const out = doc.getElementById("ptext") as HTMLTextAreaElement;
     expect(out.value).toContain("# Goal: Fix a bug");
-    await click('[data-act="copyPrompt"]');
-    expect(sent.find((m) => m.type === "copy")?.text).toBe(out.value);
     await click('[data-act="sendPrompt"]');
     expect(sent.find((m) => m.type === "sendToClaude")?.text).toBe(out.value);
+    await click('[data-act="copyPrompt"]');
+    expect(doc.getElementById("flash")?.textContent).toBe("Copied");
   });
 
-  it("Prompt Studio: free limit shows one quiet line with Upgrade + Enter key, both handled", async () => {
-    paywallNext = true;
-    try {
-      const { doc, sent, click, tick } = mount({ tab: "prompts", request: "Fix the footer" });
+  it("empty prompt explains instead of doing nothing", async () => {
+    const { doc, sent, tick, click } = mount(full());
+    await tick();
+    await tick();
+    await click('[data-act="build"]');
+    expect(sent.some((m) => m.type === "buildPrompt")).toBe(false);
+    expect(doc.getElementById("flash")?.textContent).toMatch(/Type what you want/);
+  });
+
+  it("free limit: one quiet line with Upgrade + Enter key", async () => {
+    const { doc, sent, tick, click, type } = mount(full(), { paywall: true });
+    await tick();
+    await tick();
+    type("req", "Add a footer");
+    await click('[data-act="build"]');
+    await tick();
+    expect(doc.getElementById("ptext")).toBeNull();
+    expect(doc.body.textContent).toMatch(/You've used your free prompts\. Go unlimited — \$9\/mo/);
+    await click('[data-act="upgrade"]');
+    await click('[data-act="enterLicense"]');
+    expect(sent.some((m) => m.type === "upgrade") && sent.some((m) => m.type === "enterLicense")).toBe(true);
+  });
+
+  it("Pro shows a small pill and no counters", async () => {
+    const { doc, tick } = mount(full({ plan: { pro: true, freeLeft: null, price: "$9/mo" } }));
+    await tick();
+    await tick();
+    expect(doc.querySelector(".pill")?.textContent).toBe("Pro");
+    expect(doc.body.textContent).not.toMatch(/free prompt/);
+  });
+
+  it("every button posts a message the extension actually handles", async () => {
+    for (const p of [full(), { ...page, connected: false }]) {
+      const { doc, sent, tick, type } = mount(p);
       await tick();
       await tick();
-      await click('[data-act="build"]');
+      type("req", "Add a footer");
+      (doc.querySelector('[data-act="build"]') as HTMLElement).click();
       await tick();
-      expect(doc.getElementById("ptext")).toBeNull();
-      expect(doc.body.textContent).toContain("Free prompts used up.");
-      await click('[data-act="upgrade"]');
-      await click('[data-act="enterLicense"]');
-      const ext = fs.readFileSync(path.join(__dirname, "../../src/extension/extension.ts"), "utf8");
-      for (const t of ["upgrade", "enterLicense"]) {
-        expect(sent.some((m) => m.type === t)).toBe(true);
-        expect(ext).toContain(`case "${t}":`);
-      }
-    } finally {
-      paywallNext = false;
-    }
-  });
-
-  it("recommendation actions post the right messages", async () => {
-    const { doc, sent, click, tick } = mount({ tab: "supervisor" });
-    await tick();
-    await tick();
-    expect(doc.body.textContent).toMatch(/Ready to ship\?/);
-    expect(doc.body.textContent).toMatch(/Visual check/);
-    await click('[data-act="audit"]');
-    expect(sent.some((m) => m.type === "audit")).toBe(true);
-    (doc.getElementById("appUrl") as HTMLInputElement).value = "http://localhost:3000";
-    await click('[data-act="visualCheck"]');
-    expect(sent.find((m) => m.type === "visualCheck")?.url).toBe("http://localhost:3000");
-    await click('[data-act="dismiss"]');
-    expect(sent.some((m) => m.type === "dismiss")).toBe(true);
-  });
-
-  it("Memory: adds a requirement", async () => {
-    const { doc, sent, click, tick } = mount({ tab: "memory" });
-    await tick();
-    await tick();
-    (doc.getElementById("newReq") as HTMLInputElement).value = "Users can pay by card";
-    (doc.getElementById("newAcc") as HTMLInputElement).value = "test payment succeeds";
-    await click('[data-act="addReq"]');
-    expect(sent.find((m) => m.type === "addRequirement")).toMatchObject({ title: "Users can pay by card", acceptance: "test payment succeeds" });
-  });
-
-  it("Connect: shows Pocket, statusline toggle and integration controls", async () => {
-    const { doc, sent, click, tick } = mount({ tab: "connect" });
-    await tick();
-    await tick();
-    expect(doc.body.textContent).toMatch(/Pocket/);
-    expect(doc.body.textContent).toMatch(/Exact context % off/);
-    await click('[data-act="statuslineOn"]');
-    expect(sent.find((m) => m.type === "statusline")?.on).toBe(true);
-    await click('[data-act="copyPocketLink"]');
-    expect(sent.some((m) => m.type === "copyPocketLink")).toBe(true);
-  });
-
-  it("is keyboard and screen-reader accessible", async () => {
-    const { doc, tick } = mount();
-    await tick();
-    await tick();
-    // ARIA tabs with roving tabindex, arrow-key navigation
-    const tabs = [...doc.querySelectorAll('[role="tab"]')];
-    expect(tabs.filter((t) => t.getAttribute("tabindex") === "0").length).toBe(1);
-    expect(doc.getElementById("panel")?.getAttribute("aria-labelledby")).toBe("tab-overview");
-    (doc.getElementById("tab-overview") as HTMLElement).dispatchEvent(new doc.defaultView!.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-    await tick();
-    expect(doc.activeElement?.id).toBe("tab-sessions");
-    expect(doc.getElementById("panel")?.getAttribute("aria-labelledby")).toBe("tab-sessions");
-    (doc.getElementById("tab-sessions") as HTMLElement).dispatchEvent(new doc.defaultView!.KeyboardEvent("keydown", { key: "End", bubbles: true }));
-    await tick();
-    expect(doc.activeElement?.id).toBe("tab-connect");
-    // badge meaning is in the accessible name, not only a colored number
-    expect(doc.getElementById("tab-sessions")?.getAttribute("aria-label")).toMatch(/waiting for you/);
-    // live region announces sessions that need you
-    expect(doc.getElementById("live")?.textContent).toMatch(/waiting for you/);
-    // every text input/textarea/select has an accessible name
-    (doc.getElementById("tab-memory") as HTMLElement).click();
-    await tick();
-    for (const el of doc.querySelectorAll("input[type=text], textarea, select")) {
-      const id = el.getAttribute("id");
-      const named = el.getAttribute("aria-label") || (id && doc.querySelector(`label[for="${id}"]`));
-      expect(named, `unlabelled ${el.outerHTML.slice(0, 80)}`).toBeTruthy();
-    }
-  });
-
-  it("shows metric tiles with full spoken labels that link to where you act", async () => {
-    const { doc, sent, tick } = mount();
-    await tick();
-    await tick();
-    const tiles = [...doc.querySelectorAll("button.metric")];
-    expect(tiles.length).toBe(6);
-    for (const t of tiles) expect(t.getAttribute("aria-label")!.length).toBeGreaterThan(40);
-    (tiles.find((t) => t.textContent!.includes("Tests")) as HTMLElement).click();
-    await tick();
-    expect(doc.querySelector(".tab.active")?.getAttribute("data-tab")).toBe("supervisor");
-    void sent;
-  });
-
-  it("every button on every tab posts a message the extension actually handles", async () => {
-    const ext = fs.readFileSync(path.join(__dirname, "../../src/extension/extension.ts"), "utf8");
-    const handled = new Set([...ext.matchAll(/case "([a-zA-Z]+)":/g)].map((m) => m[1]));
-    const errors: string[] = [];
-    const clicked = new Set<string>();
-    for (const tab of ["overview", "sessions", "supervisor", "prompts", "memory", "connect"]) {
-      const { w, doc, sent, tick } = mount({ tab, open: { "past-sessions": true } });
-      w.addEventListener("error", (e) => errors.push(String((e as ErrorEvent).message)));
-      await tick();
-      await tick();
-      if (tab === "prompts") {
-        (doc.querySelector('[data-act="build"]') as HTMLElement).click();
-        await tick();
-      }
-      // click each distinct action once (re-query: every click may re-render)
-      const keyOf = (el: Element) => `${tab}:${el.getAttribute("data-act")}:${el.getAttribute("data-script") ?? ""}`;
-      for (let guard = 0; guard < 80; guard++) {
-        if (doc.querySelector(".tab.active")?.getAttribute("data-tab") !== tab) (doc.querySelector(`[data-tab="${tab}"]`) as HTMLElement).click();
-        await tick();
-        const next = [...doc.querySelectorAll("[data-act]")].find((el) => !clicked.has(keyOf(el)) && !(el as HTMLButtonElement).disabled);
+      const clicked = new Set<string>();
+      for (let guard = 0; guard < 40; guard++) {
+        const next = [...doc.querySelectorAll("[data-act]")].find((el) => !clicked.has(`${el.getAttribute("data-act")}:${el.getAttribute("data-tip") ?? ""}`));
         if (!next) break;
-        clicked.add(keyOf(next));
+        clicked.add(`${next.getAttribute("data-act")}:${next.getAttribute("data-tip") ?? ""}`);
         (next as HTMLElement).click();
         await tick();
       }
-      for (const m of sent) expect(handled.has(String(m.type)), `"${m.type}" (from ${tab}) has no handler in extension.ts`).toBe(true);
+      for (const m of sent) expect(handled.has(String(m.type)), `"${m.type}" has no handler in extension.ts`).toBe(true);
     }
-    expect(errors).toEqual([]);
-    // sanity: we really went through a lot of buttons
-    expect(clicked.size).toBeGreaterThan(35);
   });
 
-  it("live updates keep what you typed, your ticked files and your keyboard focus", async () => {
-    const { w, doc, tick } = mount({ tab: "memory" });
+  it("accessible: every field labelled, meters expose values, live region exists", async () => {
+    const { doc, tick } = mount(full());
     await tick();
     await tick();
-    const goal = doc.getElementById("goal") as HTMLTextAreaElement;
-    goal.value = "half-typed goal";
-    goal.dispatchEvent(new doc.defaultView!.Event("input"));
-    const add = doc.querySelector('[data-act="addReq"]') as HTMLElement;
-    add.focus();
-    w.postMessage({ type: "state", state: { ...state, generatedAt: state.generatedAt + 5 * 60_000 }, settings }, "*");
-    await tick();
-    expect((doc.getElementById("goal") as HTMLTextAreaElement).value).toBe("half-typed goal");
-    expect(doc.activeElement?.getAttribute("data-act")).toBe("addReq");
+    for (const el of doc.querySelectorAll("textarea, input")) {
+      const id = el.getAttribute("id");
+      expect(el.getAttribute("aria-label") || (id && doc.querySelector(`label[for="${id}"]`)), el.outerHTML.slice(0, 60)).toBeTruthy();
+    }
+    expect(doc.querySelector('[role=progressbar][aria-valuenow="72"]')).not.toBeNull();
+    expect(doc.getElementById("live")?.getAttribute("aria-live")).toBe("polite");
   });
 
-  it("adding a requirement with nothing typed explains why instead of doing nothing", async () => {
-    const { doc, sent, click, tick } = mount({ tab: "memory" });
+  it("live updates keep what you typed and your focus", async () => {
+    const { doc, w, tick, type } = mount(full());
     await tick();
     await tick();
-    await click('[data-act="addReq"]');
-    expect(sent.some((m) => m.type === "addRequirement")).toBe(false);
-    expect(doc.getElementById("flash")?.textContent).toMatch(/Type a requirement/);
-  });
-
-  it("copy shows a visible confirmation", async () => {
-    const { doc, click, tick } = mount({ tab: "memory" });
+    type("req", "half-typed idea");
+    (doc.getElementById("req") as HTMLTextAreaElement).focus();
+    w.postMessage({ type: "state", state, page: full({ working: 2 }), settings: { trusted: true } }, "*");
     await tick();
-    await tick();
-    await click('[data-act="copyHandoff"]');
-    await tick();
-    expect(doc.getElementById("flash")?.textContent).toMatch(/copied/i);
+    expect((doc.getElementById("req") as HTMLTextAreaElement).value).toBe("half-typed idea");
+    expect(doc.activeElement?.id).toBe("req");
   });
 });
-

@@ -8,14 +8,15 @@ import { pocketLink } from "./pocketLink";
 import { installCliCopy, installShell, shellStatus, uninstallShell } from "../core/shell";
 import { installWidget, pickRuntime, setStartAtLogin, uninstallWidget, widgetStatus } from "../core/widget";
 import { Alert, Engine, UiState } from "../core/engine";
-import { restoreFiles, diffSinceCheckpoint } from "../core/git";
+import { restoreFiles, diffSinceCheckpoint, worktrees } from "../core/git";
 import { claudeSettingsPath, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
 import { isLocalUrl } from "../core/checks";
 import { GOALS } from "../core/prompts";
-import { gate, saveLicense } from "../core/license";
+import { gate, gateParallel, saveLicense } from "../core/license";
 import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
-import { SidebarProvider, WebviewMessage } from "./sidebar";
+import { BuildPilotPanel, WebviewMessage } from "./sidebar";
+import { pageData } from "../core/page";
 
 let engine: Engine | null = null;
 let api: IntegrationApi | null = null;
@@ -29,8 +30,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
 
   const eng = new Engine();
   engine = eng;
-  const sidebar = new SidebarProvider(context.extensionUri, () => state(), (m) => handle(m), [vscode.Uri.file(path.join(eng.home, "visual"))]);
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider("buildpilot.main", sidebar, { webviewOptions: { retainContextWhenHidden: true } }));
+  const sidebar = new BuildPilotPanel(context.extensionUri, (m) => handle(m), [vscode.Uri.file(path.join(eng.home, "visual"))], () => push());
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = "buildpilot.focus";
@@ -49,7 +49,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       pending = null;
       const st = state();
       if (st) {
-        sidebar.post({ type: "state", state: st, settings: uiSettings() });
+        sidebar.post({ type: "state", state: st, settings: uiSettings(), page: pageData(eng, st) });
         updateStatus(st);
       }
     }, 150);
@@ -263,6 +263,68 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       }
       case "buildPrompt":
         return eng.gatedPrompt({ goal: m.goal as GoalType, request: String(m.request ?? ""), mustNotChange: String(m.mustNotChange ?? ""), extraAcceptance: String(m.acceptance ?? "").split("\n"), beginner: !!m.beginner, planFirst: m.planFirst as boolean | undefined });
+      case "connectAll": {
+        const file = claudeSettingsPath("user");
+        const ok = await confirm(
+          "Connect BuildPilot to Claude Code?",
+          `BuildPilot adds a few lines to ${file} so it can see your builds, memory and plan limits.\n\nEverything stays on this computer. Your settings are backed up first, and "BuildPilot: Disconnect" undoes it.`,
+          "Connect",
+        );
+        if (!ok) return;
+        try {
+          installHooks(file, eng.home);
+          installStatusline(file, eng.home);
+          eng.setClaudeSettingsFile(file);
+          void vscode.window.setStatusBarMessage("$(check) Connected. Your builds appear as soon as Claude does something.", 5000);
+        } catch (e) {
+          void vscode.window.showErrorMessage((e as Error).message);
+        }
+        push();
+        return;
+      }
+      case "newBuild": {
+        const root = eng.currentProject?.root;
+        if (!root) return handle({ type: "selectProject" });
+        if (!requireTrust("start a new build")) return;
+        const extra = Math.max(0, (await worktrees(root)).length - 1);
+        const g = gateParallel(eng.home, extra);
+        if (!g.allowed) {
+          const c = await vscode.window.showInformationMessage(g.paywall.message.replace(/: https?:\/\/\S+$/, "."), "Upgrade", "Enter key");
+          if (c === "Upgrade") void vscode.env.openExternal(vscode.Uri.parse(g.paywall.url));
+          if (c === "Enter key") await enterLicense();
+          return;
+        }
+        const label = await vscode.window.showInputBox({ title: "New build", prompt: "What's this build for? (a few words)", placeHolder: "e.g. checkout page", ignoreFocusOut: true });
+        if (label === undefined) return;
+        if (!(await confirm("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy (a Git worktree on a new branch) next to your project and opens Claude there. Your current files are not touched.", "Start build"))) return;
+        try {
+          const w = await eng.createWorktree(label.trim() || "build");
+          const term = vscode.window.createTerminal({ name: `Build · ${label.trim() || "build"}`, cwd: w.dir });
+          term.show();
+          term.sendText("claude");
+        } catch (e) {
+          void vscode.window.showErrorMessage(`Couldn't start the build: ${(e as Error).message}`);
+        }
+        return;
+      }
+      case "openBuild": {
+        const cwd = String(m.cwd ?? "");
+        const t = vscode.window.terminals.find((x) => { const o = x.creationOptions as vscode.TerminalOptions; const c = typeof o.cwd === "string" ? o.cwd : o.cwd?.fsPath; return c === cwd; });
+        if (t) return t.show();
+        const inHere = (vscode.workspace.workspaceFolders ?? []).some((f) => cwd === f.uri.fsPath || cwd.startsWith(f.uri.fsPath + path.sep));
+        if (inHere) {
+          const nt = vscode.window.createTerminal({ name: `Build · ${path.basename(cwd)}`, cwd });
+          return nt.show();
+        }
+        if (fs.existsSync(cwd)) await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(cwd), { forceNewWindow: true });
+        return;
+      }
+      case "copyHandoff":
+        await vscode.env.clipboard.writeText(eng.handoff());
+        void vscode.window.setStatusBarMessage("$(check) Handoff copied. Paste it into a new Claude session.", 4000);
+        return;
+      case "more":
+        return vscode.commands.executeCommand("workbench.action.quickOpen", ">BuildPilot: ");
       case "upgrade": {
         const g = gate(eng.home);
         if (!g.allowed) void vscode.env.openExternal(vscode.Uri.parse(g.paywall.url));
@@ -517,7 +579,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
 
   // ---------- commands ----------
   const reg = (id: string, fn: (...a: unknown[]) => unknown) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-  reg("buildpilot.focus", () => vscode.commands.executeCommand("buildpilot.main.focus"));
+  reg("buildpilot.focus", () => sidebar.show());
   reg("buildpilot.refresh", () => eng.analyze());
   reg("buildpilot.selectProject", async () => {
     const folders = vscode.workspace.workspaceFolders ?? [];
@@ -606,7 +668,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
   });
   reg("buildpilot.enterLicense", () => enterLicense());
   reg("buildpilot.newPrompt", () => {
-    void vscode.commands.executeCommand("buildpilot.main.focus");
+    void vscode.commands.executeCommand("buildpilot.focus");
     sidebar.post({ type: "navigate", tab: "prompts" });
   });
   reg("buildpilot.copyHandoff", async () => {
@@ -750,19 +812,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
           return;
         }
         if (folder && eng.currentProject?.root !== folder && fs.existsSync(folder)) await eng.openProject(folder);
-        await vscode.commands.executeCommand("buildpilot.main.focus");
+        await vscode.commands.executeCommand("buildpilot.focus");
       },
     }),
   );
   const focusRequested = context.globalState.get<number>("buildpilot.focusOnStart");
   if (focusRequested && Date.now() - focusRequested < 120_000) {
     void context.globalState.update("buildpilot.focusOnStart", undefined);
-    setTimeout(() => void vscode.commands.executeCommand("buildpilot.main.focus"), 800);
+    setTimeout(() => void vscode.commands.executeCommand("buildpilot.focus"), 800);
   }
   // Open BuildPilot alongside every new terminal (without stealing focus from the terminal).
   const revealBeside = async (term?: vscode.Terminal) => {
-    if (!cfg().get<boolean>("openWithTerminal", true) || sidebar.visible) return;
-    await vscode.commands.executeCommand("workbench.view.extension.buildpilot");
+    if (!cfg().get<boolean>("openWithTerminal", true) || sidebar.isOpen) return;
+    sidebar.show(true);
     if (term) term.show(false);
   };
   context.subscriptions.push(

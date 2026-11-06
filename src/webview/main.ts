@@ -1,60 +1,22 @@
-/* BuildPilot sidebar UI. Plain TypeScript + DOM, no framework: small, fast, CSP-safe. */
+/* BuildPilot: one calm page. Plain TypeScript + DOM, no framework: small, fast, CSP-safe. */
 import type { UiState } from "../core/engine";
-import type { BuiltPrompt, GoalSpec } from "../core/prompts";
-import type { SessionView } from "../core/supervisor";
-import type { Confidence, EvidenceItem, Issue, Recommendation, Requirement, Severity } from "../core/types";
+import type { PageData } from "../core/page";
+import type { BuiltPrompt } from "../core/prompts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 const vscode = acquireVsCodeApi();
 
-interface Settings {
-  beginner: boolean;
-  trusted: boolean;
-  aiProvider: string;
-  aiModel: string;
-  apiEnabled: boolean;
-  apiAddress: string | null;
-  apiAllowLan: boolean;
-  notifications: string;
-  platform: string;
-  home: string;
-  pocketUrl: string | null;
-  screenshotUri: string | null;
-  shellInstalled: boolean;
-  widget?: { supported: boolean; installed: boolean; running: boolean; startAtLogin: boolean };
-  openWithTerminal: boolean;
-}
+interface ViewState { request: string }
+const vs: ViewState = { request: "", ...((vscode.getState() as Partial<ViewState> | undefined) ?? {}) };
+const persist = () => vscode.setState(vs);
 
-type Tab = "overview" | "sessions" | "supervisor" | "prompts" | "memory" | "connect";
-interface ViewState {
-  tab: Tab;
-  open: Record<string, boolean>;
-  goal: string;
-  request: string;
-  mustNotChange: string;
-  acceptance: string;
-  planFirst: boolean;
-}
-
-const saved = (vscode.getState() as Partial<ViewState> | undefined) ?? {};
-const vs: ViewState = { tab: "overview", open: {}, goal: "feature", request: "", mustNotChange: "", acceptance: "", planFirst: true, ...saved };
 let S: UiState | null = null;
-let settings: Settings | null = null;
+let P: PageData | null = null;
+let trusted = true;
+let promptText = "";
 let built: BuiltPrompt | null = null;
 let paywalled = false;
-let freeLeft: number | null = null;
-let promptText = "";
-let goals: GoalSpec[] = [];
-let cpFiles: Record<string, string[]> = {};
-let hasWebhook = false;
-const explanations: Record<string, string> = {};
-let lastAnnounce = "";
-let lastStateKey = "";
-/** Unsaved text the user typed (by element id). Survives live re-renders; cleared when saved. */
-const drafts: Record<string, string> = {};
-let editingAcc: string | null = null;
-let flashMsg: { text: string; at: number } | null = null;
-const persist = () => vscode.setState(vs);
+let lastKey = "";
 
 // ---------- messaging ----------
 let seq = 0;
@@ -67,770 +29,229 @@ function call<T = unknown>(type: string, data: Record<string, unknown> = {}): Pr
   });
 }
 window.addEventListener("message", (e: MessageEvent) => {
-  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; settings?: Settings; tab?: Tab };
+  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean } };
   if (m.type === "reply" && m.id) {
     waiting.get(m.id)?.(m.result);
     waiting.delete(m.id);
   } else if (m.type === "state") {
+    S = m.state ?? null;
+    P = m.page ?? null;
+    trusted = m.settings?.trusted ?? true;
     // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
-    const key = JSON.stringify({ ...m.state!, generatedAt: Math.floor(m.state!.generatedAt / 60_000) }) + JSON.stringify(m.settings);
-    S = m.state!;
-    settings = m.settings!;
-    if (key === lastStateKey) return;
-    lastStateKey = key;
+    const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted });
+    if (key === lastKey) return;
+    lastKey = key;
     render();
-  } else if (m.type === "navigate" && m.tab) {
-    vs.tab = m.tab;
-    persist();
-    render();
+  } else if (m.type === "navigate") {
+    document.getElementById("req")?.focus();
   }
 });
 
 // ---------- helpers ----------
 const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const icon = (n: string, cls = "") => `<i class="codicon codicon-${n} ${cls}" aria-hidden="true"></i>`;
-function ago(ts: number | null | undefined): string {
-  if (!ts) return "never";
+const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function until(t: number): string {
+  const m = Math.max(0, Math.round((t - Date.now()) / 60_000));
+  if (m < 60) return `in ${m} min`;
+  if (m < 24 * 60) return `in ${Math.floor(m / 60)} h`;
+  return new Date(t).toLocaleDateString([], { weekday: "long" });
+}
+function ago(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 45) return "just now";
+  if (s < 60) return "just now";
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86400)} d ago`;
+  return `${Math.round(s / 3600)} h ago`;
 }
-const CONF_LABEL: Record<Confidence, string> = { verified: "Verified", inferred: "Inferred", unverified: "Unverified", failed: "Failed", unknown: "Unknown" };
-const conf = (c: Confidence, title = "") => `<span class="conf conf-${c}" title="${esc(title || confHelp(c))}">${CONF_LABEL[c]}</span>`;
-function confHelp(c: Confidence): string {
-  return {
-    verified: "Checked directly (e.g. a command passed, a file exists).",
-    inferred: "BuildPilot's best reading of the evidence. Could be wrong.",
-    unverified: "Claimed or assumed, but not proven yet.",
-    failed: "Checked, and it failed.",
-    unknown: "Not enough information to say.",
-  }[c];
-}
-const SEV_ICON: Record<Severity, string> = { blocker: "error", high: "warning", medium: "info", low: "circle-small", info: "circle-small" };
-const sevBadge = (s: Severity) => `<span class="sev sev-${s}">${icon(SEV_ICON[s])}${s === "blocker" ? "Blocker" : s === "high" ? "Important" : s === "medium" ? "Worth doing" : "Optional"}</span>`;
-const STATUS_LABEL: Record<string, string> = { running: "Working", idle: "Idle", blocked: "Needs input", awaiting_approval: "Needs approval", completed: "Ended", failed: "Failed", unknown: "Unknown" };
-const dot = (status: string) => `<span class="dot dot-${status}" aria-hidden="true"></span>`;
-const short = (id: string) => (id.startsWith("demo-") ? `DEMO ${id.slice(5, 11)}` : id.slice(0, 8));
-const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
-const rel = (p: string) => (S?.project && p.startsWith(S.project.root) ? p.slice(S.project.root.length + 1) : p);
-const beginner = () => settings?.beginner ?? true;
+const tone = (pct: number | null) => (pct == null ? "none" : pct >= 85 ? "bad" : pct >= 65 ? "warn" : "ok");
 
-function evidenceList(ev: EvidenceItem[]): string {
-  if (!ev.length) return "";
-  return `<ul class="evidence">${ev
-    .map((e) => `<li><span class="ev-kind ev-${e.kind}" title="${e.kind === "observed" ? "Seen directly" : "Inferred"}">${e.kind === "observed" ? "seen" : "inferred"}</span> ${esc(e.text)}${e.ref ? ` <a href="#" data-open="${esc(e.ref)}" class="ref">${esc(fileName(e.ref))}</a>` : ""}</li>`)
-    .join("")}</ul>`;
-}
-function disclosure(key: string, summary: string, body: string, openDefault = false): string {
-  const open = vs.open[key] ?? openDefault;
-  return `<details data-key="${esc(key)}" ${open ? "open" : ""}><summary>${summary}</summary><div class="details-body">${body}</div></details>`;
-}
-
-/** A stable identity for an element so focus can be restored after a re-render. */
-const FOCUS_ATTRS = ["data-act", "data-tab", "data-key", "data-script", "data-id", "data-sha", "data-session", "data-goal-pick", "data-open", "data-req-status", "value"];
-function focusKey(el: Element | null): string | null {
-  if (!el || el === document.body) return null;
-  if (el.id) return `#${el.id}`;
-  const parts = FOCUS_ATTRS.map((a) => (el.hasAttribute(a) ? `[${a}="${CSS.escape(el.getAttribute(a)!)}"]` : "")).join("");
-  return parts ? el.tagName.toLowerCase() + parts : null;
-}
-
-/** Short visible confirmation (also spoken by screen readers). */
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
 function flash(text: string): void {
-  flashMsg = { text, at: Date.now() };
   const el = document.getElementById("flash");
   if (el) { el.textContent = text; el.classList.add("on"); }
   const live = document.getElementById("live");
   if (live) live.textContent = text;
-  setTimeout(() => {
-    if (flashMsg && Date.now() - flashMsg.at >= 2400) {
-      flashMsg = null;
-      document.getElementById("flash")?.classList.remove("on");
-    }
-  }, 2500);
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => document.getElementById("flash")?.classList.remove("on"), 2400);
 }
 
-// ---------- shell ----------
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "overview", label: "Overview", icon: "home" },
-  { id: "sessions", label: "Sessions", icon: "pulse" },
-  { id: "supervisor", label: "Supervisor", icon: "shield" },
-  { id: "prompts", label: "Prompts", icon: "sparkle" },
-  { id: "memory", label: "Memory", icon: "book" },
-  { id: "connect", label: "Connect", icon: "plug" },
-];
+/** Pick the Prompt Studio goal from plain words, so users never have to choose one. */
+function goalFor(text: string): string {
+  const t = text.toLowerCase();
+  if (/\b(bug|broken|fix|error|crash|doesn'?t work|not working|fails?)\b/.test(t)) return "bugfix";
+  if (/\b(deploy|launch|ship|host|publish|go live)\b/.test(t)) return "deploy";
+  if (/\b(test|tests|testing)\b/.test(t)) return "tests";
+  if (/\b(slow|speed|faster|performance)\b/.test(t)) return "performance";
+  if (/\b(secure|security|password|leak|secret)\b/.test(t)) return "security";
+  if (/\b(design|layout|look|style|css|ui|button|page|screen)\b/.test(t)) return "ui";
+  if (/\b(connect|integrat|api|stripe|gmail|google|webhook)\w*/.test(t)) return "integration";
+  if (/\b(explain|understand|what does|how does)\b/.test(t)) return "explain";
+  if (/\b(clean ?up|refactor|reorganize|simplify)\b/.test(t)) return "refactor";
+  return "feature";
+}
 
+// ---------- render ----------
 function render(): void {
   const app = document.getElementById("app")!;
-  const scroll = document.querySelector(".content")?.scrollTop ?? 0;
-  const focused = document.activeElement as HTMLElement | null;
-  const fKey = focusKey(focused);
-  const checked = new Set([...document.querySelectorAll<HTMLInputElement>("input.cpf:checked")].map((i) => `${i.dataset.sha}|${i.value}`));
-  const selStart = (focused as HTMLInputElement | null)?.selectionStart ?? null;
-  if (!S) {
+  const focusedId = (document.activeElement as HTMLElement | null)?.id;
+  const sel = (document.activeElement as HTMLTextAreaElement | null)?.selectionStart ?? null;
+  if (!S || !P) {
     app.innerHTML = `<div class="loading">Starting BuildPilot…</div>`;
     return;
   }
-  if (!S.project) {
-    app.innerHTML = `<div class="empty">${icon("folder-opened", "big")}<h2>Open a project</h2><p>BuildPilot supervises one project folder at a time. Open a folder in VS Code, or pick one.</p><button class="primary" data-act="selectProject">Choose project folder</button></div>`;
-    return bind();
-  }
-  const live = S.out.sessions.filter((s) => !s.endedAt && S!.generatedAt - s.lastEventAt < 3600_000);
-  const waitingN = live.filter((s) => s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked").length;
-  const urgent = S.out.issues.filter((i) => i.severity === "blocker" || i.severity === "high").length;
-  const badge: Partial<Record<Tab, string>> = {
-    sessions: waitingN ? `<span class="badge warn">${waitingN}</span>` : live.length ? `<span class="badge">${live.length}</span>` : "",
-    supervisor: urgent ? `<span class="badge err">${urgent}</span>` : "",
-  };
-  const health = S.out.health;
   app.innerHTML = `
-  <header class="top">
-    <div class="title-row">
-      <button class="project" data-act="selectProject" title="Switch project">${esc(S.facts?.name ?? S.project.name)} ${icon("chevron-down")}</button>
-      <span class="spacer"></span>
-      ${S.analyzing ? `<span class="muted small">${icon("loading", "spin")} Analyzing</span>` : `<button class="icon-btn" data-act="analyze" title="Re-analyze project" aria-label="Re-analyze project">${icon("refresh")}</button>`}
-    </div>
-    <div class="meta-row">
-      <span class="health health-${health.level}">${dot(health.level === "good" ? "running" : health.level === "blocked" ? "failed" : health.level === "attention" ? "awaiting_approval" : "unknown")}${esc(health.label)}</span>
-      <span class="chip" title="Development stage (${S.out.stage.confidence})">${esc(S.out.stage.stage)}</span>
-    </div>
-    ${S.demo ? `<div class="demo-banner">${icon("beaker")} Showing DEMO sessions. They aren't real. <a href="#" data-act="demoOff">Remove demo</a></div>` : ""}
-    ${!settings?.trusted ? `<div class="demo-banner">${icon("shield")} Restricted Mode: BuildPilot can read, but won't run scripts or change files.</div>` : ""}
-    <nav class="tabs" role="tablist" aria-label="BuildPilot sections">${TABS.map((t) => `<button role="tab" id="tab-${t.id}" aria-controls="panel" aria-selected="${vs.tab === t.id}" tabindex="${vs.tab === t.id ? 0 : -1}" class="tab ${vs.tab === t.id ? "active" : ""}" data-tab="${t.id}" title="${t.label}" aria-label="${t.label}${badgeText(t.id, waitingN, urgent, live.length)}">${icon(t.icon)}<span class="tab-label">${t.label}</span>${badge[t.id] ?? ""}</button>`).join("")}</nav>
-  </header>
-  <main class="content" id="panel" role="tabpanel" aria-labelledby="tab-${vs.tab}" tabindex="-1">${S.errors.map((e) => `<div class="error-box">${icon("error")} ${esc(e)}</div>`).join("")}${renderTab()}</main>
-  <div id="flash" class="flash ${flashMsg ? "on" : ""}" aria-hidden="true">${esc(flashMsg?.text ?? "")}</div>`;
-  for (const [id, v] of Object.entries(drafts)) {
-    const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null;
-    if (el) el.value = v;
-  }
-  document.querySelectorAll<HTMLInputElement>("input.cpf").forEach((i) => (i.checked = checked.has(`${i.dataset.sha}|${i.value}`)));
+  <main class="page">
+    <header class="head">
+      <h1>BuildPilot</h1>
+      ${P.plan.pro ? `<span class="pill">Pro</span>` : ""}
+    </header>
+    ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
+    ${!P.connected ? connectCard() : buildsSection()}
+    ${limitsSection()}
+    ${tipsSection()}
+    ${promptSection()}
+    <footer class="foot">
+      ${!P.plan.pro && P.plan.freeLeft != null && P.plan.freeLeft <= 5 && !paywalled ? `<span>${P.plan.freeLeft} free prompt${P.plan.freeLeft === 1 ? "" : "s"} left</span> · ` : ""}
+      <a href="#" data-act="more">More tools</a>
+    </footer>
+  </main>
+  <div id="flash" class="flash" aria-hidden="true"></div>`;
+  const req = document.getElementById("req") as HTMLTextAreaElement | null;
+  if (req) req.value = vs.request;
+  const out = document.getElementById("ptext") as HTMLTextAreaElement | null;
+  if (out) out.value = promptText;
   bind();
-  announce();
-  const c = document.querySelector(".content");
-  if (c) c.scrollTop = scroll;
-  if (fKey) {
-    let el: HTMLInputElement | null = null;
-    try { el = document.querySelector(fKey.startsWith("#") ? `[id="${CSS.escape(fKey.slice(1))}"]` : fKey); } catch { /* invalid selector */ }
-    if (el) {
-      el.focus({ preventScroll: true });
-      if (selStart !== null && "setSelectionRange" in el) try { el.setSelectionRange(selStart, selStart); } catch { /* not a text input */ }
-    }
+  if (focusedId) {
+    const el = document.getElementById(focusedId) as HTMLTextAreaElement | null;
+    el?.focus({ preventScroll: true });
+    if (el && sel != null && "setSelectionRange" in el) try { el.setSelectionRange(sel, sel); } catch { /* not text */ }
   }
 }
 
-function badgeText(id: Tab, waiting: number, urgent: number, live: number): string {
-  if (id === "sessions") return waiting ? `, ${waiting} waiting for you` : live ? `, ${live} active` : "";
-  if (id === "supervisor") return urgent ? `, ${urgent} important issues` : "";
-  return "";
-}
-
-/** Tell screen-reader users about changes that need them, once per change. */
-function announce(): void {
-  if (!S) return;
-  const waiting = S.out.sessions.filter((s) => !s.endedAt && (s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked"));
-  const ew = S.elsewhere.filter((s) => s.status === "awaiting_approval" || s.status === "blocked");
-  const blocker = S.out.issues.find((i) => i.severity === "blocker");
-  const parts: string[] = [];
-  if (waiting.length) parts.push(`${waiting.length} Claude session${waiting.length === 1 ? "" : "s"} waiting for you`);
-  if (ew.length) parts.push(`waiting in ${[...new Set(ew.map((s) => s.folder))].join(", ")}`);
-  if (blocker) parts.push(`Blocker: ${blocker.title}`);
-  const msg = parts.join(". ");
-  // The live region lives outside #app so re-renders never wipe a pending announcement.
-  let el = document.getElementById("live");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "live";
-    el.className = "sr-only";
-    el.setAttribute("role", "status");
-    el.setAttribute("aria-live", "polite");
-    document.body.appendChild(el);
-  }
-  if (msg !== lastAnnounce) el.textContent = msg;
-  lastAnnounce = msg;
-}
-
-function renderTab(): string {
-  switch (vs.tab) {
-    case "overview": return overview();
-    case "sessions": return sessionsTab();
-    case "supervisor": return supervisorTab();
-    case "prompts": return promptsTab();
-    case "memory": return memoryTab();
-    case "connect": return connectTab();
-  }
-}
-
-// ---------- Overview ----------
-function actionButton(r: Recommendation, primary = true): string {
-  const a = r.action;
-  const cls = primary ? "primary" : "secondary";
-  if (!a) return "";
-  if (a.kind === "install_hooks") return `<button class="${cls}" data-act="installHooks">Connect</button>`;
-  if (a.kind === "checkpoint") return `<button class="${cls}" data-act="checkpoint">${icon("save")} Save checkpoint</button>`;
-  if (a.kind === "run_script") return `<button class="${cls}" data-act="runScript" data-script="${esc(a.script)}" ${S?.runningScript ? "disabled" : ""}>${icon("play")} ${a.script === "install" ? "Install" : `Run ${esc(a.script)}`}</button>`;
-  if (a.kind === "prompt") return `<button class="${cls}" data-act="promptFor" data-goal="${esc(a.goal)}" data-request="${esc(a.request)}">${icon("sparkle")} Write the prompt</button>`;
-  if (a.kind === "open_file") return `<button class="${cls}" data-open="${esc(a.path)}">Open</button>`;
-  if (a.kind === "audit") return `<button class="${cls}" data-act="audit">${icon("shield")} Check dependencies</button>`;
-  if (a.kind === "visual_check") return `<button class="${cls}" data-act="visualCheck">${icon("eye")} Check the app</button>`;
-  if (a.kind === "worktree") return `<button class="${cls}" data-act="worktree" data-session="${esc(a.sessionId)}">${icon("git-branch")} Separate the sessions</button>`;
-  if (a.kind === "open_tab") return `<button class="${cls}" data-tab="${a.tab}">${a.tab === "sessions" ? `${icon("terminal")} See the session` : `Open ${a.tab[0]!.toUpperCase() + a.tab.slice(1)}`}</button>`;
-  return "";
-}
-
-function nextCard(): string {
-  const n = S!.out.next;
-  if (!n) return `<section class="next good">${icon("pass-filled")}<div><div class="eyebrow">Next step</div><div class="next-title">Nothing urgent. Keep building.</div><p class="muted">Tell Prompt Studio what you want next.</p><button class="secondary" data-tab="prompts">Open Prompt Studio</button></div></section>`;
-  return `<section class="next sev-border-${n.severity}" aria-label="Recommended next step">
-    <div class="eyebrow">Next step ${sevBadge(n.severity)}</div>
-    <div class="next-title">${esc(n.title)}</div>
-    <p>${esc(n.why)}</p>
-    <div class="actions">${actionButton(n)}<button class="link" data-act="dismiss" data-key="${esc(n.key)}" title="Hide for 24 hours">Not now</button></div>
-    ${disclosure(`ev:${n.key}`, "Why BuildPilot thinks so", evidenceList(n.evidence))}
+function connectCard(): string {
+  return `<section class="card connect">
+    <h2>Connect Claude Code</h2>
+    <p>One click lets BuildPilot see your builds, memory and plan limits. Everything stays on this computer.</p>
+    <button class="primary" data-act="connectAll">Connect</button>
   </section>`;
 }
 
-function overview(): string {
-  const st = S!;
-  const f = st.facts;
-  const live = st.out.sessions.filter((s) => !s.endedAt && st.generatedAt - s.lastEventAt < 3600_000);
-  const running = live.filter((s) => s.displayStatus === "running").length;
-  const waitingN = live.filter((s) => s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked").length;
-  const top = st.out.issues.filter((i) => i.severity === "blocker" || i.severity === "high");
-  const happening = live.length
-    ? `${running} session${running === 1 ? "" : "s"} working${waitingN ? `, <b>${waitingN} waiting for you</b>` : ""}. <a href="#" data-tab="sessions">See sessions</a>${st.hooks.installed ? "" : `<div class="muted small">Real sessions appear once you <a href="#" data-act="installHooks">connect</a>.</div>`}`
-    : !st.hooks.installed
-      ? `Not connected to Claude Code yet. <a href="#" data-act="installHooks">Connect</a>`
-      : "No active Claude Code sessions in this project.";
-  const ewWait = st.elsewhere.filter((s) => s.status === "awaiting_approval" || s.status === "blocked");
-  const happeningAll = happening + (ewWait.length ? `<div class="small warn-text">Also waiting for you: ${esc([...new Set(ewWait.map((s) => s.folder))].join(", "))}</div>` : st.elsewhere.length ? `<div class="muted small">${st.elsewhere.length} active in other projects · <a href="#" data-tab="sessions">see</a></div>` : "");
-  const wrong = top.length === 0 ? "Nothing urgent found." : `${top.length} important issue${top.length === 1 ? "" : "s"}: ${esc(top[0]!.title)}${top.length > 1 ? ` <a href="#" data-tab="supervisor">+${top.length - 1} more</a>` : ""}`;
-  const reqs = st.requirements.filter((r) => r.status !== "dropped");
-  const implemented = reqs.filter((r) => r.status === "done" && r.evidence === "verified");
-  const partial = reqs.filter((r) => r.status === "in_progress" || (r.status === "done" && r.evidence !== "verified"));
-  const missing = reqs.filter((r) => r.status === "todo");
-  const lastTest = st.testRuns.find((t) => /test|vitest|jest|pytest/.test(t.command));
-  return `
-  ${nextCard()}
-  ${metricsStrip()}
-  <section class="qa">
-    <div class="qa-row"><span class="qa-q">What's happening?</span><span>${happeningAll}</span></div>
-    <div class="qa-row"><span class="qa-q">Anything wrong?</span><span>${wrong}</span></div>
-  </section>
-  <section>
-    <h3>Project</h3>
-    <dl class="facts">
-      <dt>What it is</dt><dd>${f?.description ? `${esc(f.description)} <span class="muted small">(from ${esc(f.descriptionSource)})</span>` : st.notes.goal ? esc(st.notes.goal) : `<span class="muted">Unknown.</span> <a href="#" data-tab="memory">Describe your goal</a>`}</dd>
-      <dt>Built with</dt><dd>${f ? esc([...f.languages, ...f.frameworks].join(", ") || "Not detected") : "…"}</dd>
-      <dt>Stage</dt><dd>${esc(st.out.stage.stage)} ${conf(st.out.stage.confidence)}${disclosure("stage-ev", "evidence", evidenceList(st.out.stage.evidence))}</dd>
-      <dt>Progress</dt><dd>${st.out.progress.total ? `<div class="bar" role="progressbar" aria-valuenow="${st.out.progress.done}" aria-valuemax="${st.out.progress.total}"><span style="width:${Math.round((st.out.progress.done / st.out.progress.total) * 100)}%"></span></div>` : ""}${esc(st.out.progress.label)}</dd>
-      <dt>Tests</dt><dd>${lastTest ? `${lastTest.passed ? conf("verified", "Passed when BuildPilot ran it") + " passing" : conf("failed") + " failing"} · ${ago(lastTest.startedAt)}` : `${conf("unknown")} not run yet${f?.scripts.test ? ` · <a href="#" data-act="runScript" data-script="test">Run tests</a>` : ""}`}</dd>
-      <dt>Git</dt><dd>${st.changes ? `${esc(st.changes.branch ?? "detached")} · ${st.changes.unstaged.length + st.changes.untracked.length + st.changes.staged.length} uncommitted` : f?.isGit === false ? `${conf("failed")} not using Git` : "…"}</dd>
-    </dl>
-  </section>
-  <section>
-    <h3>Features <span class="muted small">vs. your requirements</span></h3>
-    ${reqs.length === 0
-      ? `<p class="muted">No requirements yet, so BuildPilot can't tell what's built vs. missing. ${f?.checklistItems.length ? `<a href="#" data-act="importChecklist">Import ${f.checklistItems.length} checklist items from your docs</a> or ` : ""}<a href="#" data-tab="memory">add them</a>.</p>`
-      : `${featureGroup("Done & verified", implemented, "verified")}${featureGroup("Partly done / unproven", partial, "unverified")}${featureGroup("Not started", missing, "unknown")}`}
-  </section>
-  ${st.resolved.length ? `<section><h3>Recently resolved</h3><ul class="plain">${st.resolved.map((r) => `<li>${icon("check", "ok")} ${esc(r.title)} <span class="muted small">${ago(r.resolvedAt)}: condition no longer observed</span></li>`).join("")}</ul></section>` : ""}
-  <section>
-    <h3>Recent work</h3>
-    ${st.commits.length ? `<ul class="plain">${st.commits.slice(0, 5).map((c) => `<li><span class="muted small">${ago(c.ts)}</span> ${esc(c.subject)}</li>`).join("")}</ul>` : `<p class="muted">No commits yet.</p>`}
-  </section>
-  ${setupCard()}`;
-}
-
-function metricsStrip(): string {
-  const ms = S!.metrics;
-  if (!ms.length) return "";
-  const conf = (c: string) => (c === "unknown" ? "Unknown" : c === "estimate" ? "Estimate" : "Measured");
-  return `<section class="metrics" aria-label="Key numbers">${ms
-    .map(
-      (m) => `<button class="metric tone-${m.tone}" ${m.tab ? `data-tab="${m.tab}"` : ""} title="${esc(m.why)}" aria-label="${esc(`${m.label}: ${m.value === "—" ? "unknown" : m.value}. ${m.detail}. ${m.why}`)}">
-        <span class="m-label">${esc(m.label)}</span>
-        <span class="m-value">${esc(m.value)}</span>
-        <span class="m-detail">${esc(m.detail)}</span>
-        <span class="sr-only">${conf(m.confidence)}</span>
-      </button>`,
-    )
-    .join("")}</section>`;
-}
-
-function featureGroup(label: string, items: Requirement[], c: Confidence): string {
-  if (!items.length) return "";
-  return `<div class="fgroup"><div class="fgroup-h">${conf(c)} ${esc(label)} <span class="muted">(${items.length})</span></div><ul class="plain">${items.slice(0, 8).map((r) => `<li>${esc(r.title)}</li>`).join("")}${items.length > 8 ? `<li class="muted">+${items.length - 8} more</li>` : ""}</ul></div>`;
-}
-
-function setupCard(): string {
-  const st = S!;
-  const steps = [
-    { done: !!st.integration.claudeInstalled, label: "Claude Code installed", hint: st.integration.claudeInstalled === null ? "checking…" : st.integration.claudeVersion ?? "Install from claude.com/claude-code" },
-    { done: st.hooks.installed, label: "BuildPilot connected to Claude Code", hint: st.hooks.installed ? "Live sessions will appear automatically" : "", act: st.hooks.installed ? "" : `<button class="secondary small" data-act="installHooks">Connect</button>` },
-    { done: !!st.integration.gitAvailable && !!st.facts?.isGit, label: "Project uses Git", hint: st.facts?.isGit ? "" : "Needed for checkpoints and rollback" },
-  ];
-  if (steps.every((s) => s.done)) return "";
-  return `<section><h3>Setup</h3><ul class="steps">${steps.map((s) => `<li>${icon(s.done ? "pass-filled" : "circle-large-outline", s.done ? "ok" : "muted")} <span>${esc(s.label)}${s.hint ? ` <span class="muted small">· ${esc(s.hint)}</span>` : ""}</span> ${s.act ?? ""}</li>`).join("")}</ul></section>`;
-}
-
-// ---------- Sessions ----------
-function sessionsTab(): string {
-  const st = S!;
-  if (!st.hooks.installed && st.out.sessions.length === 0) {
-    return `<div class="empty">${icon("plug", "big")}<h2>Connect to Claude Code</h2><p>BuildPilot adds small background hooks to Claude Code so it can see what each session is doing. Nothing leaves your computer. Your settings are backed up and it can be undone.</p><button class="primary" data-act="installHooks">Connect</button><p class="muted small">Or <a href="#" data-act="demoOn">try it with demo data</a> first.</p></div>`;
-  }
-  if (st.out.sessions.length === 0) {
-    return `${elsewhereBlock()}<div class="empty">${icon("terminal", "big")}<h2>No sessions yet</h2><p>Start Claude Code in this project (run <code>claude</code> in a terminal). It'll appear here within a second.</p><p class="muted small">Already running? It appears on its next action. If not, restart it.</p><button class="secondary" data-act="promptFor" data-goal="feature" data-request="">${icon("sparkle")} Write a first prompt</button></div>`;
-  }
-  const active = st.out.sessions.filter((s) => !s.endedAt && st.generatedAt - s.lastEventAt < 12 * 3600_000);
-  const past = st.out.sessions.filter((s) => !active.includes(s));
-  return `
-    ${active.length ? `<h3>Active <span class="muted small">(${active.length})</span></h3>${active.map(sessionCard).join("")}` : `<p class="muted">No active sessions.</p>`}
-    ${past.length ? disclosure("past-sessions", `Earlier sessions (${past.length})`, past.map(sessionCard).join("")) : ""}
-    ${elsewhereBlock()}
-    <div class="actions"><button class="secondary" data-act="copyHandoff">${icon("copy")} Copy handoff for a new session</button></div>
-    <p class="muted small">Statuses come from Claude Code hook events. BuildPilot never guesses what a terminal is doing. If it hasn't heard anything in 10 minutes, it says "Unknown".</p>`;
-}
-
-function elsewhereBlock(): string {
-  const list = S!.elsewhere;
-  if (!list.length) return "";
-  const waiting = list.filter((s) => s.status === "awaiting_approval" || s.status === "blocked").length;
-  return `<section class="elsewhere"><h3>Other projects <span class="muted small">(${list.length} active${waiting ? `, <span class="warn-text">${waiting} waiting for you</span>` : ""})</span></h3>
-    <ul class="plain">${list.map((s) => `<li class="ew">${dot(s.status)} <b>${esc(s.folder)}</b> <span class="muted small">${STATUS_LABEL[s.status] ?? s.status} · ${ago(s.lastEventAt)}${s.contextPct != null ? ` · context ${Math.round(s.contextPct)}%` : ""}</span>${s.task ? `<div class="muted small ew-task">“${esc(s.task)}”</div>` : ""}${s.status === "awaiting_approval" || s.status === "blocked" ? `<div class="small warn-text">${esc(s.reason)}</div>` : ""}</li>`).join("")}</ul>
-    <div class="muted small">To supervise one of these in depth, open its folder in VS Code.</div></section>`;
-}
-
-function sessionCard(s: SessionView): string {
-  const u = S!.usage[s.id];
-  const lv = S!.live[s.id];
-  const ctx = lv && lv.contextPct != null ? `<div class="ctx" title="From Claude Code's status line"><div class="bar ${lv.contextPct >= 80 ? "hot" : ""}"><span style="width:${Math.min(100, Math.round(lv.contextPct))}%"></span></div><span class="small">Context ${Math.round(lv.contextPct)}% of ${lv.contextSize ? Math.round(lv.contextSize / 1000) + "k" : "?"}${lv.costUsd != null ? ` · ~$${lv.costUsd.toFixed(2)} at list price` : ""}</span></div>` : "";
-  const tokens = u && u.source === "transcript"
-    ? `${u.lastTurnInputTokens?.toLocaleString() ?? "?"} tokens in context (estimate) · ${u.totalOutputTokens?.toLocaleString() ?? "?"} written · ${u.assistantTurns} turns`
-    : "Unknown (no local transcript data)";
-  const timeline = s.recent.map((e) => `<li class="${e.isError ? "err" : ""}"><span class="muted small t">${new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span> ${esc(e.summary)}${e.filePath ? ` <a href="#" data-open="${esc(e.filePath)}" class="ref">open</a>` : ""}${e.isError && e.errorText ? `<div class="errtext">${esc(e.errorText.split("\n").slice(0, 3).join(" "))}</div>` : ""}</li>`).join("");
-  return `<article class="session ${s.displayStatus}" aria-label="Session ${esc(short(s.id))}">
-    <div class="s-head">${dot(s.displayStatus)}<b>${STATUS_LABEL[s.displayStatus] ?? s.displayStatus}</b><span class="muted small mono">${esc(short(s.id))}</span><span class="spacer"></span><span class="muted small">${ago(s.lastEventAt)}</span></div>
-    ${s.currentTask ? `<div class="s-task" title="Last prompt you gave it">“${esc(s.currentTask)}”</div>` : `<div class="s-task muted">Task unknown (no prompt seen yet)</div>`}
-    <div class="s-reason">${esc(s.displayReason)}</div>
-    ${ctx}
-    ${s.intervention ? `<div class="s-int">${icon("arrow-right")} ${esc(s.intervention)}</div>` : ""}
-    ${s.overlapsWith.length ? `<div class="s-int warn">${icon("warning")} Editing the same files as ${s.overlapsWith.map(short).join(", ")}</div>` : ""}
-    ${disclosure(`sess:${s.id}`, `Details · ${s.eventCount} events${s.errorCount ? ` · <span class="errc">${s.errorCount} errors</span>` : ""}`, `
-      <dl class="facts small">
-        <dt>Folder</dt><dd class="mono">${esc(rel(s.cwd) || "project root")}</dd>
-        <dt>Model</dt><dd>${esc(lv?.model ?? u?.model ?? s.model ?? "Unknown")}</dd>
-        <dt>Usage</dt><dd>${esc(tokens)}</dd>
-        <dt>Context</dt><dd>${lv && lv.contextPct != null ? `${Math.round(lv.contextPct)}% (exact, from Claude Code)` : S!.statusline.installed ? "Waiting for Claude Code to report" : `Unknown · <a href="#" data-act="statuslineOn">show exact %</a>`}</dd>
-        <dt>Cost</dt><dd>${lv && lv.costUsd != null ? `~$${lv.costUsd.toFixed(2)} <span class="muted">(Claude Code's estimate at list price; your plan may differ)</span>` : `Unknown <span class="muted">(not reported)</span>`}</dd>
-        <dt>Started</dt><dd>${new Date(s.startedAt).toLocaleString()}</dd>
-        ${s.permissionMode ? `<dt>Permissions</dt><dd>${esc(s.permissionMode)}</dd>` : ""}
-      </dl>
-      ${s.editedFiles.length ? `<div class="sub">Changed files</div><ul class="plain files">${s.editedFiles.map((f) => `<li><a href="#" data-open="${esc(f)}">${esc(rel(f))}</a></li>`).join("")}</ul>` : ""}
-      <div class="actions"><button class="link" data-act="explainSession" data-session="${esc(s.id)}">${icon("sparkle")} Explain with AI</button></div>
-      ${explanations[s.id] ? `<div class="note">${icon("lightbulb")}<div class="pre-wrap">${esc(explanations[s.id])}</div></div>` : ""}
-      <div class="sub">Timeline (newest first)</div><ul class="timeline">${timeline || "<li class='muted'>No events</li>"}</ul>`)}
-  </article>`;
-}
-
-// ---------- Supervisor ----------
-function issueRow(i: Issue): string {
-  return `<li class="issue">${sevBadge(i.severity)}<div class="issue-body"><div class="issue-title">${esc(i.title)}</div>${beginner() ? `<div class="plain-expl">${esc(i.plain)}</div>` : ""}${disclosure(`iss:${i.key}`, "Evidence", (beginner() ? "" : `<p class="plain-expl">${esc(i.plain)}</p>`) + evidenceList(i.evidence))}</div></li>`;
-}
-
-function supervisorTab(): string {
-  const st = S!;
-  const recs = st.out.recommendations;
-  const f = st.facts;
-  return `
-  <section>
-    <h3>Issues <span class="muted small">${st.out.issues.length ? `(${st.out.issues.length})` : ""}</span></h3>
-    ${st.out.issues.length ? `<ul class="issues">${st.out.issues.map(issueRow).join("")}</ul>` : `<p class="muted">${icon("pass", "ok")} No issues found in what BuildPilot can check. That doesn't prove there are none.</p>`}
-  </section>
-  <section>
-    <h3>Recommendations</h3>
-    ${recs.length ? `<ol class="recs">${recs.slice(0, 8).map((r) => `<li><div class="rec-title">${esc(r.title)} ${sevBadge(r.severity)}</div><div class="muted">${esc(r.why)}</div><div class="actions">${actionButton(r, false)}<button class="link" data-act="dismiss" data-key="${esc(r.key)}">Not now</button></div></li>`).join("")}</ol>` : `<p class="muted">Nothing to recommend right now.</p>`}
-  </section>
-  <section>
-    <h3>Checks</h3>
-    <div class="actions wrap">
-      ${f?.scripts.test ? `<button class="secondary" data-act="runScript" data-script="test" ${st.runningScript ? "disabled" : ""}>${icon("beaker")} Run tests</button>` : ""}
-      ${f?.scripts.build ? `<button class="secondary" data-act="runScript" data-script="build" ${st.runningScript ? "disabled" : ""}>${icon("package")} Build</button>` : ""}
-      ${f?.scripts.lint ? `<button class="secondary" data-act="runScript" data-script="lint" ${st.runningScript ? "disabled" : ""}>${icon("checklist")} Lint</button>` : ""}
-      ${f?.scripts.typecheck ? `<button class="secondary" data-act="runScript" data-script="typecheck" ${st.runningScript ? "disabled" : ""}>${icon("symbol-type-parameter")} Typecheck</button>` : ""}
-      <button class="secondary" data-act="analyze">${icon("shield")} Re-scan</button>
-    </div>
-    ${st.runningScript ? `<p class="muted">${icon("loading", "spin")} Running <code>${esc(st.runningScript)}</code>…</p>` : ""}
-    ${st.testRuns.length ? disclosure("runs", `Recent runs (${st.testRuns.length})`, `<ul class="plain">${st.testRuns.slice(0, 8).map((t) => `<li>${t.passed ? icon("pass", "ok") : icon("error", "bad")} <code>${esc(t.command)}</code> <span class="muted small">${ago(t.startedAt)} · ${(t.durationMs / 1000).toFixed(1)}s</span>${disclosure(`run:${t.id}`, "output", `<pre>${esc(t.outputTail)}</pre>`)}</li>`).join("")}</ul>`) : ""}
-  </section>
-  <section>
-    <h3>Dependencies</h3>
-    ${st.audit ? (st.audit.ok ? `<p>${st.audit.counts.critical + st.audit.counts.high ? icon("warning", "bad") : icon("pass", "ok")} ${st.audit.counts.critical} critical · ${st.audit.counts.high} high · ${st.audit.counts.moderate} moderate · ${st.audit.counts.low} low <span class="muted small">(${esc(st.audit.tool)}, ${ago(st.audit.ranAt)})</span></p>${st.audit.top.length ? disclosure("audit-top", "Affected packages", `<ul class="plain">${st.audit.top.map((t) => `<li><code>${esc(t.name)}</code> <span class="sev sev-${t.severity === "critical" ? "blocker" : t.severity === "high" ? "high" : "medium"}">${esc(t.severity)}</span> ${esc(t.title)}${t.fixAvailable ? ` <span class="muted small">fix available</span>` : ""}</li>`).join("")}</ul>`) : ""}` : `<p class="muted">${icon("info")} ${esc(st.audit.error)}</p>`) : `<p class="muted small">Check your libraries against public vulnerability databases. Sends package names and versions only.</p>`}
-    <div class="actions"><button class="secondary" data-act="audit" ${settings?.trusted ? "" : "disabled"}>${icon("shield")} ${st.audit ? "Re-check" : "Check dependencies"}</button></div>
-  </section>
-  <section>
-    <h3>Visual check</h3>
-    <p class="muted small">Open your running app headlessly, check it loads without an error, and save a screenshot.${st.browserFound ? "" : " (No Chrome/Edge found, so no screenshot.)"}</p>
-    <input id="appUrl" type="text" value="${esc(st.visual?.url ?? st.appUrl.url ?? "")}" placeholder="http://localhost:3000" aria-label="App address">
-    <div class="muted small">${st.appUrl.url ? `Detected from ${esc(st.appUrl.basis)}` : "Address not detected. Enter it above."}</div>
-    <div class="actions wrap"><button class="secondary" data-act="visualCheck">${icon("eye")} Check now</button>${f?.scripts.dev || f?.scripts.start ? `<button class="link" data-act="startApp" ${settings?.trusted ? "" : "disabled"}>Start the app first</button>` : ""}</div>
-    ${st.visual ? `<p>${st.visual.reachable && !st.visual.errorText ? icon("pass", "ok") : icon("error", "bad")} ${esc(st.visual.note)} <span class="muted small">${ago(st.visual.checkedAt)}${st.visual.title ? ` · “${esc(st.visual.title)}”` : ""}</span></p>${st.visual.errorText ? `<div class="errtext">${esc(st.visual.errorText)}</div>` : ""}${settings?.screenshotUri ? `<a href="#" data-act="openScreenshot" title="Open full size"><img class="shot" src="${esc(settings.screenshotUri)}" alt="Screenshot of your app"></a>` : ""}` : ""}
-  </section>
-  <section>
-    <h3>Ready to ship?</h3>
-    <ul class="ready">${st.out.readiness.map((r) => `<li>${conf(r.status)} <span>${esc(r.label)}</span><div class="muted small">${esc(r.detail)}</div></li>`).join("")}</ul>
-    <p class="muted small">Only items marked Verified were checked. BuildPilot never calls a product "production-ready" from opinion.</p>
-  </section>
-  <section>
-    <h3>Environment</h3>
-    ${st.doctor.length ? `<ul class="ready">${st.doctor.map((d) => `<li>${conf(d.status === "ok" ? "verified" : d.status === "fail" ? "failed" : d.status === "warn" ? "unverified" : "unknown")} <span>${esc(d.label)}</span><div class="muted small">${esc(d.detail)}</div></li>`).join("")}</ul>` : `<p class="muted">No checks apply to this project type yet.</p>`}
-  </section>
-  <section>
-    <h3>Safe changes</h3>
-    <p class="muted small">A checkpoint saves every file without touching your branch or staging. Restore individual files later if a change goes wrong.</p>
-    <div class="actions"><button class="secondary" data-act="checkpoint" ${f?.isGit ? "" : "disabled"}>${icon("save")} Save checkpoint</button></div>
-    ${st.checkpoints.length ? `<ul class="plain">${st.checkpoints.slice(0, 6).map((c) => `<li>${icon("history")} ${esc(c.label)} <span class="muted small">${ago(c.ts)} · ${c.sha.slice(0, 8)}</span> <a href="#" data-act="cpDiff" data-sha="${c.sha}">changed since</a>${cpFiles[c.sha] ? cpDiffList(c.sha) : ""}</li>`).join("")}</ul>` : ""}
+function buildsSection(): string {
+  const b = P!.builds;
+  const summary = !b.length
+    ? "No builds running."
+    : `${b.length} build${b.length === 1 ? "" : "s"}${P!.working ? ` · ${P!.working} working` : ""}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}`;
+  return `<section class="block" aria-label="Builds">
+    <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild">+ New build</button></div>
+    ${b.length ? `<ul class="builds">${b
+      .map((x) => `<li class="${x.needsYou ? "needs" : ""}">
+        <span class="dot dot-${x.status}" aria-hidden="true"></span>
+        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub">${esc(x.needsYou ? x.reason || x.word : x.task || x.word)} · ${ago(x.lastEventAt)}</div></div>
+        ${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How full this build's memory is">${Math.round(x.contextPct)}% memory</span>` : ""}
+        <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}">${x.needsYou ? "Go" : "Open"}</button>
+      </li>`)
+      .join("")}</ul>` : `<p class="muted">Run <code>claude</code> in a terminal, or press <b>+ New build</b>.</p>`}
   </section>`;
 }
 
-function cpDiffList(sha: string): string {
-  const files = cpFiles[sha]!;
-  if (!files.length) return `<div class="muted small">No changes since this checkpoint.</div>`;
-  return `<div class="cp-files"><ul class="plain files">${files.slice(0, 40).map((f) => `<li><label><input type="checkbox" class="cpf" data-sha="${sha}" value="${esc(f)}"> ${esc(f)}</label></li>`).join("")}</ul><button class="secondary small" data-act="rollback" data-sha="${sha}">${icon("discard")} Restore selected files</button></div>`;
+function bar(label: string, pct: number | null, right: string): string {
+  return `<div class="meter">
+    <div class="m-top"><span>${label}</span><span class="muted">${right}</span></div>
+    <div class="track" role="progressbar" aria-label="${esc(label)}" aria-valuemin="0" aria-valuemax="100" ${pct != null ? `aria-valuenow="${Math.round(pct)}"` : ""}><div class="fill tone-${tone(pct)}" style="width:${Math.min(100, Math.max(0, pct ?? 0))}%"></div></div>
+  </div>`;
 }
 
-// ---------- Prompt Studio ----------
-function promptsTab(): string {
-  const g = goals.find((x) => x.id === vs.goal);
-  return `
-  <section>
-    <h3>Prompt Studio</h3>
-    <p class="muted small">Describe what you want. BuildPilot turns it into a structured Claude Code prompt with your project's context, guardrails, acceptance criteria and verification steps.</p>
-    <div class="goals" role="radiogroup" aria-label="Goal">${goals.map((x) => `<button role="radio" aria-checked="${x.id === vs.goal}" class="goal ${x.id === vs.goal ? "on" : ""}" data-goal-pick="${x.id}" title="${esc(x.plain)}">${esc(x.label)}</button>`).join("")}</div>
-    ${g ? `<p class="muted small">${esc(g.plain)}</p>` : ""}
-    <label class="lbl" for="req">What do you want?</label>
-    <textarea id="req" rows="3" placeholder="${esc(g?.hint ?? "")}">${esc(vs.request)}</textarea>
-    ${g?.questions.length ? `<div class="muted small hint">Helpful to include: ${g.questions.map(esc).join(" · ")}</div>` : ""}
-    ${disclosure("prompt-more", "More options", `
-      <label class="lbl" for="must">Must not change (optional)</label>
-      <input id="must" type="text" value="${esc(vs.mustNotChange)}" placeholder="e.g. the database schema, the login page design">
-      <label class="lbl" for="acc">Extra "done when…" criteria, one per line (optional)</label>
-      <textarea id="acc" rows="2">${esc(vs.acceptance)}</textarea>
-      <label class="check"><input type="checkbox" id="planFirst" ${vs.planFirst ? "checked" : ""}> Ask Claude for a plan before it edits</label>`)}
-    <div class="actions"><button class="primary" data-act="build">${icon("sparkle")} Build prompt</button></div>
-    ${paywalled ? `<p class="small">Free prompts used up. <a href="#" data-act="upgrade">Upgrade</a> · <a href="#" data-act="enterLicense">Enter key</a></p>` : freeLeft !== null && freeLeft <= 5 ? `<p class="muted small">${freeLeft} free prompt${freeLeft === 1 ? "" : "s"} left</p>` : ""}
-  </section>
-  ${built ? `
-  <section class="built">
-    ${built.missingInfo.length ? `<div class="note warn">${icon("question")} <div><b>Worth adding</b><ul>${built.missingInfo.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div></div>` : ""}
-    ${built.assumptions.length ? `<div class="note">${icon("info")} <div><b>Assumptions made</b><ul>${built.assumptions.map((m) => `<li>${esc(m)}</li>`).join("")}</ul></div></div>` : ""}
-    <div class="muted small">Model: ${esc(built.suggestedModel)} · ${built.verification.length ? `Verifies with: ${built.verification.join(", ")}` : "No check commands found"} · ${promptText.length.toLocaleString()} characters</div>
-    <label class="lbl" for="ptext">Your prompt (edit freely)</label>
-    <textarea id="ptext" class="mono" rows="16">${esc(promptText)}</textarea>
-    <div class="actions wrap">
-      <button class="primary" data-act="copyPrompt">${icon("copy")} Copy</button>
-      <button class="secondary" data-act="sendPrompt" ${settings?.trusted ? "" : "disabled"} title="Opens a terminal and starts Claude Code with this prompt">${icon("terminal")} Start in Claude Code</button>
-      <button class="secondary" data-act="refine" title="${settings?.aiProvider === "none" ? "Needs an AI provider (optional)" : "Uses " + esc(settings?.aiProvider)}">${icon("wand")} Refine with AI</button>
-    </div>
-    <p class="muted small">"Start in Claude Code" opens a new terminal running <code>claude</code> with this prompt, after you confirm. To use an existing session, copy and paste instead.</p>
-  </section>` : ""}`;
+function limitsSection(): string {
+  const L = P!.limits;
+  if (P!.billing === "api") {
+    return `<section class="block" aria-label="Spend"><h2>Spend today</h2><p class="big">${P!.costTodayUsd != null ? `~$${P!.costTodayUsd.toFixed(2)}` : "—"}</p><p class="muted small">Claude Code's own estimate for your API key.</p></section>`;
+  }
+  if (P!.billing === "unknown" || (L.fiveHourPct == null && L.sevenDayPct == null)) {
+    return P!.connected ? `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2><p class="muted">Shows up after your next Claude message.</p></section>` : "";
+  }
+  const fiveRight = L.fiveHourPct == null ? "unknown" : `${Math.round(L.fiveHourPct)}%${L.fiveHourResetsAt ? ` · resets ${clock(L.fiveHourResetsAt)}` : ""}`;
+  const weekRight = L.sevenDayPct == null ? "unknown" : `${Math.round(L.sevenDayPct)}%${L.sevenDayResetsAt ? ` · resets ${until(L.sevenDayResetsAt)}` : ""}`;
+  const forecast = L.fullAt ? `<p class="small ${L.fullAt - Date.now() < 3600_000 ? "warn-text" : "muted"}">At this pace you'll run out around ${clock(L.fullAt)}.</p>` : "";
+  return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}${forecast}</section>`;
 }
 
-// ---------- Memory ----------
-function memoryTab(): string {
-  const st = S!;
-  const statusOpts = (r: Requirement) => (["todo", "in_progress", "done", "dropped"] as const).map((s) => `<option value="${s}" ${r.status === s ? "selected" : ""}>${{ todo: "Not started", in_progress: "In progress", done: "Done", dropped: "Dropped" }[s]}</option>`).join("");
-  return `
-  <section>
-    <h3>Goal</h3>
-    <textarea id="goal" rows="2" aria-label="Project goal" placeholder="What are you building, for whom, and what does success look like?">${esc(st.notes.goal)}</textarea>
-    <div class="actions"><button class="secondary small" data-act="saveNote" data-key="goal" data-src="goal">Save</button></div>
-  </section>
-  <section>
-    <h3>Requirements</h3>
-    <p class="muted small">Progress is measured only against these. "Done" counts as verified once tests pass after you mark it.</p>
-    ${st.requirements.length ? `<ul class="reqs">${st.requirements.map((r) => `<li>
-      <div class="req-top"><select data-req-status="${r.id}" aria-label="Status for ${esc(r.title)}">${statusOpts(r)}</select><span class="req-title">${esc(r.title)}</span>${r.status === "done" ? conf(r.evidence, r.evidenceNote) : ""}<span class="spacer"></span><button class="icon-btn" data-act="delReq" data-id="${r.id}" aria-label="Delete requirement">${icon("trash")}</button></div>
-      <div class="muted small">${r.acceptance ? `Done when: ${esc(r.acceptance)}` : editingAcc === r.id ? `<label class="lbl" for="acc-${esc(r.id)}">Done when… (Enter to save, Escape to cancel)</label><input id="acc-${esc(r.id)}" class="acc-edit" data-id="${esc(r.id)}" type="text" placeholder="e.g. a test payment succeeds">` : `<span class="warn-text">No acceptance criteria.</span> <a href="#" data-act="editAcc" data-id="${r.id}">Add</a>`}</div>
-    </li>`).join("")}</ul>` : ""}
-    <label class="lbl" for="newReq">New requirement</label>
-    <input id="newReq" type="text" placeholder="e.g. Users can pay with a card">
-    <label class="lbl" for="newAcc">Done when…</label>
-    <input id="newAcc" type="text" placeholder="e.g. a test payment succeeds and a receipt is emailed">
-    <div class="actions"><button class="secondary small" data-act="addReq">Add requirement</button>${st.facts?.checklistItems.length ? `<button class="link" data-act="importChecklist">Import ${st.facts.checklistItems.length} from docs</button>` : ""}</div>
-  </section>
-  <section>
-    <h3>Decisions</h3>
-    ${st.decisions.length ? `<ul class="plain">${st.decisions.map((d) => `<li><b>${esc(d.title)}</b>${d.detail ? `: ${esc(d.detail)}` : ""} <button class="icon-btn" data-act="delDec" data-id="${d.id}" aria-label="Delete decision">${icon("close")}</button></li>`).join("")}</ul>` : `<p class="muted small">Record choices (e.g. "Use Supabase for auth") so new sessions don't undo them.</p>`}
-    <label class="lbl" for="newDec">New decision</label><input id="newDec" type="text" placeholder="e.g. Use Supabase for login">
-    <label class="lbl" for="newDecD">Why (optional)</label><input id="newDecD" type="text" placeholder="e.g. built-in email login, free tier">
-    <div class="actions"><button class="secondary small" data-act="addDec">Add decision</button></div>
-  </section>
-  <section>
-    <h3>Preferences</h3>
-    <textarea id="prefs" rows="2" aria-label="Your preferences" placeholder="e.g. Keep the UI minimal. Use TypeScript. Explain things simply.">${esc(st.notes.preferences)}</textarea>
-    <div class="actions"><button class="secondary small" data-act="saveNote" data-key="preferences" data-src="prefs">Save</button></div>
-  </section>
-  <section>
-    <h3>Session handoff</h3>
-    <p class="muted small">A compact summary of goal, requirements, state, what was tried, and the next step, to start a new Claude Code session without losing context.</p>
-    <div class="actions wrap"><button class="secondary" data-act="copyHandoff">${icon("copy")} Copy handoff</button><button class="secondary" data-act="handoffPrompt">${icon("sparkle")} Handoff prompt</button><button class="link" data-act="saveHandoff">Save to .buildpilot/HANDOFF.md</button></div>
-    <div class="actions"><button class="link" data-act="claudeMd">${st.facts?.hasClaudeMd ? "Draft CLAUDE.md additions" : "Draft a CLAUDE.md"}</button></div>
-  </section>
-  <section>
-    <h3>Your data</h3>
-    <p class="muted small">Stored only on this computer in <code>${esc(settings?.home ?? "~/.buildpilot")}</code>.</p>
-    <div class="actions wrap"><button class="link danger" data-act="deleteProjectData">Delete this project's data</button><button class="link danger" data-act="deleteAllData">Delete all data</button></div>
-  </section>`;
+function tipsSection(): string {
+  if (!P!.tips.length) return "";
+  return `<section class="block" aria-label="Tips"><h2>Tips for right now</h2><ul class="tips">${P!.tips
+    .map((t) => `<li><span>${esc(t.text)}</span>${t.action ? ` <button class="link" data-act="tip" data-tip="${t.action}" title="${esc(t.why)}">${esc(t.actionLabel ?? "Do it")}</button>` : ""}</li>`)
+    .join("")}</ul></section>`;
 }
 
-// ---------- Connect ----------
-function connectTab(): string {
-  const st = S!;
-  const s = settings!;
-  return `
-  <section>
-    <h3>Claude Code</h3>
-    <ul class="steps">
-      <li>${icon(st.integration.claudeInstalled ? "pass-filled" : "circle-large-outline", st.integration.claudeInstalled ? "ok" : "muted")} <span>${st.integration.claudeInstalled ? `Installed: ${esc(st.integration.claudeVersion)}` : st.integration.claudeInstalled === null ? "Checking…" : "Not found on PATH"}</span></li>
-      <li>${icon(st.hooks.installed ? "pass-filled" : "circle-large-outline", st.hooks.installed ? "ok" : "muted")} <span>${st.hooks.installed ? "Connected" : st.hooks.settingsError ? `Settings file problem: ${esc(st.hooks.settingsError)}` : "Not connected"}<div class="muted small mono">${esc(st.hooks.settingsPath)}</div></span></li>
-      <li>${icon(st.statusline.installed ? "pass-filled" : "circle-large-outline", st.statusline.installed ? "ok" : "muted")} <span>${st.statusline.installed ? `Exact context % on${st.statusline.chainedOriginal ? " (your status line is preserved)" : ""}` : "Exact context % off"} ${st.statusline.installed ? `<a href="#" data-act="statuslineOff">remove</a>` : `<a href="#" data-act="statuslineOn">turn on</a>`}</span></li>
-      <li>${icon("database", "muted")} <span>${st.integration.spool.accepted} events received this run${st.integration.spool.rejected ? `, ${st.integration.spool.rejected} malformed ignored` : ""}${st.integration.spool.lastEventAt ? ` · last ${ago(st.integration.spool.lastEventAt)}` : ""}</span></li>
-    </ul>
-    <div class="actions wrap">${st.hooks.installed ? `<button class="link" data-act="uninstallHooks">Disconnect</button>` : `<button class="primary" data-act="installHooks">Connect</button>`}${st.demo ? `<button class="link" data-act="demoOff">Remove demo data</button>` : `<button class="link" data-act="demoOn">Load demo data</button>`}</div>
-  </section>
-  <section>
-    <h3>Terminal</h3>
-    <label class="check"><input type="checkbox" id="openWithTerminal" ${s.openWithTerminal ? "checked" : ""}> Open BuildPilot whenever I open a terminal or start Claude Code</label>
-    <ul class="steps">
-      <li>${icon(s.shellInstalled ? "pass-filled" : "circle-large-outline", s.shellInstalled ? "ok" : "muted")} <span>${s.shellInstalled ? "Shown in every terminal (Terminal, iTerm, VS Code). Type <code>bp</code> for details." : "Show a BuildPilot summary in every new terminal, plus the <code>bp</code> command"} ${s.shellInstalled ? `<a href="#" data-act="shellOff">remove</a>` : `<a href="#" data-act="shellOn">turn on</a>`}</span></li>
-    </ul>
-  </section>
-  ${s.widget?.supported ? `<section>
-    <h3>Menu bar</h3>
-    <p class="muted small">BuildPilot Bar puts your Claude Code sessions in the Mac menu bar, even when VS Code is closed: who's working, who needs you, your plan limits. It notifies you when a session is waiting. It reads local data only.</p>
-    <ul class="steps">
-      <li>${icon(s.widget.installed ? "pass-filled" : "circle-large-outline", s.widget.installed ? "ok" : "muted")} <span>${s.widget.installed ? `Installed${s.widget.running ? ", running" : ", not running"}${s.widget.startAtLogin ? " · starts at login" : ""}` : "Not installed"}</span></li>
-    </ul>
-    <div class="actions wrap">${s.widget.installed
-      ? `${s.widget.running ? "" : `<button class="secondary small" data-act="widgetOpen">${icon("play")} Start it</button>`}<label class="check inline"><input type="checkbox" id="widgetLogin" ${s.widget.startAtLogin ? "checked" : ""}> Start at login</label><button class="link" data-act="widgetOff">Remove</button>`
-      : `<button class="primary" data-act="widgetOn">${icon("add")} Add to menu bar</button>`}</div>
-  </section>` : ""}
-  <section>
-    <h3>Phone, glasses &amp; other devices</h3>
-    <p class="muted small">Get alerts where you are, like "Claude needs your approval" or "Tests failing". Send them to <b>ntfy</b> (free phone push; smart glasses paired to your phone can read phone notifications aloud), <b>Slack</b>, <b>Discord</b>, or any webhook. Only short alerts and the project name are sent, never code.</p>
-    <div class="actions wrap"><button class="secondary" data-act="setWebhook">${icon("bell")} ${hasWebhook ? "Change notification URL" : "Set up notifications"}</button>${hasWebhook ? `<button class="link" data-act="testWebhook">Send test</button>` : ""}</div>
-  </section>
-  <section>
-    <h3>Integration API</h3>
-    <p class="muted small">Lets your own tools ask BuildPilot what's happening: iOS Shortcuts / Siri, Raycast, Stream Deck, a companion app for smart glasses, or a bot. Read-only plus prompt generation. It can't run commands or change files. Requires a secret token.</p>
-    <label class="check"><input type="checkbox" id="apiToggle" ${s.apiEnabled ? "checked" : ""}> Enable on ${s.apiAllowLan ? "your local network" : "this computer only"}</label>
-    ${s.apiEnabled && s.pocketUrl ? `<div class="pocket">${icon("device-mobile")} <div><b>Pocket</b>: a phone page that shows status and can read it aloud (through Bluetooth glasses or earbuds).<div class="mono small">${esc(s.pocketUrl)}</div>${s.apiAllowLan ? "" : `<div class="muted small">To open it on your phone, enable network access in settings (trusted Wi-Fi only).</div>`}<button class="link" data-act="copyPocketLink">Copy link for my phone</button></div></div>` : ""}
-    ${s.apiEnabled && s.apiAddress ? `<div class="mono small api">${esc(s.apiAddress)}/v1/brief?format=text<br>${esc(s.apiAddress)}/v1/status · /v1/sessions · /v1/next<br>POST ${esc(s.apiAddress)}/v1/prompt {"goal","request"}</div>
-      <div class="actions wrap"><button class="secondary small" data-act="copyApiToken">${icon("key")} Copy token</button><button class="link" data-act="rotateApiToken">New token</button><button class="link" data-act="settings">Port / network settings</button></div>` : ""}
-  </section>
-  <section>
-    <h3>AI refinement <span class="muted small">(optional)</span></h3>
-    <p class="muted small">BuildPilot works fully without AI. Optionally refine prompts with your own Anthropic API key or a local Ollama model. Nothing is sent without your OK each time.</p>
-    <div class="muted small">Provider: <b>${esc(s.aiProvider)}</b>${s.aiModel ? ` · ${esc(s.aiModel)}` : ""}</div>
-    <div class="actions"><button class="link" data-act="settings">Change in Settings</button></div>
-  </section>
-  <section>
-    <h3>Experience</h3>
-    <label class="check"><input type="checkbox" id="beginner" ${s.beginner ? "checked" : ""}> Beginner explanations (plain-English "why it matters")</label>
-    <div class="muted small">Pop-up alerts: ${esc(s.notifications)} · <a href="#" data-act="settings">change</a></div>
+function promptSection(): string {
+  return `<section class="block" aria-label="Prompt">
+    <h2><label for="req">What do you want to build next?</label></h2>
+    <textarea id="req" rows="3" placeholder="e.g. Add a contact form that emails me"></textarea>
+    <div class="actions"><button class="primary" data-act="build">Write my prompt</button></div>
+    ${paywalled ? `<p class="small">You've used your free prompts. <a href="#" data-act="upgrade">Go unlimited — ${esc(P!.plan.price)}</a> · <a href="#" data-act="enterLicense">Enter key</a></p>` : ""}
+    ${built ? `
+      <label class="lbl" for="ptext">Your prompt. Edit anything.</label>
+      <textarea id="ptext" class="mono" rows="12"></textarea>
+      <div class="actions"><button class="primary" data-act="sendPrompt">Send to Claude</button><button class="secondary" data-act="copyPrompt">Copy</button></div>` : ""}
   </section>`;
 }
 
 // ---------- events ----------
 function bind(): void {
-  document.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) =>
-    el.addEventListener("click", (e) => {
-      e.preventDefault();
-      vs.tab = el.dataset.tab as Tab;
-      persist();
-      if (vs.tab === "connect") void call<boolean>("hasWebhook").then((v) => { hasWebhook = v; render(); });
-      render();
-      (document.querySelector(".content") as HTMLElement | null)?.scrollTo?.(0, 0);
-    }),
-  );
-  const tabEls = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-  tabEls.forEach((el, i) =>
-    el.addEventListener("keydown", (e) => {
-      const k = (e as KeyboardEvent).key;
-      const next = k === "ArrowRight" ? (i + 1) % tabEls.length : k === "ArrowLeft" ? (i - 1 + tabEls.length) % tabEls.length : k === "Home" ? 0 : k === "End" ? tabEls.length - 1 : -1;
-      if (next < 0) return;
-      e.preventDefault();
-      vs.tab = tabEls[next]!.dataset.tab as Tab;
-      persist();
-      render();
-      document.getElementById(`tab-${vs.tab}`)?.focus();
-    }),
-  );
-  document.querySelectorAll<HTMLDetailsElement>("details[data-key]").forEach((d) => d.addEventListener("toggle", () => { vs.open[d.dataset.key!] = d.open; persist(); }));
-  document.querySelectorAll<HTMLElement>("[data-open]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); void call("openFile", { path: el.dataset.open }); }));
-  document.querySelectorAll<HTMLElement>("[data-goal-pick]").forEach((el) => el.addEventListener("click", () => { vs.goal = el.dataset.goalPick!; persist(); render(); }));
-  const bindInput = (id: string, key: keyof ViewState) => document.getElementById(id)?.addEventListener("input", (e) => { (vs as unknown as Record<string, unknown>)[key] = (e.target as HTMLInputElement).value; persist(); });
-  bindInput("req", "request");
-  bindInput("must", "mustNotChange");
-  bindInput("acc", "acceptance");
-  document.getElementById("planFirst")?.addEventListener("change", (e) => { vs.planFirst = (e.target as HTMLInputElement).checked; persist(); });
-  // Remember unsaved typing so live updates never wipe it.
-  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("#goal, #prefs, #newReq, #newAcc, #newDec, #newDecD, #appUrl, .acc-edit").forEach((el) =>
-    el.addEventListener("input", () => { drafts[el.id] = el.value; }),
-  );
-  document.querySelectorAll<HTMLInputElement>(".acc-edit").forEach((input) =>
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Escape") { delete drafts[input.id]; editingAcc = null; return render(); }
-      if (e.key !== "Enter" || !input.value.trim()) return;
-      await call("updateRequirement", { id: input.dataset.id, patch: { acceptance: input.value.trim() } });
-      delete drafts[input.id];
-      editingAcc = null;
-      flash("Saved");
-    }),
-  );
+  document.getElementById("req")?.addEventListener("input", (e) => { vs.request = (e.target as HTMLTextAreaElement).value; persist(); });
+  document.getElementById("req")?.addEventListener("keydown", (e) => { const k = e as KeyboardEvent; if (k.key === "Enter" && (k.metaKey || k.ctrlKey)) void buildNow(); });
   document.getElementById("ptext")?.addEventListener("input", (e) => { promptText = (e.target as HTMLTextAreaElement).value; });
-  document.getElementById("widgetLogin")?.addEventListener("change", (e) => void call("widgetLogin", { value: (e.target as HTMLInputElement).checked }));
-  document.getElementById("openWithTerminal")?.addEventListener("change", (e) => void call("openWithTerminal", { value: (e.target as HTMLInputElement).checked }));
-  document.getElementById("apiToggle")?.addEventListener("change", (e) => void call("apiToggle", { value: (e.target as HTMLInputElement).checked }));
-  document.getElementById("beginner")?.addEventListener("change", (e) => void call("setBeginner", { value: (e.target as HTMLInputElement).checked }));
-  document.querySelectorAll<HTMLSelectElement>("[data-req-status]").forEach((el) => el.addEventListener("change", () => void call("updateRequirement", { id: el.dataset.reqStatus, patch: { status: el.value } })));
-  document.getElementById("req")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter" && ((e as KeyboardEvent).metaKey || (e as KeyboardEvent).ctrlKey)) void buildNow(); });
-  document.getElementById("newAcc")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addReq(); });
-  document.getElementById("newReq")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") document.getElementById("newAcc")?.focus(); });
-  document.getElementById("newDecD")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") document.querySelector<HTMLElement>('[data-act="addDec"]')?.click(); });
-  document.getElementById("appUrl")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") document.querySelector<HTMLElement>('[data-act="visualCheck"]')?.click(); });
   document.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); void act(el); }));
 }
 
-const val = (id: string) => ((document.getElementById(id) as HTMLInputElement | null)?.value ?? "").trim();
-
 async function buildNow(): Promise<void> {
-  vs.request = val("req") || vs.request;
-  const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } }>("buildPrompt", { goal: vs.goal, request: vs.request, mustNotChange: vs.mustNotChange, acceptance: vs.acceptance, beginner: beginner(), planFirst: vs.planFirst });
+  const text = vs.request.trim();
+  if (!text) {
+    flash("Type what you want first");
+    document.getElementById("req")?.focus();
+    return;
+  }
+  const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } } | null>("buildPrompt", { goal: goalFor(text), request: text, beginner: true, planFirst: true });
+  if (!r) return;
   if ("paywall" in r) {
     paywalled = true;
     built = null;
     return render();
   }
   paywalled = false;
-  freeLeft = r.remaining;
   built = r.prompt;
   promptText = r.prompt.text;
   render();
   document.getElementById("ptext")?.scrollIntoView?.({ block: "nearest" });
 }
 
-async function addReq(): Promise<void> {
-  const t = val("newReq");
-  if (!t) {
-    flash("Type a requirement first");
-    document.getElementById("newReq")?.focus();
-    return;
-  }
-  await call("addRequirement", { title: t, acceptance: val("newAcc") });
-  delete drafts.newReq;
-  delete drafts.newAcc;
-  for (const id of ["newReq", "newAcc"]) {
-    const input = document.getElementById(id) as HTMLInputElement | null;
-    if (input) input.value = "";
-  }
-  flash("Requirement added");
-  document.getElementById("newReq")?.focus();
-}
-
 async function act(el: HTMLElement): Promise<void> {
   const a = el.dataset.act!;
   switch (a) {
     case "build": return buildNow();
-    case "promptFor":
-      vs.tab = "prompts";
-      vs.goal = el.dataset.goal || "feature";
-      vs.request = el.dataset.request || "";
-      persist();
-      if (vs.request) return buildNow();
-      built = null;
-      return render();
-    case "copyPrompt": await call("copy", { text: promptText }); return flash("Prompt copied");
+    case "copyPrompt": await call("copy", { text: promptText }); return flash("Copied");
     case "sendPrompt": return void call("sendToClaude", { text: promptText });
-    case "refine": {
-      const r = await call<{ text: string } | null>("refine", { text: promptText });
-      if (r?.text) { promptText = r.text; render(); }
-      return;
-    }
-    case "copyHandoff": {
-      const h = await call<string>("handoff");
-      await call("copy", { text: h });
-      return flash("Handoff copied. Paste it into a new Claude Code session");
-    }
-    case "handoffPrompt":
-      vs.tab = "prompts";
-      vs.goal = "handoff";
-      vs.request = "Continue where the previous session left off.";
-      persist();
-      return buildNow();
-    case "runScript": return void call("runScript", { script: el.dataset.script });
-    case "dismiss": return void call("dismiss", { key: el.dataset.key });
-    case "saveNote":
-      await call("setNote", { key: el.dataset.key, value: val(el.dataset.src!) });
-      delete drafts[el.dataset.src!];
-      return flash("Saved");
-    case "addReq": return addReq();
-    case "delReq": return void call("deleteRequirement", { id: el.dataset.id });
-    case "editAcc":
-      editingAcc = el.dataset.id!;
-      render();
-      document.getElementById(`acc-${editingAcc}`)?.focus();
-      return;
-    case "addDec": {
-      const t = val("newDec");
-      if (!t) { flash("Type a decision first"); document.getElementById("newDec")?.focus(); return; }
-      await call("addDecision", { title: t, detail: val("newDecD") });
-      delete drafts.newDec;
-      delete drafts.newDecD;
-      for (const id of ["newDec", "newDecD"]) {
-        const input = document.getElementById(id) as HTMLInputElement | null;
-        if (input) input.value = "";
+    case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd });
+    case "tip": {
+      const t = el.dataset.tip;
+      if (t === "handoff") { await call("copyHandoff"); return flash("Handoff copied"); }
+      if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
+      if (t === "newBuild") return void call("newBuild");
+      if (t === "planMode") {
+        vs.request = "Stop. Look at why the last fixes failed, then write a short plan before changing any code.";
+        persist();
+        return buildNow();
       }
-      return flash("Decision recorded");
-    }
-    case "delDec": return void call("deleteDecision", { id: Number(el.dataset.id) });
-    case "cpDiff": {
-      cpFiles[el.dataset.sha!] = await call<string[]>("checkpointDiff", { sha: el.dataset.sha });
-      return render();
-    }
-    case "rollback": {
-      const sha = el.dataset.sha!;
-      const files = [...document.querySelectorAll<HTMLInputElement>(`input.cpf[data-sha="${sha}"]:checked`)].map((i) => i.value);
-      if (!files.length) return flash("Tick the files to restore first");
-      await call("rollback", { sha, files });
-      cpFiles = {};
-      return render();
-    }
-    case "widgetOn": return void call("widget", { on: true });
-    case "widgetOff": return void call("widget", { on: false });
-    case "shellOn": return void call("shell", { on: true });
-    case "shellOff": return void call("shell", { on: false });
-    case "statuslineOn": return void call("statusline", { on: true });
-    case "statuslineOff": return void call("statusline", { on: false });
-    case "visualCheck": return void call("visualCheck", { url: val("appUrl") });
-    case "worktree": return void call("worktree", { sessionId: el.dataset.session });
-    case "explainSession": {
-      const sid = el.dataset.session!;
-      const r = await call<string | null>("explainSession", { sessionId: sid });
-      if (r) { explanations[sid] = r; render(); }
       return;
     }
-    case "demoOn": return void call("demo", { on: true });
-    case "demoOff": return void call("demo", { on: false });
-    case "setWebhook": await call("setWebhook"); hasWebhook = await call<boolean>("hasWebhook"); return render();
     default: return void call(a);
   }
 }
 
 // boot
-void call<GoalSpec[]>("goals").then((g) => { goals = g ?? []; render(); });
+const live = document.createElement("div");
+live.id = "live";
+live.className = "sr-only";
+live.setAttribute("role", "status");
+live.setAttribute("aria-live", "polite");
+document.body.appendChild(live);
+render();
 vscode.postMessage({ type: "ready" });

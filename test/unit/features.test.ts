@@ -240,7 +240,7 @@ describe("supervisor rules for new signals", () => {
   const edit = (sid: string, file: string): HookEvent => ({ id: Math.random(), sessionId: sid, hookEvent: "PostToolUse", ts: now - 500, toolName: "Edit", toolUseId: null, summary: "Edit", filePath: file, isError: false, errorText: null, agentId: null, fingerprint: String(Math.random()) });
   const base = (o: Partial<SupervisorInput> = {}): SupervisorInput => ({ now, facts: null, changes: null, sessions: [], eventsBySession: new Map(), testRuns: [], requirements: [], doctor: [], secrets: [], hooksInstalled: true, claudeInstalled: true, dismissed: new Set(), hasCheckpointSinceChanges: true, ...o });
   it("recommends a handoff when context is nearly full, and warns on rate limits", () => {
-    const live = { a: { sessionId: "a", updatedAt: now, contextPct: 96, contextSize: 200000, contextTokens: 192000, costUsd: 3, model: "Opus", fiveHourPct: 91, sevenDayPct: 10 } };
+    const live = { a: { sessionId: "a", updatedAt: now, contextPct: 96, contextSize: 200000, contextTokens: 192000, costUsd: 3, model: "Opus", fiveHourPct: 91, sevenDayPct: 10, fiveHourResetsAt: null, sevenDayResetsAt: null } };
     const out = supervise(base({ sessions: [sess("a")], live }));
     const ctx = out.recommendations.find((r) => r.key === "context:a")!;
     expect(ctx.severity).toBe("high");

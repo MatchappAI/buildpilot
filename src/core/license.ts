@@ -11,6 +11,9 @@ import * as path from "path";
  */
 
 export const FREE_PROMPTS = 20;
+/** Free users can run one extra build side by side; more needs Pro. */
+export const FREE_EXTRA_BUILDS = 1;
+export const PRICE = "$9/mo";
 /** Stripe Payment Link. Replace with the real buy.stripe.com link; BUILDPILOT_CHECKOUT_URL overrides. */
 export const CHECKOUT_URL = "https://buy.stripe.com/REPLACE_WITH_PAYMENT_LINK";
 
@@ -90,7 +93,14 @@ export function gate(home: string, env: NodeJS.ProcessEnv = process.env): Gate {
   const u = readUsage(home);
   if (u.count < FREE_PROMPTS) return { allowed: true, licensed: false, remaining: FREE_PROMPTS - u.count };
   const url = checkoutUrl(u.installId, env);
-  return { allowed: false, paywall: { url, used: u.count, limit: FREE_PROMPTS, message: `🔴 Free limit reached. Upgrade to unlock unlimited premium generations: ${url}` } };
+  return { allowed: false, paywall: { url, used: u.count, limit: FREE_PROMPTS, message: `You've used your ${FREE_PROMPTS} free prompts. Go unlimited for ${PRICE}: ${url}` } };
+}
+
+/** Parallel builds: free users get FREE_EXTRA_BUILDS side-by-side copies; Pro is unlimited. */
+export function gateParallel(home: string, extraBuilds: number, env: NodeJS.ProcessEnv = process.env): { allowed: true } | { allowed: false; paywall: Paywall } {
+  if (extraBuilds < FREE_EXTRA_BUILDS || readLicense(home, env).valid) return { allowed: true };
+  const url = checkoutUrl(readUsage(home).installId, env);
+  return { allowed: false, paywall: { url, used: extraBuilds, limit: FREE_EXTRA_BUILDS, message: `Free plan runs ${FREE_EXTRA_BUILDS + 1} builds at once. Go unlimited for ${PRICE}: ${url}` } };
 }
 
 /** Call only after a prompt was generated successfully. No-op when licensed. */
@@ -104,10 +114,5 @@ export function recordUse(home: string, env: NodeJS.ProcessEnv = process.env): n
 
 /** Terminal paywall: short and scannable. */
 export function paywallText(p: Paywall): string {
-  return [
-    p.message,
-    "",
-    `  You've used all ${p.limit} free Prompt Studio prompts. Pro = unlimited, plus everything else stays free.`,
-    "  Already paid?  bp license <your-key>",
-  ].join("\n");
+  return [p.message, "", "  Watching builds, limits and tips stays free.", "  Already paid?  bp license <your-key>"].join("\n");
 }

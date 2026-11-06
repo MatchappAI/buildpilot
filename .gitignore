@@ -11,3 +11,4 @@ test/ui/preview-*.html
 test/ui/fixture.json
 build/
 media/widget/
+test/ui/shots/
