@@ -60,3 +60,8 @@ The private key (`~/.buildpilot-issuer/private.pem`) is the only thing that can 
 
 
 Signing key backup: macOS Keychain item "BuildPilot license signing key" (base64 of private.pem). Restore: `security find-generic-password -a buildpilot -s "BuildPilot license signing key" -w | base64 -d > private.pem`
+
+## Stripe status (2026-11-06)
+- Account: OCUCLIPS LLC (acct_1QKRrhBh0cRtL75D). **Test mode set up:** product "BuildPilot Pro" $5/month; Payment Link `https://buy.stripe.com/test_00wfZg9ds11N90p3bB3gk00` (redirects to the Worker's /success); webhook destination `buildpilot-license` (we_1UYwOWBh0cRtL75DaxEgrkby) → `/stripe/webhook`, event `checkout.session.completed`.
+- The test link is NOT in the shipped code on purpose (anyone could "buy" with Stripe's public test card and get a real key). Try it locally: `BUILDPILOT_CHECKOUT_URL=https://buy.stripe.com/test_00wfZg9ds11N90p3bB3gk00 bp prompt auto "x"` after the trial, or just open the link.
+- Go live: create the same product, link and webhook in **live** mode, put the live link in `CHECKOUT_URL`, and replace the Worker's `STRIPE_WEBHOOK_SECRET` with the live endpoint's secret.
