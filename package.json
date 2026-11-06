@@ -1,0 +1,44 @@
+{
+  "name": "buildpilot",
+  "displayName": "BuildPilot",
+  "description": "Mission control for building software with Claude Code: what's being built, what's broken, what to do next.",
+  "version": "0.1.0",
+  "publisher": "buildpilot-local",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "lint": "eslint src test",
+    "test": "vitest run",
+    "test:smoke": "node scripts/build.mjs && node test/smoke/run.mjs",
+    "package": "node scripts/build.mjs && vsce package --no-dependencies --out dist/buildpilot.vsix",
+    "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke"
+  },
+  "dependencies": {
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/sql.js": "^1.4.9",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.18.1",
+    "vitest": "^2.1.8"
+  }
+}

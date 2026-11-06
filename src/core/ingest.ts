@@ -1,0 +1,386 @@
+import { createHash } from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+import { Store } from "./db";
+import { clip } from "./redact";
+import { HookEvent, Session, SessionStatus } from "./types";
+
+/**
+ * Typed ingestion of Claude Code hook payloads.
+ * Payloads are UNTRUSTED DATA: validated, clipped, redacted, and never executed or followed as instructions.
+ */
+
+export interface RawHookPayload {
+  session_id: string;
+  hook_event_name: string;
+  cwd?: string;
+  transcript_path?: string;
+  permission_mode?: string;
+  tool_name?: string;
+  tool_use_id?: string;
+  tool_input?: Record<string, unknown>;
+  tool_response?: unknown;
+  error?: string;
+  is_interrupt?: boolean;
+  prompt?: string;
+  message?: string;
+  notification_type?: string;
+  reason?: string;
+  source?: string;
+  agent_id?: string;
+  agent_type?: string;
+  model?: string;
+  [k: string]: unknown;
+}
+
+export type ValidationResult = { ok: true; payload: RawHookPayload } | { ok: false; reason: string };
+
+const SAFE_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+const SAFE_EVENT = /^[A-Za-z]{2,40}$/;
+
+export function validatePayload(raw: string): ValidationResult {
+  if (raw.length === 0) return { ok: false, reason: "empty payload" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: "malformed JSON (possibly truncated at 1 MB)" };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return { ok: false, reason: "payload is not an object" };
+  const p = parsed as Record<string, unknown>;
+  if (typeof p.session_id !== "string" || !SAFE_ID.test(p.session_id)) return { ok: false, reason: "missing or invalid session_id" };
+  if (typeof p.hook_event_name !== "string" || !SAFE_EVENT.test(p.hook_event_name)) return { ok: false, reason: "missing or invalid hook_event_name" };
+  for (const k of ["cwd", "transcript_path", "tool_name", "prompt", "error", "message", "notification_type", "reason", "source"] as const) {
+    if (p[k] !== undefined && typeof p[k] !== "string") return { ok: false, reason: `field ${k} has wrong type` };
+  }
+  if (p.tool_input !== undefined && (typeof p.tool_input !== "object" || p.tool_input === null)) return { ok: false, reason: "tool_input is not an object" };
+  return { ok: true, payload: p as RawHookPayload };
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+
+export function toolFilePath(p: RawHookPayload): string | null {
+  const ti = p.tool_input ?? {};
+  return str(ti.file_path) ?? str(ti.notebook_path) ?? null;
+}
+
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+export function isEditTool(name: string | null): boolean {
+  return !!name && EDIT_TOOLS.has(name);
+}
+
+export function summarize(p: RawHookPayload): string {
+  const ti = p.tool_input ?? {};
+  const tool = p.tool_name ?? "";
+  const fp = toolFilePath(p);
+  const toolPhrase = (): string => {
+    if (tool === "Bash") return `Run: ${clip(str(ti.command) ?? "", 160)}`;
+    if (EDIT_TOOLS.has(tool)) return `${tool === "Write" ? "Write" : "Edit"} ${fp ? path.basename(fp) : "file"}`;
+    if (tool === "Read") return `Read ${fp ? path.basename(fp) : "file"}`;
+    if (tool === "Grep" || tool === "Glob") return `Search ${clip(str(ti.pattern) ?? "", 80)}`;
+    if (tool === "WebFetch") return `Fetch ${clip(str(ti.url) ?? "", 120)}`;
+    if (tool === "WebSearch") return `Web search ${clip(str(ti.query) ?? "", 100)}`;
+    if (tool === "Task" || tool === "Agent") return `Subagent: ${clip(str(ti.description) ?? str(ti.subagent_type) ?? "", 100)}`;
+    if (tool === "TodoWrite") return "Update todo list";
+    return `Use ${clip(tool, 60)}`;
+  };
+  switch (p.hook_event_name) {
+    case "SessionStart":
+      return `Session started (${clip(p.source ?? "startup", 30)})`;
+    case "SessionEnd":
+      return `Session ended (${clip(p.reason ?? "other", 40)})`;
+    case "UserPromptSubmit":
+      return `Prompt: ${clip(p.prompt ?? "", 200)}`;
+    case "PreToolUse":
+      return toolPhrase();
+    case "PostToolUse":
+      return `✓ ${toolPhrase()}`;
+    case "PostToolUseFailure":
+      return p.is_interrupt ? `Interrupted: ${toolPhrase()}` : `✗ ${toolPhrase()}`;
+    case "PermissionRequest":
+      return `Needs your approval: ${toolPhrase()}`;
+    case "Notification":
+      return `Notice: ${clip(p.message ?? p.notification_type ?? "", 160)}`;
+    case "Stop":
+      return "Finished responding";
+    case "StopFailure":
+      return `Turn failed (${clip(str(p.error_type) ?? str(p.error) ?? p.reason ?? "API error", 60)})`;
+    case "SubagentStart":
+      return `Subagent started (${clip(p.agent_type ?? "", 40)})`;
+    case "SubagentStop":
+      return `Subagent finished (${clip(p.agent_type ?? "", 40)})`;
+    case "PreCompact":
+      return "Compacting context";
+    default:
+      return clip(p.hook_event_name, 40);
+  }
+}
+
+/** Status after this event, or null to leave unchanged. Only states the event actually supports are set. */
+export function nextStatus(p: RawHookPayload): { status: SessionStatus; reason: string } | null {
+  switch (p.hook_event_name) {
+    case "SessionStart":
+      return { status: "idle", reason: "Started, waiting for a prompt" };
+    case "UserPromptSubmit":
+      return { status: "running", reason: "Working on your prompt" };
+    case "PreToolUse":
+    case "PostToolUse":
+    case "PostToolUseFailure":
+    case "SubagentStart":
+    case "SubagentStop":
+    case "PreCompact":
+      return { status: "running", reason: summarize(p) };
+    case "PermissionRequest":
+      return { status: "awaiting_approval", reason: summarize(p) };
+    case "Notification": {
+      const t = p.notification_type ?? "";
+      if (t === "permission_prompt") return { status: "awaiting_approval", reason: clip(p.message ?? "Waiting for your approval", 160) };
+      if (t === "idle_prompt") return { status: "idle", reason: "Waiting for your input" };
+      if (t === "agent_needs_input" || t.startsWith("elicitation_dialog") || t === "elicitation_url_dialog")
+        return { status: "blocked", reason: clip(p.message ?? "Needs your input", 160) };
+      return null;
+    }
+    case "Stop":
+      return { status: "idle", reason: "Finished its last response" };
+    case "StopFailure":
+      return { status: "failed", reason: summarize(p) };
+    case "SessionEnd":
+      return { status: "completed", reason: `Session ended (${clip(p.reason ?? "other", 40)})` };
+    default:
+      return null;
+  }
+}
+
+export interface IngestResult {
+  accepted: boolean;
+  duplicate?: boolean;
+  reason?: string;
+  sessionId?: string;
+}
+
+export class Ingestor {
+  constructor(
+    private readonly store: Store,
+    private readonly resolveProject: (cwd: string) => string | null,
+  ) {}
+
+  ingestRaw(raw: string, ts = Date.now()): IngestResult {
+    const v = validatePayload(raw);
+    if (!v.ok) return { accepted: false, reason: v.reason };
+    const fingerprint = createHash("sha256").update(raw).digest("hex").slice(0, 32);
+    return this.ingest(v.payload, ts, fingerprint);
+  }
+
+  ingest(p: RawHookPayload, ts: number, fingerprint: string): IngestResult {
+    if (this.store.get("SELECT 1 AS x FROM events WHERE fingerprint = ?", [fingerprint])) {
+      return { accepted: false, duplicate: true, reason: "duplicate", sessionId: p.session_id };
+    }
+    const isError = p.hook_event_name === "PostToolUseFailure" && !p.is_interrupt || p.hook_event_name === "StopFailure";
+    const errorText = isError ? clip(p.error ?? str(p.error_details) ?? str(p.error_type) ?? "", 600) : null;
+    const filePath = toolFilePath(p);
+    const cwd = p.cwd ?? "";
+    const existing = this.store.get<{ id: string; started_at: number; last_event_at: number }>(
+      "SELECT id, started_at, last_event_at FROM sessions WHERE id = ?",
+      [p.session_id],
+    );
+    if (!existing) {
+      this.store.run(
+        `INSERT INTO sessions (id, project_id, cwd, transcript_path, status, status_reason, started_at, last_event_at, event_count, error_count)
+         VALUES (?, ?, ?, ?, 'unknown', 'First event observed', ?, ?, 0, 0)`,
+        [p.session_id, cwd ? this.resolveProject(cwd) : null, cwd, p.transcript_path ?? null, ts, ts],
+      );
+    }
+    this.store.run(
+      `INSERT INTO events (session_id, hook_event, ts, tool_name, tool_use_id, summary, file_path, is_error, error_text, agent_id, fingerprint)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [p.session_id, p.hook_event_name, ts, p.tool_name ?? null, p.tool_use_id ?? null, summarize(p), filePath, isError ? 1 : 0, errorText, p.agent_id ?? null, fingerprint],
+    );
+    // Out-of-order safety: only let an event change status if it is not older than the latest one we have.
+    const isLatest = !existing || ts >= existing.last_event_at;
+    const ns = nextStatus(p);
+    const sets: string[] = ["event_count = event_count + 1"];
+    const params: (string | number | null)[] = [];
+    if (isError) sets.push("error_count = error_count + 1");
+    if (isLatest) {
+      sets.push("last_event_at = ?");
+      params.push(ts);
+      if (ns) {
+        sets.push("status = ?", "status_reason = ?");
+        params.push(ns.status, ns.reason);
+      }
+      if (cwd) {
+        sets.push("cwd = ?", "project_id = COALESCE(?, project_id)");
+        params.push(cwd, this.resolveProject(cwd));
+      }
+    }
+    if (p.hook_event_name === "SessionStart" && existing) sets.push("ended_at = NULL");
+    if (p.hook_event_name === "SessionEnd") {
+      sets.push("ended_at = ?");
+      params.push(ts);
+    }
+    if (p.hook_event_name === "UserPromptSubmit" && p.prompt) {
+      sets.push("current_task = ?");
+      params.push(clip(p.prompt, 300));
+    }
+    if (p.transcript_path) {
+      sets.push("transcript_path = ?");
+      params.push(p.transcript_path);
+    }
+    if (p.permission_mode) {
+      sets.push("permission_mode = ?");
+      params.push(clip(p.permission_mode, 30));
+    }
+    if (typeof p.model === "string") {
+      sets.push("model = ?");
+      params.push(clip(p.model, 60));
+    }
+    if (ts < (existing?.started_at ?? ts)) {
+      sets.push("started_at = ?");
+      params.push(ts);
+    }
+    params.push(p.session_id);
+    this.store.run(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`, params);
+    return { accepted: true, sessionId: p.session_id };
+  }
+}
+
+/**
+ * Drains the spool directory written by hook.sh. Each file = one event. Files are deleted after ingestion;
+ * malformed ones are moved to spool/rejected (kept small, for diagnostics) rather than retried forever.
+ */
+export class SpoolReader {
+  private watcher: fs.FSWatcher | null = null;
+  private poll: NodeJS.Timeout | null = null;
+  private draining = false;
+  stats = { accepted: 0, duplicates: 0, rejected: 0, lastEventAt: 0 };
+
+  constructor(
+    private readonly dir: string,
+    private readonly ingestor: Ingestor,
+    private readonly onIngest: (count: number) => void,
+  ) {}
+
+  start(): void {
+    fs.mkdirSync(path.join(this.dir, "tmp"), { recursive: true, mode: 0o700 });
+    this.drain();
+    try {
+      this.watcher = fs.watch(this.dir, () => this.drain());
+    } catch {
+      /* fs.watch unsupported: polling below still works */
+    }
+    this.poll = setInterval(() => this.drain(), 3000);
+  }
+
+  stop(): void {
+    this.watcher?.close();
+    this.watcher = null;
+    if (this.poll) clearInterval(this.poll);
+    this.poll = null;
+  }
+
+  /** Synchronous so ordering is deterministic. Returns number of accepted events. */
+  drain(limit = 2000): number {
+    if (this.draining) return 0;
+    this.draining = true;
+    let accepted = 0;
+    try {
+      let files: { name: string; mtime: number }[];
+      try {
+        files = fs
+          .readdirSync(this.dir)
+          .filter((f) => f.endsWith(".json"))
+          .map((name) => {
+            try {
+              return { name, mtime: fs.statSync(path.join(this.dir, name)).mtimeMs };
+            } catch {
+              return { name, mtime: 0 };
+            }
+          })
+          .sort((a, b) => a.mtime - b.mtime || a.name.localeCompare(b.name))
+          .slice(0, limit);
+      } catch {
+        return 0;
+      }
+      for (const f of files) {
+        const full = path.join(this.dir, f.name);
+        let raw: string;
+        try {
+          raw = fs.readFileSync(full, "utf8");
+        } catch {
+          continue;
+        }
+        const r = this.ingestor.ingestRaw(raw, Math.round(f.mtime) || Date.now());
+        if (r.accepted) {
+          accepted++;
+          this.stats.accepted++;
+          this.stats.lastEventAt = Date.now();
+          safeUnlink(full);
+        } else if (r.duplicate) {
+          this.stats.duplicates++;
+          safeUnlink(full);
+        } else {
+          this.stats.rejected++;
+          const rej = path.join(this.dir, "rejected");
+          try {
+            fs.mkdirSync(rej, { recursive: true, mode: 0o700 });
+            const kept = fs.readdirSync(rej);
+            if (kept.length < 50) fs.renameSync(full, path.join(rej, f.name));
+            else safeUnlink(full);
+          } catch {
+            safeUnlink(full);
+          }
+        }
+      }
+    } finally {
+      this.draining = false;
+    }
+    if (accepted > 0) this.onIngest(accepted);
+    return accepted;
+  }
+}
+
+function safeUnlink(p: string): void {
+  try {
+    fs.unlinkSync(p);
+  } catch {
+    /* already gone */
+  }
+}
+
+export function rowToSession(r: Record<string, unknown>): Session {
+  return {
+    id: String(r.id),
+    projectId: (r.project_id as string | null) ?? null,
+    cwd: String(r.cwd ?? ""),
+    transcriptPath: (r.transcript_path as string | null) ?? null,
+    status: r.status as SessionStatus,
+    statusReason: String(r.status_reason ?? ""),
+    currentTask: (r.current_task as string | null) ?? null,
+    model: (r.model as string | null) ?? null,
+    permissionMode: (r.permission_mode as string | null) ?? null,
+    startedAt: Number(r.started_at),
+    lastEventAt: Number(r.last_event_at),
+    endedAt: r.ended_at == null ? null : Number(r.ended_at),
+    eventCount: Number(r.event_count ?? 0),
+    errorCount: Number(r.error_count ?? 0),
+  };
+}
+
+export function rowToEvent(r: Record<string, unknown>): HookEvent {
+  return {
+    id: Number(r.id),
+    sessionId: String(r.session_id),
+    hookEvent: String(r.hook_event),
+    ts: Number(r.ts),
+    toolName: (r.tool_name as string | null) ?? null,
+    toolUseId: (r.tool_use_id as string | null) ?? null,
+    summary: String(r.summary),
+    filePath: (r.file_path as string | null) ?? null,
+    isError: Number(r.is_error) === 1,
+    errorText: (r.error_text as string | null) ?? null,
+    agentId: (r.agent_id as string | null) ?? null,
+    fingerprint: String(r.fingerprint),
+  };
+}
