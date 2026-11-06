@@ -66,6 +66,16 @@ Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 - ✅ Security: high-confidence secret scan (fixtures separated), tracked `.env`, missing env names, dependency audit (`npm audit --json` / `pip-audit`, approved action, verified live)
 - 🟡 Environment doctor: Node version vs engines/.nvmrc, deps installed, lockfile conflicts, missing scripts, env names. ⏳ Python/Go/Rust specifics
 
+## Menu bar (macOS)
+- ✅ **BuildPilot Bar**: native menu-bar widget with every session across projects, needs-you first with the exact reason, context %, 5-hour and weekly limits. Works with VS Code closed
+- ✅ Mac notification when a session starts waiting (click to jump there); start at login; right-click → Terminal / copy path; VoiceOver-labelled
+- ✅ Installed from Connect → Menu bar, the walkthrough, the Desktop installer or `bp bar install`; removed to the Trash by any of those
+- ✅ `bp widget` JSON (same data, for scripts)
+
+## Distribution
+- ✅ Marketplace-ready package "BuildPilot for Claude Code" (listing README, changelog, categories, keywords); publish scripts for the VS Code Marketplace and Open VSX
+- ⏳ Actually published (needs your publisher account; see docs/PUBLISHING.md)
+
 ## Integrations
 - ✅ Alerts: VS Code (important only) + webhook (ntfy, Slack, Discord, generic JSON), URL in SecretStorage
 - ✅ Integration API (token, loopback default, optional LAN, read-only)

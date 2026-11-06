@@ -42,7 +42,7 @@ exports.run = async function () {
   await check("demo produces supervisor findings (loop + approval)", () => { const st = engine.snapshot(); assert.ok(st.out.issues.some((i) => i.key.startsWith("loop:demo-"))); assert.ok(st.out.recommendations.some((r) => r.key.startsWith("approve:demo-"))); });
   await check("demo data removable", async () => { await vscode.commands.executeCommand("buildpilot.clearDemo"); assert.ok(!engine.snapshot().out.sessions.some((s) => s.id.startsWith("demo-"))); });
   await check("every contributed command (palette, menus, walkthrough) is registered", async () => {
-    const pkg = vscode.extensions.getExtension("buildpilot-local.buildpilot").packageJSON.contributes;
+    const pkg = vscode.extensions.getExtension((({ publisher, name }) => `${publisher}.${name}`)(require("../../../package.json"))).packageJSON.contributes;
     const all = await vscode.commands.getCommands(true);
     const wanted = new Set([...pkg.commands.map((c) => c.command), ...JSON.stringify(pkg.walkthroughs ?? []).matchAll(/command:(buildpilot\.[a-zA-Z]+)/g)].map((x) => (Array.isArray(x) ? x[1] : x)));
     const missing = [...wanted].filter((c) => !all.includes(c));

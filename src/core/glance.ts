@@ -29,6 +29,85 @@ const WORD: Record<SessionStatus, string> = {
 };
 const MARK: Record<SessionStatus, string> = { running: "●", idle: "○", blocked: "!", awaiting_approval: "!", completed: "·", failed: "✗", unknown: "?" };
 
+export interface WidgetSession {
+  id: string;
+  folder: string;
+  cwd: string;
+  status: SessionStatus;
+  word: string;
+  reason: string;
+  task: string | null;
+  contextPct: number | null;
+  lastEventAt: number;
+  needsYou: boolean;
+  next: string | null;
+}
+export interface WidgetData {
+  v: 1;
+  generatedAt: number;
+  sessions: WidgetSession[];
+  needs: number;
+  working: number;
+  fiveHourPct: number | null;
+  sevenDayPct: number | null;
+}
+
+/** Active Claude Code sessions across all folders, needs-you first. Shared by the terminal glance and the menu-bar widget. */
+export function glanceItems(engine: Engine, now: number) {
+  const rows = engine.store
+    .all<Record<string, unknown>>("SELECT * FROM sessions WHERE ended_at IS NULL AND last_event_at > ? AND id NOT LIKE 'demo-%' ORDER BY last_event_at DESC LIMIT 12", [now - 3 * 3600_000])
+    .map(rowToSession);
+  const items = rows
+    .map((s) => {
+      const d = deriveDisplayStatus(s, now);
+      return { s, status: d.status, reason: d.reason, live: readLiveStatus(s.id, engine.home) };
+    })
+    .filter((x) => x.status !== "unknown" || now - x.s.lastEventAt < 3600_000);
+  const isNeed = (st: SessionStatus) => st === "awaiting_approval" || st === "blocked" || st === "failed";
+  const needs = items.filter((x) => isNeed(x.status));
+  return { items: [...needs, ...items.filter((x) => !isNeed(x.status))], needs, isNeed };
+}
+
+function projectNext(engine: Engine, cwd: string): string | null {
+  const pid = engine.resolveProject(realpath(cwd));
+  if (!pid) return null;
+  try {
+    const sum = JSON.parse(String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]) ?? "")) as { next: string | null };
+    return sum.next ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function widgetData(engine: Engine, now = Date.now()): WidgetData {
+  const { items, needs, isNeed } = glanceItems(engine, now);
+  const pick = (k: "fiveHourPct" | "sevenDayPct") => {
+    const v = items.map((x) => x.live?.[k]).filter((n): n is number => typeof n === "number");
+    return v.length ? Math.max(...v) : null;
+  };
+  return {
+    v: 1,
+    generatedAt: now,
+    sessions: items.map((x) => ({
+      id: x.s.id,
+      folder: path.basename(x.s.cwd) || x.s.cwd,
+      cwd: x.s.cwd,
+      status: x.status,
+      word: WORD[x.status],
+      reason: x.reason.split("\n")[0]!.replace(/\s+/g, " ").slice(0, 160),
+      task: x.s.currentTask ? x.s.currentTask.replace(/\s+/g, " ").slice(0, 160) : null,
+      contextPct: x.live?.contextPct ?? null,
+      lastEventAt: x.s.lastEventAt,
+      needsYou: isNeed(x.status),
+      next: projectNext(engine, x.s.cwd),
+    })),
+    needs: needs.length,
+    working: items.filter((x) => x.status === "running").length,
+    fiveHourPct: pick("fiveHourPct"),
+    sevenDayPct: pick("sevenDayPct"),
+  };
+}
+
 export function glance(engine: Engine, o: GlanceOptions): string {
   const now = o.now ?? Date.now();
   const c = (code: string, s: string) => (o.color ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -38,17 +117,7 @@ export function glance(engine: Engine, o: GlanceOptions): string {
   const W = Math.max(40, Math.min(o.columns || 80, 120));
   const fit = (s: string, n: number) => (s.length > n ? s.slice(0, Math.max(0, n - 1)) + "…" : s.padEnd(n));
 
-  const rows = engine.store
-    .all<Record<string, unknown>>("SELECT * FROM sessions WHERE ended_at IS NULL AND last_event_at > ? AND id NOT LIKE 'demo-%' ORDER BY last_event_at DESC LIMIT 8", [now - 3 * 3600_000])
-    .map(rowToSession);
-  const items = rows
-    .map((s) => {
-      const d = deriveDisplayStatus(s, now);
-      const live = readLiveStatus(s.id, engine.home);
-      return { s, status: d.status, reason: d.reason, live };
-    })
-    .filter((x) => x.status !== "unknown" || now - x.s.lastEventAt < 3600_000);
-  const needs = items.filter((x) => x.status === "awaiting_approval" || x.status === "blocked" || x.status === "failed");
+  const { items, needs } = glanceItems(engine, now);
   const limits = items.map((x) => x.live?.fiveHourPct).filter((v): v is number => typeof v === "number");
   const fiveH = limits.length ? Math.max(...limits) : null;
 

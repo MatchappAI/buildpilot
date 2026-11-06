@@ -1,8 +1,8 @@
 {
   "name": "buildpilot",
-  "displayName": "BuildPilot",
-  "description": "Mission control for building software with Claude Code: what's being built, what's broken, what to do next.",
-  "version": "0.3.2",
+  "displayName": "BuildPilot for Claude Code",
+  "description": "Mission control for Claude Code: see every session, what needs you, context and plan limits, what's broken and the next best step. Local-first, menu-bar widget on Mac.",
+  "version": "0.4.0",
   "publisher": "buildpilot-local",
   "license": "UNLICENSED",
   "private": true,
@@ -10,8 +10,31 @@
     "vscode": "^1.90.0"
   },
   "categories": [
+    "AI",
+    "Visualization",
+    "Testing",
     "Other"
   ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "anthropic",
+    "ai agents",
+    "agent supervisor",
+    "mission control",
+    "prompt",
+    "hooks",
+    "context window",
+    "rate limit",
+    "vibe coding",
+    "menu bar"
+  ],
+  "galleryBanner": {
+    "color": "#14161b",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "qna": false,
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
@@ -24,10 +47,13 @@
     "lint": "eslint src test",
     "test": "vitest run",
     "test:smoke": "node scripts/build.mjs && node test/smoke/run.mjs",
-    "package": "node scripts/build.mjs && vsce package --no-dependencies --no-rewrite-relative-links --allow-missing-repository --out dist/buildpilot.vsix",
+    "package": "node scripts/build.mjs && ([ \"$(uname)\" != Darwin ] || bash scripts/build-widget.sh) && vsce package --no-dependencies --readme-path docs/marketplace/README.md --no-rewrite-relative-links --allow-missing-repository --out dist/buildpilot.vsix",
     "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke",
     "guide": "P=$(mktemp -d) && \"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --user-data-dir=\"$P\" --no-first-run --allow-file-access-from-files --no-pdf-header-footer --print-to-pdf=dist/START-HERE.pdf \"file://$PWD/docs/guide/guide.html\" 2>/dev/null; rm -rf \"$P\"",
-    "desktop": "npm run package && npm run guide && mkdir -p \"$HOME/Desktop/BuildPilot\" && rm -f \"$HOME/Desktop/BuildPilot/\"BuildPilot*.vsix && cp dist/START-HERE.pdf \"$HOME/Desktop/BuildPilot/1 - START HERE.pdf\" && cp \"scripts/desktop/Install BuildPilot.command\" \"$HOME/Desktop/BuildPilot/2 - Install BuildPilot.command\" && cp \"scripts/desktop/Uninstall BuildPilot.command\" \"$HOME/Desktop/BuildPilot/3 - Uninstall BuildPilot.command\" && cp dist/buildpilot.vsix \"$HOME/Desktop/BuildPilot/BuildPilot $npm_package_version.vsix\""
+    "desktop": "npm run package && npm run guide && node scripts/desktop.mjs",
+    "build:widget": "bash scripts/build-widget.sh",
+    "publish:vscode": "vsce publish --no-dependencies --packagePath dist/buildpilot.vsix",
+    "publish:openvsx": "npx --yes ovsx publish dist/buildpilot.vsix"
   },
   "dependencies": {
     "sql.js": "^1.13.0"
@@ -143,7 +169,7 @@
       },
       {
         "command": "buildpilot.setWebhook",
-        "title": "Set Notification URL (phone, glasses, Slack\u2026)",
+        "title": "Set Notification URL (phone, glasses, Slack…)",
         "category": "BuildPilot"
       },
       {
@@ -189,6 +215,23 @@
       {
         "command": "buildpilot.uninstallShell",
         "title": "Remove from Terminal Startup",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.installWidget",
+        "title": "Add Menu-Bar Widget (macOS)",
+        "category": "BuildPilot",
+        "enablement": "isMac"
+      },
+      {
+        "command": "buildpilot.uninstallWidget",
+        "title": "Remove Menu-Bar Widget",
+        "category": "BuildPilot",
+        "enablement": "isMac"
+      },
+      {
+        "command": "buildpilot.widgetLogin",
+        "title": "Menu-Bar Widget: Start at Login",
         "category": "BuildPilot"
       }
     ],
@@ -306,6 +349,18 @@
             }
           },
           {
+            "id": "menubar",
+            "title": "Put BuildPilot in your menu bar",
+            "description": "See every session and what needs you at a glance, even with VS Code closed.\n[Add to menu bar](command:buildpilot.installWidget)",
+            "media": {
+              "markdown": "media/walkthrough/menubar.md"
+            },
+            "when": "isMac",
+            "completionEvents": [
+              "onCommand:buildpilot.installWidget"
+            ]
+          },
+          {
             "id": "phone",
             "title": "Alerts on your phone & glasses",
             "description": "Get told when Claude needs you, wherever you are.\n[Set up notifications](command:buildpilot.setWebhook)",
@@ -332,6 +387,12 @@
           "command": "buildpilot.walkthrough",
           "when": "view == buildpilot.main",
           "group": "overflow"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "buildpilot.widgetLogin",
+          "when": "false"
         }
       ]
     }

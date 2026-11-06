@@ -21,6 +21,7 @@ interface Settings {
   pocketUrl: string | null;
   screenshotUri: string | null;
   shellInstalled: boolean;
+  widget?: { supported: boolean; installed: boolean; running: boolean; startAtLogin: boolean };
   openWithTerminal: boolean;
 }
 
@@ -605,6 +606,16 @@ function connectTab(): string {
       <li>${icon(s.shellInstalled ? "pass-filled" : "circle-large-outline", s.shellInstalled ? "ok" : "muted")} <span>${s.shellInstalled ? "Shown in every terminal (Terminal, iTerm, VS Code). Type <code>bp</code> for details." : "Show a BuildPilot summary in every new terminal, plus the <code>bp</code> command"} ${s.shellInstalled ? `<a href="#" data-act="shellOff">remove</a>` : `<a href="#" data-act="shellOn">turn on</a>`}</span></li>
     </ul>
   </section>
+  ${s.widget?.supported ? `<section>
+    <h3>Menu bar</h3>
+    <p class="muted small">BuildPilot Bar puts your Claude Code sessions in the Mac menu bar, even when VS Code is closed: who's working, who needs you, your plan limits. It notifies you when a session is waiting. It reads local data only.</p>
+    <ul class="steps">
+      <li>${icon(s.widget.installed ? "pass-filled" : "circle-large-outline", s.widget.installed ? "ok" : "muted")} <span>${s.widget.installed ? `Installed${s.widget.running ? ", running" : ", not running"}${s.widget.startAtLogin ? " · starts at login" : ""}` : "Not installed"}</span></li>
+    </ul>
+    <div class="actions wrap">${s.widget.installed
+      ? `${s.widget.running ? "" : `<button class="secondary small" data-act="widgetOpen">${icon("play")} Start it</button>`}<label class="check inline"><input type="checkbox" id="widgetLogin" ${s.widget.startAtLogin ? "checked" : ""}> Start at login</label><button class="link" data-act="widgetOff">Remove</button>`
+      : `<button class="primary" data-act="widgetOn">${icon("add")} Add to menu bar</button>`}</div>
+  </section>` : ""}
   <section>
     <h3>Phone, glasses &amp; other devices</h3>
     <p class="muted small">Get alerts where you are, like "Claude needs your approval" or "Tests failing". Send them to <b>ntfy</b> (free phone push; smart glasses paired to your phone can read phone notifications aloud), <b>Slack</b>, <b>Discord</b>, or any webhook. Only short alerts and the project name are sent, never code.</p>
@@ -679,6 +690,7 @@ function bind(): void {
     }),
   );
   document.getElementById("ptext")?.addEventListener("input", (e) => { promptText = (e.target as HTMLTextAreaElement).value; });
+  document.getElementById("widgetLogin")?.addEventListener("change", (e) => void call("widgetLogin", { value: (e.target as HTMLInputElement).checked }));
   document.getElementById("openWithTerminal")?.addEventListener("change", (e) => void call("openWithTerminal", { value: (e.target as HTMLInputElement).checked }));
   document.getElementById("apiToggle")?.addEventListener("change", (e) => void call("apiToggle", { value: (e.target as HTMLInputElement).checked }));
   document.getElementById("beginner")?.addEventListener("change", (e) => void call("setBeginner", { value: (e.target as HTMLInputElement).checked }));
@@ -788,6 +800,8 @@ async function act(el: HTMLElement): Promise<void> {
       cpFiles = {};
       return render();
     }
+    case "widgetOn": return void call("widget", { on: true });
+    case "widgetOff": return void call("widget", { on: false });
     case "shellOn": return void call("shell", { on: true });
     case "shellOff": return void call("shell", { on: false });
     case "statuslineOn": return void call("statusline", { on: true });

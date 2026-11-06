@@ -1,3 +1,4 @@
+import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -5,6 +6,7 @@ import { IntegrationApi, loadOrCreateToken, rotateToken, sendWebhook } from "../
 import { complete, ProviderConfig, refineRequest } from "../core/ai";
 import { pocketLink } from "./pocketLink";
 import { installCliCopy, installShell, shellStatus, uninstallShell } from "../core/shell";
+import { installWidget, pickRuntime, setStartAtLogin, uninstallWidget, widgetStatus } from "../core/widget";
 import { Alert, Engine, UiState } from "../core/engine";
 import { restoreFiles, diffSinceCheckpoint } from "../core/git";
 import { claudeSettingsPath, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
@@ -63,6 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     platform: process.platform,
     home: eng.home,
     shellInstalled: shellStatus().installed,
+    widget: widgetStatus(),
     openWithTerminal: cfg().get<boolean>("openWithTerminal", true),
     pocketUrl: api ? pocketLink(api.address, cfg().get<number>("integrationApi.port", 47821), cfg().get<boolean>("integrationApi.allowLan", false)) : null,
     screenshotUri: (() => {
@@ -467,6 +470,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       }
       case "shell":
         return vscode.commands.executeCommand(m.on ? "buildpilot.installShell" : "buildpilot.uninstallShell");
+      case "widget":
+        return vscode.commands.executeCommand(m.on ? "buildpilot.installWidget" : "buildpilot.uninstallWidget");
+      case "widgetLogin":
+        return vscode.commands.executeCommand("buildpilot.widgetLogin", !!m.value);
+      case "widgetOpen": {
+        const w = widgetStatus();
+        if (w.appPath) execFile("/usr/bin/open", [w.appPath], () => setTimeout(push, 1500));
+        return;
+        return;
+      }
       case "openWithTerminal":
         await cfg().update("openWithTerminal", !!m.value, vscode.ConfigurationTarget.Global);
         return;
@@ -657,18 +670,57 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     }
     push();
   });
+  reg("buildpilot.installWidget", async () => {
+    if (process.platform !== "darwin") return void vscode.window.showInformationMessage("The menu-bar widget is for macOS. On Windows and Linux, use the terminal summary (`bp`) and the Pocket page.");
+    const pick = await vscode.window.showQuickPick(
+      [
+        { label: "$(check) Add to menu bar and start at login", detail: "Recommended: always one glance away", login: true },
+        { label: "Add to menu bar only", detail: "Start it yourself from ~/Applications when you want it", login: false },
+      ],
+      { placeHolder: "BuildPilot Bar: Claude Code status in your Mac's menu bar, even when VS Code is closed" },
+    );
+    if (!pick) return;
+    const ok = await confirm(
+      "Install BuildPilot Bar?",
+      `Installs a small menu-bar app into ~/Applications (no admin password). It shows your Claude Code sessions, what needs you and your plan limits, and notifies you when a session is waiting.\n\nIt only reads BuildPilot's local data in ${eng.home}. It never sends anything anywhere. Remove it anytime from here or with the Desktop uninstaller.`,
+      "Install",
+    );
+    if (!ok) return;
+    try {
+      const electron = path.join(vscode.env.appRoot, "..", "..", "MacOS", "Electron");
+      const runtime = pickRuntime(fs.existsSync(electron) ? { node: electron, electronAsNode: true } : undefined);
+      if (!runtime) throw new Error("No runtime found to run BuildPilot's engine.");
+      const r = installWidget({ zip: path.join(context.extensionPath, "media", "widget", "BuildPilot-Bar.zip"), cliDir: path.join(context.extensionPath, "dist"), runtime, startAtLogin: pick.login });
+      log(`widget installed at ${r.appPath} (runtime ${runtime.node})`);
+      void vscode.window.showInformationMessage("BuildPilot Bar is in your menu bar (top right of your screen). Click it anytime. macOS may ask once to allow its notifications.");
+    } catch (e) {
+      void vscode.window.showErrorMessage(`Couldn't install BuildPilot Bar: ${(e as Error).message}`);
+    }
+    push();
+  });
+  reg("buildpilot.uninstallWidget", async () => {
+    if (!(await confirm("Remove BuildPilot Bar?", "Quits it, removes it from login items and moves the app to the Trash. Your BuildPilot data is kept.", "Remove"))) return;
+    const r = uninstallWidget(eng.home);
+    void vscode.window.showInformationMessage(r.removed.length ? "BuildPilot Bar removed." : "BuildPilot Bar wasn't installed.");
+    push();
+  });
+  reg("buildpilot.widgetLogin", (on: unknown) => {
+    const w = widgetStatus();
+    if (w.appPath) setStartAtLogin(!!on, w.appPath);
+    push();
+  });
   reg("buildpilot.uninstallShell", () => {
     const r = uninstallShell(eng.home);
     void vscode.window.showInformationMessage(r.changed.length ? "Removed from your terminal startup files." : "Nothing to remove.");
     push();
   });
-  // Keep the terminal CLI current after upgrades.
+  // Keep the terminal CLI current after upgrades (the shell summary and the menu-bar widget both use it).
   try {
-    if (shellStatus().installed) installCliCopy(path.join(context.extensionPath, "dist"), eng.home);
+    if (shellStatus().installed || widgetStatus().installed) installCliCopy(path.join(context.extensionPath, "dist"), eng.home);
   } catch {
     /* non-fatal */
   }
-  // `bp open` → vscode://buildpilot-local.buildpilot/open?folder=...
+  // `bp open` → vscode://<publisher>.buildpilot/open?folder=...
   context.subscriptions.push(
     vscode.window.registerUriHandler({
       handleUri: async (uri) => {
@@ -710,7 +762,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     knownSessions = new Set([...knownSessions, ...ids]);
     if (fresh.length) void revealBeside(vscode.window.activeTerminal);
   });
-  reg("buildpilot.walkthrough", () => vscode.commands.executeCommand("workbench.action.openWalkthrough", "buildpilot-local.buildpilot#buildpilot.start", false));
+  reg("buildpilot.walkthrough", () => vscode.commands.executeCommand("workbench.action.openWalkthrough", `${context.extension.id}#buildpilot.start`, false));
   // First run: open the walkthrough once.
   if (!context.globalState.get<boolean>("buildpilot.welcomed")) {
     void context.globalState.update("buildpilot.welcomed", true);

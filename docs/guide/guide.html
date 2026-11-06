@@ -71,7 +71,7 @@
       <div><div class="n">3</div><div class="q">What do I do next?</div><div class="a">One recommended step, plus an expert prompt that tells Claude exactly how to do it.</div></div>
     </div>
   </div>
-  <div class="meta"><span>Version 0.3.2 · November 2026 · macOS (Windows &amp; Linux supported, not yet field-tested)</span><span>Designed &amp; built by Mohil Gupta</span></div>
+  <div class="meta"><span>Version 0.4.0 · November 2026 · macOS (Windows &amp; Linux supported, not yet field-tested)</span><span>Designed &amp; built by Mohil Gupta</span></div>
 </div>
 
 <!-- CONTENTS + STATUS -->
@@ -89,6 +89,7 @@
     <li>Memory</li>
     <li>Phone, glasses &amp; alerts</li>
     <li>In every terminal</li>
+    <li>Menu bar</li>
     <li>Accessibility</li>
     <li>Reading the labels</li>
     <li>Privacy &amp; safety</li>
@@ -100,7 +101,7 @@
   <section style="margin-top: 14pt">
     <div class="eyebrow">Your setup today</div>
     <h2>It's already installed and connected on this Mac</h2>
-    <div class="callout ok"><b>Ready to use</b>BuildPilot 0.3.2 is installed in Visual Studio Code and connected to Claude Code. It was verified live: your open Claude Code sessions are reporting their activity, context use and limits.</div>
+    <div class="callout ok"><b>Ready to use</b>BuildPilot 0.4.0 is installed in Visual Studio Code and connected to Claude Code. It was verified live: your open Claude Code sessions are reporting their activity, context use and limits.</div>
     <p>To start using it:</p>
     <ol class="steps">
       <li>In VS Code, press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>, type <b>Reload Window</b> and press Enter. (Only needed once, so VS Code loads the newest version.)</li>
@@ -110,9 +111,10 @@
     <h3>What was changed on this Mac</h3>
     <table style="font-size: 8.8pt">
       <tr><th>Where</th><th>What</th><th>How to undo</th></tr>
-      <tr><td>VS Code</td><td>The BuildPilot extension</td><td>Uninstall script (page 12)</td></tr>
+      <tr><td>VS Code</td><td>The BuildPilot extension</td><td>Uninstall script (page 16)</td></tr>
       <tr><td><code>~/.claude/settings.json</code></td><td>Added background <b>hooks</b> (so BuildPilot sees each session's activity) and a <b>status line</b> (exact context %). Every other setting was kept, and a backup was saved first.</td><td>Uninstall script, or <b>Connect → Disconnect</b></td></tr>
       <tr><td><code>~/.zshrc</code></td><td>A 3-line marked block so every new terminal shows BuildPilot and the <code>bp</code> command works (backed up first)</td><td>Uninstall script, or <code>bp shell uninstall</code></td></tr>
+      <tr><td><code>~/Applications/</code></td><td><b>BuildPilot Bar</b>, the menu-bar widget (if you chose it)</td><td>Uninstall script</td></tr>
       <tr><td><code>~/.buildpilot/</code></td><td>BuildPilot's private local data (sessions, notes, backups)</td><td>Uninstall script moves it to the Trash</td></tr>
     </table>
   </section>
@@ -129,7 +131,7 @@
     <li>When it asks <i>Connect to Claude Code now?</i> and <i>Show BuildPilot every time you open a terminal?</i>, type <b>y</b>. (Or do both later from BuildPilot's <b>Connect</b> tab.)</li>
     <li>Open VS Code and click the BuildPilot icon.</li>
   </ol>
-  <p class="small">Manual install: in VS Code, open the Command Palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>) → <b>Extensions: Install from VSIX…</b> → choose <code>BuildPilot 0.3.2.vsix</code>.</p>
+  <p class="small">Manual install: in VS Code, open the Command Palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>) → <b>Extensions: Install from VSIX…</b> → choose <code>BuildPilot 0.4.0.vsix</code>.</p>
 
   <div style="height: 10pt"></div>
   <div class="eyebrow">Your first five minutes</div>
@@ -359,6 +361,34 @@
   <div class="callout"><b>Quieter, or off</b>Hide the summary with <code>export BUILDPILOT_QUIET=1</code>. Remove it entirely with <b>Connect → Terminal → remove</b> or <code>bp shell uninstall</code>. Your <code>~/.zshrc</code> is restored exactly.</div>
 </div>
 <div class="page">
+  <div class="eyebrow">Menu bar</div>
+  <h2>BuildPilot Bar: always one glance away</h2>
+  <p>A small compass icon in your Mac's menu bar (top right of the screen) shows your Claude Code sessions <b>even when VS Code is closed</b>.</p>
+  <div style="display: flex; gap: 16pt; align-items: flex-start">
+    <img src="img/menubar.png" alt="The BuildPilot Bar panel: one session needs approval, two are working, with context % and plan limits" style="width: 44%; border: 1px solid var(--line); border-radius: 8pt">
+    <div style="flex: 1">
+      <h3 style="margin-top: 0">Reading it</h3>
+      <ul>
+        <li><b>The icon</b>: the compass plus the number of sessions working. It becomes <b>!</b> plus a number when sessions <b>need you</b>.</li>
+        <li><b>Needs you</b> is always at the top, with exactly what's waiting (for example <i>"Run: npm install pdfkit"</i>).</li>
+        <li><b>Context %</b> per session, and your <b>5-hour</b> and <b>weekly</b> plan limits, come straight from Claude Code.</li>
+        <li><b>Click a session</b> to open it in BuildPilot. <b>Right-click</b> it to open the folder in Terminal or copy its path.</li>
+      </ul>
+    </div>
+  </div>
+  <h3>Notifications</h3>
+  <p>When a session starts waiting for your approval or input, a Mac notification appears. Click it to jump straight there. The first time, macOS asks whether BuildPilot Bar may send notifications: choose <b>Allow</b>. Turn notifications off from the gear menu in the panel.</p>
+  <h3>Install, start at login, remove</h3>
+  <table>
+    <tr><th>To</th><th>Do this</th></tr>
+    <tr><td>Add it</td><td>BuildPilot → <b>Connect → Menu bar → Add to menu bar</b> (or answer yes in the installer)</td></tr>
+    <tr><td>Start it with your Mac</td><td>Gear menu → <b>Start at login</b> (or the checkbox in Connect)</td></tr>
+    <tr><td>Quit it</td><td>Gear menu → <b>Quit BuildPilot Bar</b>. Reopen it from <code>~/Applications</code>.</td></tr>
+    <tr><td>Remove it</td><td><b>Connect → Menu bar → Remove</b>, or <code>bp bar uninstall</code>. The app goes to the Trash.</td></tr>
+  </table>
+  <p class="small"><b>Private:</b> BuildPilot Bar only reads BuildPilot's local data on this Mac. It sends nothing and changes nothing.</p>
+</div>
+<div class="page">
   <div class="eyebrow">Accessibility</div>
   <h2>Built to be usable by everyone</h2>
   <ul>
@@ -441,7 +471,7 @@
   <h2>Everything is reversible</h2>
   <ol class="steps">
     <li>Double-click <b>3 - Uninstall BuildPilot.command</b> on the Desktop.</li>
-    <li>It disconnects Claude Code (your original settings and status line are restored), removes the terminal summary (your <code>~/.zshrc</code> is restored), removes the extension, and asks whether to move BuildPilot's data to the Trash.</li>
+    <li>It disconnects Claude Code (your original settings and status line are restored), removes the terminal summary (your <code>~/.zshrc</code> is restored), removes the menu-bar widget, removes the extension, and asks whether to move BuildPilot's data to the Trash.</li>
   </ol>
   <p class="small">To only stop watching Claude Code: BuildPilot → <b>Connect → Disconnect</b>. Settings backups: <code>~/.buildpilot/backups/</code>. Checkpoints live in your project's Git as <code>refs/buildpilot/checkpoints/*</code> and never affect your branches.</p>
 
@@ -458,6 +488,7 @@ node dist/cli.js audit [folder]           # dependency vulnerabilities
 node dist/cli.js visual [folder] [url]    # check your running app + screenshot
 node dist/cli.js hooks status|install|uninstall
 node dist/cli.js statusline status|install|uninstall
+node dist/cli.js bar status|install|uninstall    # menu-bar widget
 node dist/cli.js serve [folder]           # Integration API without VS Code</pre>
   <table>
     <tr><th>What</th><th>Where</th></tr>
@@ -467,7 +498,7 @@ node dist/cli.js serve [folder]           # Integration API without VS Code</pre
     <tr><td>Claude Code settings</td><td><code>~/.claude/settings.json</code></td></tr>
   </table>
   <h3>What's next (roadmap)</h3>
-  <p class="small">Scripted multi-step visual tests · a native smart-glasses companion app · verified Windows &amp; Linux support · audits for pnpm/yarn/bun · VS Code Marketplace publishing.</p>
+  <p class="small">Scripted multi-step visual tests · a native smart-glasses companion app · verified Windows &amp; Linux support · audits for pnpm/yarn/bun · public listing as <b>BuildPilot for Claude Code</b> on the VS Code Marketplace and Open VSX (prepared, waiting for your publisher account).</p>
 </div>
 
 </body>

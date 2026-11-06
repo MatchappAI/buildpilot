@@ -18,8 +18,10 @@ import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
 import { claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
-import { glance } from "./core/glance";
+import { glance, widgetData } from "./core/glance";
+import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
+import { openUri } from "./core/extId";
 import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
 import { GoalType } from "./core/types";
@@ -41,9 +43,36 @@ async function main(): Promise<void> {
     engine.stop();
     return;
   }
+  if (cmd === "widget") {
+    // JSON for the menu-bar widget: same fast path as glance (drains new hook events, no analysis).
+    const engine = new Engine({ light: true });
+    await engine.start();
+    console.log(JSON.stringify(widgetData(engine)));
+    engine.stop();
+    return;
+  }
+  if (cmd === "bar") {
+    const sub = rest[0] ?? "status";
+    if (sub === "install") {
+      const zip = path.join(__dirname, "..", "media", "widget", "BuildPilot-Bar.zip");
+      const runtime = pickRuntime();
+      if (!runtime) return usage("Node.js wasn't found. Install the widget from VS Code instead: BuildPilot → Connect → Menu-bar widget.");
+      if (!fs.existsSync(zip)) return usage("Run this from the installed extension (the Desktop installer does it for you), or use VS Code: BuildPilot → Connect.");
+      const r = installWidget({ zip, cliDir: __dirname, runtime, startAtLogin: !rest.includes("--no-login") });
+      console.log(json ? JSON.stringify(r) : `BuildPilot Bar is in your menu bar (${r.appPath}).${rest.includes("--no-login") ? "" : " It starts when you log in."}`);
+    } else if (sub === "uninstall") {
+      const r = uninstallWidget();
+      console.log(json ? JSON.stringify(r) : r.removed.length ? "BuildPilot Bar removed (moved to the Trash)." : "BuildPilot Bar wasn't installed.");
+    } else if (sub === "status") {
+      const st = widgetStatus();
+      console.log(json ? JSON.stringify(st) : !st.supported ? "The menu-bar widget is macOS only." : st.installed ? `Installed (${st.appPath}), ${st.running ? "running" : "not running"}${st.startAtLogin ? ", starts at login" : ""}.` : "Not installed. Install: VS Code → BuildPilot → Connect → Menu-bar widget.");
+    } else return usage(`Unknown option "${sub}". Use: bp bar status | install | uninstall`);
+    return;
+  }
   if (cmd === "open") {
+    if (rest[0]?.startsWith("-")) return usage("Usage: bp open [folder]   opens BuildPilot in VS Code for that folder (default: this one)");
     const folder = path.resolve(rest[0] ?? process.cwd());
-    const uri = `vscode://buildpilot-local.buildpilot/open?folder=${encodeURIComponent(folder)}`;
+    const uri = openUri(folder);
     const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
     execFile(opener, [uri], (e) => {
       if (e) console.error(`Couldn't open VS Code: ${e.message}`);
@@ -108,6 +137,7 @@ async function main(): Promise<void> {
   bp handoff               context handoff for a new session
   bp audit                 check dependencies for known vulnerabilities
   bp visual [url]          check your running app + screenshot
+  bp bar status|install|uninstall   menu-bar widget (macOS)
   bp hooks|statusline|shell  status | install | uninstall   (add --json for scripts)
   bp serve                 Integration API without VS Code`);
     console.log(`\ngoals: ${GOALS.map((g) => g.id).join(", ")}`);

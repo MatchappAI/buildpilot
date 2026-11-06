@@ -7,7 +7,10 @@ Run everything: `npm run ci` (typecheck → lint → unit/engine tests → real 
 |---|---|
 | `tsc --noEmit` (strict, `noUncheckedIndexedAccess`) | ✅ clean |
 | ESLint (typescript-eslint recommended) | ✅ clean |
-| Vitest: 81 tests (core, engine, features, webview, accessibility) | ✅ 81/81 |
+| Vitest: 83 tests (core, engine, features, webview, accessibility, widget data + sandboxed widget install/uninstall) | ✅ 83/83 |
+| Menu-bar widget, real app: builds universal; live data in panel; sandbox session asking approval → icon label "needs you" within seconds (spool watcher); Start-at-login toggle writes/removes LaunchAgent; rows exposed as buttons to accessibility | ✅ manual, 2026-11-06 |
+| Widget runtime fallback: CLI runs under VS Code's Electron (`ELECTRON_RUN_AS_NODE`, Node 24) | ✅ |
+| Marketplace package validates (`vsce package`, 22 files, 921 KB) | ✅ |
 | Extension-host smoke (`test/smoke`), real VS Code, isolated profile | ✅ 27/27 checks (incl. every contributed command registered, safe commands executed, Integration API + Pocket, status-line data) |
 | Sidebar click-through (real bundle in jsdom): tabs, Prompt Studio build/copy/start, actions, memory, connect, XSS escaping | ✅ 12/12 |
 | Exhaustive button sweep: every `data-act` button on all 6 tabs clicked; each posted message must have a handler in `extension.ts`; no runtime errors | ✅ (40+ distinct buttons) |

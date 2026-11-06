@@ -58,6 +58,9 @@ Supported: start a new session with `claude "<prompt>"` (documented CLI). BuildP
 ## Status-line data (exact context %)
 `buildpilot.installStatusline` sets Claude Code's `statusLine` to `sh ~/.buildpilot/statusline.sh`. Claude Code pipes documented session JSON to it (`context_window.used_percentage`, `context_window_size`, `cost.total_cost_usd`, `rate_limits.*`). The script saves it to `~/.buildpilot/status/<session_id>.json` (atomic) and then runs the user's original status-line command with the same input, so their display is unchanged. If there was none, it prints `Model · context N% · BuildPilot`. Uninstall restores the original `statusLine` object byte-for-byte (saved in `statusline-original.json`).
 
+## Menu-bar widget (macOS)
+`widget/Sources/BuildPilotBar.swift` is a SwiftUI `MenuBarExtra` app built by `scripts/build-widget.sh` (universal, ad-hoc signed, zipped into `media/widget/`). It runs `~/.buildpilot/bin/cli.js widget` using the runtime recorded in `~/.buildpilot/widget-config.json`, and parses `WidgetData` (`src/core/glance.ts`). Refresh triggers: FSEvents on `~/.buildpilot/spool` and `status`, and a 30 s timer. Notifications fire on transitions into needs-you only. Install, uninstall and start-at-login: `src/core/widget.ts`.
+
 ## Pocket (phone / glasses)
 `GET /pocket` serves a static page (no data, strict CSP with nonce, `connect-src 'self'`). The page stores the token in that phone's localStorage (it can arrive in the URL fragment, which browsers don't send to servers) and polls `/v1/brief` and `/v1/sessions` every 20 s. "Read aloud" and "Speak when something needs me" use the browser's speech synthesis, which plays through the phone's audio output, including Bluetooth smart glasses. Reaching it from a phone requires `integrationApi.allowLan` (trusted Wi-Fi) or your own tunnel/VPN.
 

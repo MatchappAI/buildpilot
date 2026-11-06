@@ -234,3 +234,4 @@ li.ew { padding: 4px 0; }
 .flash.on { opacity: 1; transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { .flash { transition: none; } }
 @media (forced-colors: active) { .flash { border: 1px solid CanvasText; } }
+label.check.inline { margin: 0; }

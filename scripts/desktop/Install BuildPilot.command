@@ -2,6 +2,7 @@
 # BuildPilot installer: installs the VS Code extension from this folder and (optionally) connects Claude Code.
 # Safe to run again (it upgrades in place). Nothing is sent anywhere.
 cd "$(dirname "$0")" || exit 1
+EXT_ID="buildpilot-local.buildpilot"   # publisher.name (set from package.json by `npm run desktop`)
 BP_HOME="${BUILDPILOT_HOME:-$HOME/.buildpilot}"
 EXT_ARGS=()
 [ -n "$BP_TEST_EXT_DIR" ] && EXT_ARGS=(--extensions-dir "$BP_TEST_EXT_DIR")
@@ -34,7 +35,7 @@ if ! "$CODE" "${EXT_ARGS[@]}" --install-extension "$VSIX" --force 2>&1 | grep -v
 fi
 echo "✓ Extension installed."
 
-CLI=$(ls -1d "$EXT_DIR"/buildpilot-local.buildpilot-*/dist/cli.js 2>/dev/null | sort -V | tail -n 1)
+CLI=$(ls -1d "$EXT_DIR"/$EXT_ID-*/dist/cli.js 2>/dev/null | sort -V | tail -n 1)
 if ! command -v claude >/dev/null 2>&1; then
   echo "Note: Claude Code isn't installed yet (https://claude.com/claude-code). BuildPilot still analyzes projects without it."
 fi
@@ -59,6 +60,15 @@ if command -v node >/dev/null 2>&1 && [ -n "$CLI" ]; then
   fi
   if [ "$sh_ans" = "y" ] || [ "$sh_ans" = "Y" ]; then
     node "$CLI" shell install >/dev/null && echo "✓ BuildPilot will appear in every new terminal. Type 'bp' for details."
+  fi
+  if [ -n "$BP_NONINTERACTIVE" ]; then bar_ans="${BP_WIDGET:-n}"; else
+    say "Add BuildPilot Bar to your menu bar?"
+    echo "A small icon at the top of your screen: Claude sessions, what needs you, plan limits, and a notification"
+    echo "when a session is waiting. Works even when VS Code is closed. Starts at login. Remove anytime."
+    read -r -p "Add it? (y/n) " bar_ans
+  fi
+  if [ "$bar_ans" = "y" ] || [ "$bar_ans" = "Y" ]; then
+    node "$CLI" bar install >/dev/null && echo "✓ BuildPilot Bar is in your menu bar (top right). macOS may ask once to allow its notifications."
   fi
 else
   echo "To connect Claude Code: open BuildPilot in VS Code and click Connect."

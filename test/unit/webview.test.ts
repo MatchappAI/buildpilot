@@ -13,7 +13,7 @@ import { makeRepo, tmpDir } from "./helpers";
 const bundle = path.join(__dirname, "../../media/webview.js");
 let state: UiState;
 let built: unknown;
-const settings = { beginner: true, trusted: true, aiProvider: "none", aiModel: "", apiEnabled: true, apiAddress: "http://127.0.0.1:47821", apiAllowLan: false, notifications: "important", platform: "darwin", home: "~/.buildpilot", pocketUrl: "http://127.0.0.1:47821/pocket", screenshotUri: null, shellInstalled: false, openWithTerminal: true };
+const settings = { beginner: true, trusted: true, aiProvider: "none", aiModel: "", apiEnabled: true, apiAddress: "http://127.0.0.1:47821", apiAllowLan: false, notifications: "important", platform: "darwin", home: "~/.buildpilot", pocketUrl: "http://127.0.0.1:47821/pocket", screenshotUri: null, shellInstalled: false, openWithTerminal: true, widget: { supported: true, installed: false, running: false, startAtLogin: false } };
 
 beforeAll(async () => {
   expect(fs.existsSync(bundle), "run `npm run build` first").toBe(true);
