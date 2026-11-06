@@ -330,7 +330,8 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
   if (f?.scripts.test && !/no test specified/.test(f.scripts.test)) verification.push("test");
   if (f?.scripts.build) verification.push("build");
   lines.push("## Verify before saying it's done");
-  if (verification.length) lines.push(`- Run: ${verification.map((v) => `\`${v}\``).join(", ")}. All must pass.`);
+  const runner = f?.packageManager === "pnpm" ? "pnpm" : f?.packageManager === "yarn" ? "yarn" : f?.packageManager === "bun" ? "bun run" : "npm run";
+  if (verification.length) lines.push(`- Run: ${verification.map((v) => `\`${runner} ${v}\``).join(", ")}. All must pass.`);
   else lines.push("- There are no standard check commands. Explain exactly how you verified the result (and add a test command if reasonable).");
   if (g.id !== "explain") lines.push("- If you can run the app, exercise the changed flow yourself.");
   lines.push("");

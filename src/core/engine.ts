@@ -40,6 +40,7 @@ export interface UiState {
   doctor: DoctorCheck[];
   secrets: SecretFinding[] | null;
   out: SupervisorOutput;
+  resolved: { key: string; title: string; resolvedAt: number }[];
   requirements: Requirement[];
   decisions: Decision[];
   testRuns: TestRun[];
@@ -50,6 +51,15 @@ export interface UiState {
   errors: string[];
   runningScript: string | null;
   demo: boolean;
+}
+
+/** Canonicalize a path (resolve symlinks) when it exists; fall back to path.resolve. */
+export function realpath(p: string): string {
+  try {
+    return fs.realpathSync.native(path.resolve(p));
+  } catch {
+    return path.resolve(p);
+  }
 }
 
 export const projectIdFor = (root: string): string => createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 16);
@@ -136,7 +146,7 @@ export class Engine extends EventEmitter {
   // ---------- projects ----------
 
   resolveProject(cwd: string): string | null {
-    const abs = path.resolve(cwd);
+    const abs = realpath(cwd);
     const projects = this.store.all<{ id: string; root: string }>("SELECT id, root FROM projects");
     let best: { id: string; len: number } | null = null;
     for (const p of projects) {
@@ -148,8 +158,9 @@ export class Engine extends EventEmitter {
   }
 
   async openProject(root: string): Promise<Project> {
-    const abs = path.resolve(root);
-    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new Error(`Not a folder: ${abs}`);
+    if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`Not a folder: ${root}`);
+    // Canonical path: Claude Code reports real paths (e.g. /private/var on macOS, not the /var symlink).
+    const abs = realpath(root);
     const id = projectIdFor(abs);
     if (!this.store.get("SELECT 1 AS x FROM projects WHERE id = ?", [id])) {
       this.store.run("INSERT INTO projects (id, root, name, created_at) VALUES (?, ?, ?, ?)", [id, abs, path.basename(abs), Date.now()]);
@@ -433,7 +444,17 @@ export class Engine extends EventEmitter {
     for (const s of sessions.slice(0, 12)) eventsBySession.set(s.id, this.eventsFor(s.id));
     const testRuns = this.testRuns();
     const requirements = this.requirements();
-    const hooks = hookStatus(this.settingsFile, this.home);
+    let hooks = hookStatus(this.settingsFile, this.home);
+    if (!hooks.installed && p) {
+      // Project-scoped installs count too (.claude/settings.local.json or .claude/settings.json).
+      for (const f of [claudeSettingsPath("project", p.root), path.join(p.root, ".claude", "settings.json")]) {
+        const h = hookStatus(f, this.home);
+        if (h.installed) {
+          hooks = h;
+          break;
+        }
+      }
+    }
     const lastCp = this.checkpoints[0];
     const out = supervise({
       now,
@@ -450,6 +471,7 @@ export class Engine extends EventEmitter {
       dismissed: this.dismissed(),
       hasCheckpointSinceChanges: !!lastCp && now - lastCp.ts < 2 * 3600_000,
     });
+    const resolved = this.trackRecommendations(out, now);
     const usage: Record<string, UsageSnapshot> = {};
     for (const s of sessions.slice(0, 12)) usage[s.id] = this.usageFor(s);
     const otherProjectSessions = Number(this.store?.scalar("SELECT COUNT(*) FROM sessions WHERE (project_id IS NULL OR project_id != ?) AND ended_at IS NULL AND last_event_at > ?", [p?.id ?? "", now - 3600_000]) ?? 0);
@@ -464,6 +486,7 @@ export class Engine extends EventEmitter {
       doctor: this.doctor,
       secrets: this.secrets,
       out,
+      resolved,
       requirements,
       decisions: this.decisions(),
       testRuns,
@@ -473,7 +496,7 @@ export class Engine extends EventEmitter {
       notes: { goal: this.note("goal"), preferences: this.note("preferences") },
       errors: this.errors,
       runningScript: this.runningScript,
-      demo: this.demo,
+      demo: this.demo || this.hasDemoData(),
     };
   }
 
@@ -534,15 +557,80 @@ export class Engine extends EventEmitter {
     return parts.join(" ");
   }
 
+  private recTitles = new Map<string, string>();
+
+  /**
+   * Verification loop: a recommendation that was showing and is no longer produced by the rules means the
+   * condition behind it is no longer observed. That is recorded as resolved (with the time), never assumed.
+   */
+  private trackRecommendations(out: SupervisorOutput, now: number): { key: string; title: string; resolvedAt: number }[] {
+    const p = this.project;
+    if (!p || !this.facts) return [];
+    const current = new Set(out.recommendations.map((r) => r.key));
+    for (const r of out.recommendations) {
+      this.recTitles.set(r.key, r.title);
+      this.store.run(
+        `INSERT INTO rec_history (project_id, key, first_seen, last_seen) VALUES (?, ?, ?, ?)
+         ON CONFLICT(project_id, key) DO UPDATE SET last_seen = excluded.last_seen, resolved_at = NULL`,
+        [p.id, r.key, now, now],
+      );
+    }
+    const open = this.store.all<{ key: string }>("SELECT key FROM rec_history WHERE project_id = ? AND resolved_at IS NULL AND (dismissed_until IS NULL OR dismissed_until < ?)", [p.id, now]);
+    for (const o of open) if (!current.has(o.key) && !o.key.startsWith("approve:") && !o.key.startsWith("blocked:")) {
+      this.store.run("UPDATE rec_history SET resolved_at = ? WHERE project_id = ? AND key = ?", [now, p.id, o.key]);
+    }
+    return this.store
+      .all<{ key: string; resolved_at: number }>("SELECT key, resolved_at FROM rec_history WHERE project_id = ? AND resolved_at > ? ORDER BY resolved_at DESC LIMIT 5", [p.id, now - 7 * 86400_000])
+      .map((r) => ({ key: r.key, title: this.recTitles.get(r.key) ?? r.key, resolvedAt: Number(r.resolved_at) }));
+  }
+
+  // ---------- demo ----------
+
+  /** Demo sessions are clearly labelled (ids start with "demo-") and can be removed in one step. */
+  loadDemo(): void {
+    const p = this.project;
+    if (!p) throw new Error("Open a project first");
+    const now = Date.now();
+    const cwd = p.root;
+    const f = (n: string) => `${cwd}/src/${n}`;
+    const evs: Array<[number, Record<string, unknown>]> = [
+      [-50, { session_id: "demo-a1b2c3", hook_event_name: "SessionStart", source: "startup" }],
+      [-49, { session_id: "demo-a1b2c3", hook_event_name: "UserPromptSubmit", prompt: "Make the Gmail integration send invoices reliably" }],
+      [-48, { session_id: "demo-a1b2c3", hook_event_name: "PostToolUse", tool_name: "Edit", tool_use_id: "d1", tool_input: { file_path: f("gmail.ts") } }],
+      [-40, { session_id: "demo-a1b2c3", hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_use_id: "d2", tool_input: { command: "npm test" }, error: "Exit code 1\nError: invalid_grant: Token has been expired or revoked" }],
+      [-30, { session_id: "demo-a1b2c3", hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_use_id: "d3", tool_input: { command: "npm test" }, error: "Exit code 1\nError: invalid_grant: Token has been expired or revoked" }],
+      [-20, { session_id: "demo-a1b2c3", hook_event_name: "PostToolUseFailure", tool_name: "Bash", tool_use_id: "d4", tool_input: { command: "npm test" }, error: "Exit code 1\nError: invalid_grant: Token has been expired or revoked" }],
+      [-2, { session_id: "demo-a1b2c3", hook_event_name: "PostToolUse", tool_name: "Edit", tool_use_id: "d5", tool_input: { file_path: f("invoice.ts") } }],
+      [-6, { session_id: "demo-d4e5f6", hook_event_name: "UserPromptSubmit", prompt: "Redesign the invoice PDF layout" }],
+      [-5, { session_id: "demo-d4e5f6", hook_event_name: "PostToolUse", tool_name: "Write", tool_use_id: "d6", tool_input: { file_path: f("invoice.ts") } }],
+      [-1, { session_id: "demo-d4e5f6", hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "npm install pdfkit" } }],
+    ];
+    for (const [min, e] of evs) this.ingestor.ingestRaw(JSON.stringify({ cwd, ...e }), now + min * 60_000);
+    this.demo = true;
+    this.emit("changed");
+  }
+
+  clearDemo(): void {
+    this.store.run("DELETE FROM events WHERE session_id LIKE 'demo-%'");
+    this.store.run("DELETE FROM sessions WHERE id LIKE 'demo-%'");
+    this.demo = false;
+    this.emit("changed");
+  }
+
+  hasDemoData(): boolean {
+    return Number(this.store.scalar("SELECT COUNT(*) FROM sessions WHERE id LIKE 'demo-%'") ?? 0) > 0;
+  }
+
   private checkAlerts(): void {
     const st = this.snapshot();
     const alerts: Alert[] = [];
     for (const s of st.out.sessions) {
-      if (s.endedAt || st.generatedAt - s.lastEventAt > 15 * 60_000) continue;
+      if (s.id.startsWith("demo-") || s.endedAt || st.generatedAt - s.lastEventAt > 15 * 60_000) continue; // never alert on demo data
       if (s.displayStatus === "awaiting_approval") alerts.push({ key: `approve:${s.id}:${s.lastEventAt}`, level: "warning", title: "Claude needs your approval", message: s.displayReason, sessionId: s.id });
       if (s.displayStatus === "failed") alerts.push({ key: `failed:${s.id}:${s.lastEventAt}`, level: "error", title: "A Claude session failed", message: s.displayReason, sessionId: s.id });
     }
     for (const i of st.out.issues) {
+      if (i.key.includes("demo-") || (i.sessionId ?? "").startsWith("demo-")) continue;
       if (i.key.startsWith("loop:") || i.key.startsWith("conflict:")) alerts.push({ key: i.key, level: "warning", title: i.title, message: i.plain });
     }
     const now = Date.now();

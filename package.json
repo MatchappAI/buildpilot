@@ -33,6 +33,7 @@
     "@types/node": "^22.10.2",
     "@types/sql.js": "^1.4.9",
     "@types/vscode": "^1.90.0",
+    "@vscode/codicons": "^0.0.36",
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.2.1",
     "esbuild": "^0.24.0",
@@ -40,5 +41,183 @@
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.18.1",
     "vitest": "^2.1.8"
+  },
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "local"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode BuildPilot only reads and analyzes. Running scripts, starting Claude Code and writing files are disabled."
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "buildpilot",
+          "title": "BuildPilot",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "buildpilot": [
+        {
+          "type": "webview",
+          "id": "buildpilot.main",
+          "name": "Mission Control"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "buildpilot.focus",
+        "title": "Open Mission Control",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.refresh",
+        "title": "Re-analyze Project",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.selectProject",
+        "title": "Select Project",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.installHooks",
+        "title": "Connect to Claude Code",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.uninstallHooks",
+        "title": "Disconnect from Claude Code",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.newPrompt",
+        "title": "New Prompt (Prompt Studio)",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.copyHandoff",
+        "title": "Copy Session Handoff",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.checkpoint",
+        "title": "Save Checkpoint",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.runTests",
+        "title": "Run Tests",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.showBrief",
+        "title": "Show Brief",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.loadDemo",
+        "title": "Load Demo Sessions",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.clearDemo",
+        "title": "Remove Demo Sessions",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.setAnthropicKey",
+        "title": "Set Anthropic API Key (optional)",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.setWebhook",
+        "title": "Set Notification URL (phone, glasses, Slack…)",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.deleteProjectData",
+        "title": "Delete This Project's Data",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.deleteAllData",
+        "title": "Delete All BuildPilot Data",
+        "category": "BuildPilot"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "buildpilot.newPrompt",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
+      }
+    ],
+    "configuration": {
+      "title": "BuildPilot",
+      "properties": {
+        "buildpilot.beginnerMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show short plain-English explanations of issues and recommendations."
+        },
+        "buildpilot.notifications": {
+          "type": "string",
+          "enum": [
+            "important",
+            "off"
+          ],
+          "default": "important",
+          "enumDescriptions": [
+            "Only when a session needs approval, fails, loops, or conflicts.",
+            "Never show pop-ups."
+          ],
+          "description": "When BuildPilot may show a pop-up."
+        },
+        "buildpilot.ai.provider": {
+          "type": "string",
+          "enum": [
+            "none",
+            "anthropic",
+            "ollama"
+          ],
+          "default": "none",
+          "description": "Optional AI used only when you click 'Refine with AI'. 'anthropic' uses your own API key (BuildPilot: Set Anthropic API Key); 'ollama' uses a local model."
+        },
+        "buildpilot.ai.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model id, e.g. claude-sonnet-5-5 (Anthropic) or qwen2.5:7b (Ollama). Empty = sensible default."
+        },
+        "buildpilot.ai.ollamaUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "description": "Ollama base URL."
+        },
+        "buildpilot.integrationApi.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run the token-protected Integration API (read-only + prompt generation) for Shortcuts, Raycast, Stream Deck, smart-glasses companion apps, bots."
+        },
+        "buildpilot.integrationApi.port": {
+          "type": "number",
+          "default": 47821,
+          "description": "Integration API port."
+        },
+        "buildpilot.integrationApi.allowLan": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Listen on your local network instead of only this computer, so a phone on the same Wi-Fi can reach it. **Only enable on trusted networks.** A token is always required."
+        }
+      }
+    }
   }
 }

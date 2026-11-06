@@ -268,7 +268,11 @@ export interface SecretFinding {
   file: string;
   line: number;
   kind: string;
+  /** In a test/fixture/example path: often fake data, so reported separately and with lower severity. */
+  likelyFixture: boolean;
 }
+
+const FIXTURE_RE = /(^|\/)(test|tests|__tests__|spec|fixtures?|examples?|mocks?|__mocks__)\/|\.(test|spec)\.[a-z]+$|example|sample/i;
 
 export async function scanSecrets(root: string, maxFiles = 3000): Promise<SecretFinding[]> {
   const { files } = await listFiles(root);
@@ -281,7 +285,7 @@ export async function scanSecrets(root: string, maxFiles = 3000): Promise<Secret
     for (let i = 0; i < lines.length && out.length < 100; i++) {
       for (const [re, kind] of SECRET_SCAN) {
         if (re.test(lines[i]!)) {
-          out.push({ file: f, line: i + 1, kind });
+          out.push({ file: f, line: i + 1, kind, likelyFixture: FIXTURE_RE.test(f) });
           break;
         }
       }

@@ -295,7 +295,7 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
   }
   for (const c of conflicts) {
     if (c.certainty === "actual") {
-      issues.push({ key: `conflict:${c.file}`, severity: "high", title: `Two sessions edited ${path.basename(c.file)}`, plain: "Two AI sessions changing the same file can overwrite each other's work. Let one finish, or give each its own Git worktree.", evidence: [{ kind: "observed", text: `sessions ${c.sessions.map(shortId).join(", ")}`, ref: c.file }] });
+      issues.push({ key: `conflict:${c.file}`, severity: "high", title: `Two sessions edited ${path.basename(c.file)}`, plain: "Two AI sessions changing the same file can overwrite each other's work. Let one finish, or give each its own Git worktree.", evidence: [{ kind: "observed", text: `sessions ${c.sessions.map(shortId).join(", ")}`, ref: c.file }], sessionId: c.sessions[0] });
       recs.push(rec(`conflict:${c.file}`, "high", "Stop two sessions editing the same file", "Overlapping edits are the most common way multi-agent work gets lost.", [{ kind: "observed", text: `${path.basename(c.file)} edited by ${c.sessions.length} sessions` }], { kind: "checkpoint" }, 18));
     } else {
       issues.push({ key: `possible-conflict:${c.file}`, severity: "low", title: `${c.sessions.length} sessions editing the same working folder`, plain: "No file overlap yet, but both are changing the same copy of the code. Consider separate Git worktrees.", evidence: [{ kind: "inferred", text: `sessions ${c.sessions.map(shortId).join(", ")} share ${c.file}` }] });
@@ -304,9 +304,14 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
 
   // --- repository
   if (f) {
-    if (i.secrets && i.secrets.length > 0) {
-      issues.push({ key: "secrets", severity: "blocker", title: `Possible secrets in ${new Set(i.secrets.map((s) => s.file)).size} file(s)`, plain: "API keys or passwords appear to be written into your code. Anyone who sees the code can use them. Move them to a .env file and rotate the keys.", evidence: i.secrets.slice(0, 8).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}`, ref: `${s.file}:${s.line}` })) });
-      recs.push(rec("secrets", "blocker", "Remove secrets from your code", "Leaked keys can be abused within minutes once code is public.", i.secrets.slice(0, 3).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}` })), { kind: "prompt", goal: "security", request: "Move hard-coded secrets into environment variables and document the variable names in .env.example." }, 30));
+    const realSecrets = (i.secrets ?? []).filter((x) => !x.likelyFixture);
+    const fixtureSecrets = (i.secrets ?? []).filter((x) => x.likelyFixture);
+    if (realSecrets.length > 0) {
+      issues.push({ key: "secrets", severity: "blocker", title: `Possible secrets in ${new Set(realSecrets.map((s) => s.file)).size} file(s)`, plain: "API keys or passwords appear to be written into your code. Anyone who sees the code can use them. Move them to a .env file and rotate the keys.", evidence: realSecrets.slice(0, 8).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}`, ref: `${s.file}:${s.line}` })) });
+      recs.push(rec("secrets", "blocker", "Remove secrets from your code", "Leaked keys can be abused within minutes once code is public.", realSecrets.slice(0, 3).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}` })), { kind: "prompt", goal: "security", request: "Move hard-coded secrets into environment variables and document the variable names in .env.example." }, 30));
+    }
+    if (fixtureSecrets.length > 0) {
+      issues.push({ key: "secrets-fixtures", severity: "low", title: `Secret-like values in ${new Set(fixtureSecrets.map((s) => s.file)).size} test/example file(s)`, plain: "These look like test data. If any are real keys, remove and rotate them.", evidence: fixtureSecrets.slice(0, 5).map((s) => ({ kind: "observed" as const, text: `${s.kind} at ${s.file}:${s.line}`, ref: `${s.file}:${s.line}` })) });
     }
     for (const d of i.doctor) {
       if (d.status === "fail" || d.status === "warn") {
@@ -381,7 +386,8 @@ export function readiness(i: SupervisorInput): ReadinessItem[] {
   const items: ReadinessItem[] = [];
   items.push(build ? { key: "build", label: "Build succeeds", status: build.passed ? "verified" : "failed", detail: `${build.command} → exit ${build.exitCode} (${new Date(build.startedAt).toLocaleDateString()})` } : { key: "build", label: "Build succeeds", status: "unknown", detail: f?.scripts.build ? "Run the build to check." : "No build command defined." });
   items.push(test ? { key: "tests", label: "Tests pass", status: test.passed ? "verified" : "failed", detail: `${test.command} → exit ${test.exitCode}` } : { key: "tests", label: "Tests pass", status: "unknown", detail: f?.testFileCount ? "Tests exist but haven't been run here." : "No tests found." });
-  items.push(i.secrets == null ? { key: "secrets", label: "No secrets in code", status: "unknown", detail: "Run a security scan." } : { key: "secrets", label: "No secrets in code", status: i.secrets.length ? "failed" : "verified", detail: i.secrets.length ? `${i.secrets.length} possible secret(s)` : "High-confidence patterns: none found (not a full audit)" });
+  const real = (i.secrets ?? []).filter((x) => !x.likelyFixture);
+  items.push(i.secrets == null ? { key: "secrets", label: "No secrets in code", status: "unknown", detail: "Run a security scan." } : { key: "secrets", label: "No secrets in code", status: real.length ? "failed" : "verified", detail: real.length ? `${real.length} possible secret(s)` : `High-confidence patterns: none found outside tests (not a full audit)${i.secrets.length ? `; ${i.secrets.length} in test/example files` : ""}` });
   const envCheck = i.doctor.find((d) => d.key === "env-vars");
   items.push({ key: "config", label: "Configuration documented", status: f?.envExampleVars.length ? (envCheck?.status === "ok" ? "verified" : "unverified") : "unknown", detail: f?.envExampleVars.length ? `${f.envExampleVars.length} variables in .env.example` : "No .env.example. Document required settings." });
   items.push({ key: "errors", label: "Error handling", status: "unverified", detail: "Can't be verified automatically. Ask Supervisor to review error paths." });
