@@ -225,6 +225,8 @@ function overview(): string {
     : live.length === 0
       ? "No active Claude Code sessions in this project."
       : `${running} session${running === 1 ? "" : "s"} working${waitingN ? `, <b>${waitingN} waiting for you</b>` : ""}. <a href="#" data-tab="sessions">See sessions</a>`;
+  const ewWait = st.elsewhere.filter((s) => s.status === "awaiting_approval" || s.status === "blocked");
+  const happeningAll = happening + (ewWait.length ? `<div class="small warn-text">Also waiting for you: ${esc([...new Set(ewWait.map((s) => s.folder))].join(", "))}</div>` : st.elsewhere.length ? `<div class="muted small">${st.elsewhere.length} active in other projects · <a href="#" data-tab="sessions">see</a></div>` : "");
   const wrong = top.length === 0 ? "Nothing urgent found." : `${top.length} important issue${top.length === 1 ? "" : "s"}: ${esc(top[0]!.title)}${top.length > 1 ? ` <a href="#" data-tab="supervisor">+${top.length - 1} more</a>` : ""}`;
   const reqs = st.requirements.filter((r) => r.status !== "dropped");
   const implemented = reqs.filter((r) => r.status === "done" && r.evidence === "verified");
@@ -234,7 +236,7 @@ function overview(): string {
   return `
   ${nextCard()}
   <section class="qa">
-    <div class="qa-row"><span class="qa-q">What's happening?</span><span>${happening}</span></div>
+    <div class="qa-row"><span class="qa-q">What's happening?</span><span>${happeningAll}</span></div>
     <div class="qa-row"><span class="qa-q">Anything wrong?</span><span>${wrong}</span></div>
   </section>
   <section>
@@ -285,16 +287,25 @@ function sessionsTab(): string {
     return `<div class="empty">${icon("plug", "big")}<h2>Connect to Claude Code</h2><p>BuildPilot adds small background hooks to Claude Code so it can see what each session is doing. Nothing leaves your computer. Your settings are backed up and it can be undone.</p><button class="primary" data-act="installHooks">Connect</button><p class="muted small">Or <a href="#" data-act="demoOn">try it with demo data</a> first.</p></div>`;
   }
   if (st.out.sessions.length === 0) {
-    return `<div class="empty">${icon("terminal", "big")}<h2>No sessions yet</h2><p>Start Claude Code in this project (run <code>claude</code> in a terminal). It'll appear here within a second.</p>${st.integration.otherProjectSessions ? `<p class="muted small">${st.integration.otherProjectSessions} active session(s) are running in other folders.</p>` : ""}<p class="muted small">Already running? It appears on its next action. If not, restart it.</p><button class="secondary" data-act="promptFor" data-goal="feature" data-request="">${icon("sparkle")} Write a first prompt</button></div>`;
+    return `${elsewhereBlock()}<div class="empty">${icon("terminal", "big")}<h2>No sessions yet</h2><p>Start Claude Code in this project (run <code>claude</code> in a terminal). It'll appear here within a second.</p><p class="muted small">Already running? It appears on its next action. If not, restart it.</p><button class="secondary" data-act="promptFor" data-goal="feature" data-request="">${icon("sparkle")} Write a first prompt</button></div>`;
   }
   const active = st.out.sessions.filter((s) => !s.endedAt && st.generatedAt - s.lastEventAt < 12 * 3600_000);
   const past = st.out.sessions.filter((s) => !active.includes(s));
   return `
     ${active.length ? `<h3>Active <span class="muted small">(${active.length})</span></h3>${active.map(sessionCard).join("")}` : `<p class="muted">No active sessions.</p>`}
     ${past.length ? disclosure("past-sessions", `Earlier sessions (${past.length})`, past.map(sessionCard).join("")) : ""}
-    ${st.integration.otherProjectSessions ? `<p class="muted small">${st.integration.otherProjectSessions} active session(s) in other folders aren't shown.</p>` : ""}
+    ${elsewhereBlock()}
     <div class="actions"><button class="secondary" data-act="copyHandoff">${icon("copy")} Copy handoff for a new session</button></div>
     <p class="muted small">Statuses come from Claude Code hook events. BuildPilot never guesses what a terminal is doing. If it hasn't heard anything in 10 minutes, it says "Unknown".</p>`;
+}
+
+function elsewhereBlock(): string {
+  const list = S!.elsewhere;
+  if (!list.length) return "";
+  const waiting = list.filter((s) => s.status === "awaiting_approval" || s.status === "blocked").length;
+  return `<section class="elsewhere"><h3>Other projects <span class="muted small">(${list.length} active${waiting ? `, <span class="warn-text">${waiting} waiting for you</span>` : ""})</span></h3>
+    <ul class="plain">${list.map((s) => `<li class="ew">${dot(s.status)} <b>${esc(s.folder)}</b> <span class="muted small">${STATUS_LABEL[s.status] ?? s.status} · ${ago(s.lastEventAt)}${s.contextPct != null ? ` · context ${Math.round(s.contextPct)}%` : ""}</span>${s.task ? `<div class="muted small ew-task">“${esc(s.task)}”</div>` : ""}${s.status === "awaiting_approval" || s.status === "blocked" ? `<div class="small warn-text">${esc(s.reason)}</div>` : ""}</li>`).join("")}</ul>
+    <div class="muted small">To supervise one of these in depth, open its folder in VS Code.</div></section>`;
 }
 
 function sessionCard(s: SessionView): string {
@@ -314,8 +325,8 @@ function sessionCard(s: SessionView): string {
     ${s.overlapsWith.length ? `<div class="s-int warn">${icon("warning")} Editing the same files as ${s.overlapsWith.map(short).join(", ")}</div>` : ""}
     ${disclosure(`sess:${s.id}`, `Details · ${s.eventCount} events${s.errorCount ? ` · <span class="errc">${s.errorCount} errors</span>` : ""}`, `
       <dl class="facts small">
-        <dt>Folder</dt><dd class="mono">${esc(rel(s.cwd) || ".")}</dd>
-        <dt>Model</dt><dd>${esc(u?.model ?? s.model ?? "Unknown")}</dd>
+        <dt>Folder</dt><dd class="mono">${esc(rel(s.cwd) || "project root")}</dd>
+        <dt>Model</dt><dd>${esc(lv?.model ?? u?.model ?? s.model ?? "Unknown")}</dd>
         <dt>Usage</dt><dd>${esc(tokens)}</dd>
         <dt>Context</dt><dd>${lv && lv.contextPct != null ? `${Math.round(lv.contextPct)}% (exact, from Claude Code)` : S!.statusline.installed ? "Waiting for Claude Code to report" : `Unknown · <a href="#" data-act="statuslineOn">show exact %</a>`}</dd>
         <dt>Cost</dt><dd>${lv && lv.costUsd != null ? `~$${lv.costUsd.toFixed(2)} <span class="muted">(Claude Code's estimate at list price; your plan may differ)</span>` : `Unknown <span class="muted">(not reported)</span>`}</dd>

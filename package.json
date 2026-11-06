@@ -2,7 +2,7 @@
   "name": "buildpilot",
   "displayName": "BuildPilot",
   "description": "Mission control for building software with Claude Code: what's being built, what's broken, what to do next.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "buildpilot-local",
   "license": "UNLICENSED",
   "private": true,
@@ -24,7 +24,9 @@
     "test": "vitest run",
     "test:smoke": "node scripts/build.mjs && node test/smoke/run.mjs",
     "package": "node scripts/build.mjs && vsce package --no-dependencies --no-rewrite-relative-links --allow-missing-repository --out dist/buildpilot.vsix",
-    "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke"
+    "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke",
+    "guide": "\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --allow-file-access-from-files --no-pdf-header-footer --print-to-pdf=dist/START-HERE.pdf \"file://$PWD/docs/guide/guide.html\"",
+    "desktop": "npm run package && npm run guide && mkdir -p \"$HOME/Desktop/BuildPilot\" && cp dist/START-HERE.pdf \"$HOME/Desktop/BuildPilot/1 - START HERE.pdf\" && cp \"scripts/desktop/Install BuildPilot.command\" \"$HOME/Desktop/BuildPilot/2 - Install BuildPilot.command\" && cp \"scripts/desktop/Uninstall BuildPilot.command\" \"$HOME/Desktop/BuildPilot/3 - Uninstall BuildPilot.command\" && cp dist/buildpilot.vsix \"$HOME/Desktop/BuildPilot/BuildPilot $npm_package_version.vsix\""
   },
   "dependencies": {
     "sql.js": "^1.13.0"
@@ -79,7 +81,8 @@
       {
         "command": "buildpilot.refresh",
         "title": "Re-analyze Project",
-        "category": "BuildPilot"
+        "category": "BuildPilot",
+        "icon": "$(refresh)"
       },
       {
         "command": "buildpilot.selectProject",
@@ -99,7 +102,8 @@
       {
         "command": "buildpilot.newPrompt",
         "title": "New Prompt (Prompt Studio)",
-        "category": "BuildPilot"
+        "category": "BuildPilot",
+        "icon": "$(sparkle)"
       },
       {
         "command": "buildpilot.copyHandoff",
@@ -138,7 +142,7 @@
       },
       {
         "command": "buildpilot.setWebhook",
-        "title": "Set Notification URL (phone, glasses, Slack…)",
+        "title": "Set Notification URL (phone, glasses, Slack\u2026)",
         "category": "BuildPilot"
       },
       {
@@ -169,6 +173,11 @@
       {
         "command": "buildpilot.visualCheck",
         "title": "Visual Check of Running App",
+        "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.walkthrough",
+        "title": "Getting Started",
         "category": "BuildPilot"
       }
     ],
@@ -241,6 +250,74 @@
           "description": "Local address of your running app for Visual QA (e.g. http://localhost:3000). Empty = detect from package.json."
         }
       }
+    },
+    "walkthroughs": [
+      {
+        "id": "buildpilot.start",
+        "title": "Get started with BuildPilot",
+        "description": "Mission control for building software with Claude Code, set up in two minutes.",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Open Mission Control",
+            "description": "See what's happening, what's wrong and what to do next.\n[Open BuildPilot](command:buildpilot.focus)",
+            "media": {
+              "markdown": "media/walkthrough/open.md"
+            }
+          },
+          {
+            "id": "connect",
+            "title": "Connect to Claude Code",
+            "description": "Let BuildPilot see your sessions (safe, local, reversible).\n[Connect](command:buildpilot.installHooks)\n[Show exact context %](command:buildpilot.installStatusline)",
+            "media": {
+              "markdown": "media/walkthrough/connect.md"
+            }
+          },
+          {
+            "id": "prompt",
+            "title": "Write a prompt with Prompt Studio",
+            "description": "Turn a plain-English goal into an expert Claude Code prompt.\n[Open Prompt Studio](command:buildpilot.newPrompt)",
+            "media": {
+              "markdown": "media/walkthrough/prompt.md"
+            }
+          },
+          {
+            "id": "supervise",
+            "title": "Check your project",
+            "description": "Tests, secrets, dependencies, visual check, checkpoints.\n[Save a checkpoint](command:buildpilot.checkpoint)",
+            "media": {
+              "markdown": "media/walkthrough/supervise.md"
+            }
+          },
+          {
+            "id": "phone",
+            "title": "Alerts on your phone & glasses",
+            "description": "Get told when Claude needs you, wherever you are.\n[Set up notifications](command:buildpilot.setWebhook)",
+            "media": {
+              "markdown": "media/walkthrough/phone.md"
+            }
+          }
+        ]
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "buildpilot.newPrompt",
+          "when": "view == buildpilot.main",
+          "group": "navigation@1"
+        },
+        {
+          "command": "buildpilot.refresh",
+          "when": "view == buildpilot.main",
+          "group": "navigation@2"
+        },
+        {
+          "command": "buildpilot.walkthrough",
+          "when": "view == buildpilot.main",
+          "group": "overflow"
+        }
+      ]
     }
   }
 }

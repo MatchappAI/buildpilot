@@ -12,9 +12,9 @@ import { Ingestor, rowToEvent, rowToSession, SpoolReader } from "./ingest";
 import { buildClaudeMd, buildHandoff } from "./memory";
 import { buildPrompt, BuiltPrompt, PromptOptions, relevantFiles } from "./prompts";
 import { clip } from "./redact";
-import { lastTestRun, normalizeError, supervise, SupervisorOutput } from "./supervisor";
+import { deriveDisplayStatus, lastTestRun, normalizeError, supervise, SupervisorOutput } from "./supervisor";
 import { readUsage } from "./transcript";
-import { ChangeSet, Decision, HookEvent, Project, Requirement, Session, TestRun, UsageSnapshot } from "./types";
+import { ChangeSet, Decision, HookEvent, Project, Requirement, Session, SessionStatus, TestRun, UsageSnapshot } from "./types";
 
 export interface EngineOptions {
   home?: string;
@@ -55,6 +55,8 @@ export interface UiState {
   hooks: HookStatus;
   statusline: StatuslineStatus;
   integration: { claudeInstalled: boolean | null; claudeVersion: string | null; gitAvailable: boolean | null; spool: SpoolReader["stats"]; otherProjectSessions: number };
+  /** Active sessions in OTHER folders: mission control across all your projects (observed only). */
+  elsewhere: { id: string; folder: string; cwd: string; status: SessionStatus; reason: string; task: string | null; lastEventAt: number; contextPct: number | null }[];
   notes: { goal: string; preferences: string };
   errors: string[];
   runningScript: string | null;
@@ -563,6 +565,13 @@ export class Engine extends EventEmitter {
     const resolved = this.trackRecommendations(out, now);
     const usage: Record<string, UsageSnapshot> = {};
     for (const s of sessions.slice(0, 12)) usage[s.id] = this.usageFor(s);
+    const elsewhere = this.store
+      .all<Record<string, unknown>>("SELECT * FROM sessions WHERE (project_id IS NULL OR project_id != ?) AND ended_at IS NULL AND last_event_at > ? AND id NOT LIKE 'demo-%' ORDER BY last_event_at DESC LIMIT 12", [p?.id ?? "", now - 3 * 3600_000])
+      .map(rowToSession)
+      .map((s) => {
+        const d = deriveDisplayStatus(s, now);
+        return { id: s.id, folder: path.basename(s.cwd) || s.cwd, cwd: s.cwd, status: d.status, reason: d.reason, task: s.currentTask, lastEventAt: s.lastEventAt, contextPct: readLiveStatus(s.id, this.home)?.contextPct ?? null };
+      });
     const otherProjectSessions = Number(this.store?.scalar("SELECT COUNT(*) FROM sessions WHERE (project_id IS NULL OR project_id != ?) AND ended_at IS NULL AND last_event_at > ?", [p?.id ?? "", now - 3600_000]) ?? 0);
     return {
       generatedAt: now,
@@ -589,6 +598,7 @@ export class Engine extends EventEmitter {
       hooks,
       statusline: statuslineStatus(this.settingsFile, this.home),
       integration: { claudeInstalled: this.claude.installed, claudeVersion: this.claude.version, gitAvailable: this.gitOk, spool: this.spool?.stats ?? { accepted: 0, duplicates: 0, rejected: 0, lastEventAt: 0 }, otherProjectSessions },
+      elsewhere,
       notes: { goal: this.note("goal"), preferences: this.note("preferences") },
       errors: this.errors,
       runningScript: this.runningScript,
@@ -649,6 +659,8 @@ export class Engine extends EventEmitter {
     else parts.push(`${name}: ${running.length} session${running.length === 1 ? "" : "s"} working${waiting.length ? `, ${waiting.length} waiting for you` : ""}.`);
     const top = state.out.issues[0];
     if (top && (top.severity === "blocker" || top.severity === "high")) parts.push(`Problem: ${top.title}.`);
+    const waitingElsewhere = state.elsewhere.filter((s) => s.status === "awaiting_approval" || s.status === "blocked");
+    if (waitingElsewhere.length) parts.push(`Also waiting for you in ${[...new Set(waitingElsewhere.map((s) => s.folder))].join(", ")}.`);
     if (state.out.next) parts.push(`Next: ${state.out.next.title}.`);
     return parts.join(" ");
   }
@@ -724,6 +736,10 @@ export class Engine extends EventEmitter {
       if (s.id.startsWith("demo-") || s.endedAt || st.generatedAt - s.lastEventAt > 15 * 60_000) continue; // never alert on demo data
       if (s.displayStatus === "awaiting_approval") alerts.push({ key: `approve:${s.id}:${s.lastEventAt}`, level: "warning", title: "Claude needs your approval", message: s.displayReason, sessionId: s.id });
       if (s.displayStatus === "failed") alerts.push({ key: `failed:${s.id}:${s.lastEventAt}`, level: "error", title: "A Claude session failed", message: s.displayReason, sessionId: s.id });
+    }
+    for (const s of st.elsewhere) {
+      if (st.generatedAt - s.lastEventAt > 15 * 60_000) continue;
+      if (s.status === "awaiting_approval") alerts.push({ key: `approve:${s.id}:${s.lastEventAt}`, level: "warning", title: `Claude in ${s.folder} needs your approval`, message: s.reason, sessionId: s.id });
     }
     for (const i of st.out.issues) {
       if (i.key.includes("demo-") || (i.sessionId ?? "").startsWith("demo-")) continue;

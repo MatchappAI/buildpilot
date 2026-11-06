@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BuildPilot: Start Here</title>
+<style>
+  @page { size: Letter; margin: 0.6in 0.7in 0.7in; }
+  :root { --ink: #1d2127; --mut: #5f6b7a; --line: #e4e7eb; --soft: #f5f7fa; --acc: #0b63ce; --ok: #1f883d; --warn: #9a6700; --bad: #cf222e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); font: 10.5pt/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  h1 { font-size: 30pt; letter-spacing: -0.02em; line-height: 1.1; margin: 0 0 8pt; font-weight: 700; }
+  h2 { font-size: 17pt; letter-spacing: -0.01em; margin: 0 0 6pt; font-weight: 700; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 14pt 0 4pt; font-weight: 650; break-after: avoid; }
+  p { margin: 0 0 7pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin: 2pt 0; }
+  code, kbd, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9pt; }
+  code { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  pre { font-family: "SF Mono", Menlo, monospace; font-size: 8.6pt; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 8pt 10pt; white-space: pre-wrap; margin: 0 0 8pt; break-inside: avoid; }
+  kbd { border: 1px solid #c9ced6; border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: #fff; }
+  .page { break-after: page; }
+  .cover { height: 9.4in; display: flex; flex-direction: column; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 12pt; }
+  .brand img { width: 46pt; height: 46pt; }
+  .brand b { font-size: 13pt; letter-spacing: .02em; }
+  .lede { font-size: 14pt; color: var(--mut); max-width: 5.6in; line-height: 1.45; }
+  .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10pt; margin: 22pt 0; }
+  .three > div { border: 1px solid var(--line); border-radius: 12px; padding: 12pt; }
+  .three .n { font-size: 9pt; color: var(--acc); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .three .q { font-size: 12.5pt; font-weight: 650; margin: 3pt 0; }
+  .three .a { color: var(--mut); font-size: 9.5pt; }
+  .meta { color: var(--mut); font-size: 9pt; border-top: 1px solid var(--line); padding-top: 8pt; display: flex; justify-content: space-between; gap: 16pt; } .meta span:last-child { white-space: nowrap; }
+  .eyebrow { font-size: 8.5pt; color: var(--acc); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 3pt; }
+  .callout { border: 1px solid var(--line); background: var(--soft); border-radius: 10px; padding: 9pt 11pt; margin: 8pt 0 10pt; break-inside: avoid; }
+  .callout.ok { border-color: #b7e1c1; background: #eefaf1; }
+  .callout.warn { border-color: #f0d79a; background: #fff8e6; }
+  .callout b:first-child { display: block; margin-bottom: 2pt; }
+  .steps { counter-reset: s; list-style: none; padding: 0; }
+  .steps > li { counter-increment: s; position: relative; padding-left: 26pt; margin: 0 0 8pt; break-inside: avoid; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 17pt; height: 17pt; border-radius: 50%; background: var(--acc); color: #fff; font-weight: 700; font-size: 9pt; display: flex; align-items: center; justify-content: center; }
+  .split { display: grid; grid-template-columns: 2.35in 1fr; gap: 16pt; align-items: start; break-inside: avoid; margin-bottom: 10pt; }
+  .shot { width: 100%; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 10px rgba(16,24,40,.08); }
+  .cap { font-size: 8.5pt; color: var(--mut); margin-top: 3pt; text-align: center; }
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0 10pt; font-size: 9.5pt; break-inside: avoid; }
+  th { text-align: left; font-size: 8.5pt; color: var(--mut); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--line); padding: 4pt 6pt; }
+  td { border-bottom: 1px solid var(--line); padding: 5pt 6pt; vertical-align: top; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .pill { display: inline-block; font-size: 8pt; border: 1px solid currentColor; border-radius: 4px; padding: 0 4pt; font-weight: 600; }
+  .v { color: var(--ok); } .i { color: var(--acc); } .u { color: var(--warn); } .f { color: var(--bad); } .k { color: var(--mut); }
+  .toc { columns: 2; column-gap: 24pt; padding: 0; list-style: none; margin-top: 6pt; font-size: 9.5pt; }
+  .toc li { break-inside: avoid; padding: 2.5pt 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; }
+  .toc span { color: var(--mut); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14pt; }
+  .small { font-size: 9pt; color: var(--mut); }
+  section { margin-bottom: 14pt; }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="page cover">
+  <div>
+    <div class="brand"><img src="../../media/icon.png" alt=""><b>BUILDPILOT</b></div>
+    <div style="height: 1.4in"></div>
+    <div class="eyebrow">Start here</div>
+    <h1>Mission control for<br>building with Claude Code</h1>
+    <p class="lede">Know what's being built, what's broken, what matters next, and how to ship it correctly, without becoming an engineer.</p>
+    <div class="three">
+      <div><div class="n">1</div><div class="q">What's happening?</div><div class="a">Every Claude Code session, live: its task, files, errors and how full its memory is.</div></div>
+      <div><div class="n">2</div><div class="q">Is anything wrong?</div><div class="a">Failing tests, loops, leaked secrets, vulnerable libraries, two agents in one file.</div></div>
+      <div><div class="n">3</div><div class="q">What do I do next?</div><div class="a">One recommended step, plus an expert prompt that tells Claude exactly how to do it.</div></div>
+    </div>
+  </div>
+  <div class="meta"><span>Version 0.2.1 · November 2026 · macOS (Windows &amp; Linux supported, not yet field-tested)</span><span>Designed &amp; built by Mohil Gupta</span></div>
+</div>
+
+<!-- CONTENTS + STATUS -->
+<div class="page">
+  <div class="eyebrow">Contents</div>
+  <h2>What's in this guide</h2>
+  <ul class="toc">
+    <li>Your setup today</li>
+    <li>Install on another computer</li>
+    <li>Your first five minutes</li>
+    <li>Overview</li>
+    <li>Sessions</li>
+    <li>Supervisor</li>
+    <li>Prompt Studio</li>
+    <li>Memory</li>
+    <li>Phone, glasses &amp; alerts</li>
+    <li>Reading the labels</li>
+    <li>Privacy &amp; safety</li>
+    <li>Troubleshooting</li>
+    <li>Uninstall &amp; undo</li>
+    <li>Command line &amp; file locations</li>
+  </ul>
+
+  <section style="margin-top: 14pt">
+    <div class="eyebrow">Your setup today</div>
+    <h2>It's already installed and connected on this Mac</h2>
+    <div class="callout ok"><b>Ready to use</b>BuildPilot 0.2.1 is installed in Visual Studio Code and connected to Claude Code. It was verified live: your open Claude Code sessions are reporting their activity, context use and limits.</div>
+    <p>To start using it:</p>
+    <ol class="steps">
+      <li>In VS Code, press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>, type <b>Reload Window</b> and press Enter. (Only needed once, so VS Code loads the newest version.)</li>
+      <li>Open any project folder (<b>File → Open Folder…</b>).</li>
+      <li>Click the <b>BuildPilot</b> compass icon in the left Activity Bar. A short <b>Getting Started</b> tour opens the first time.</li>
+    </ol>
+    <h3>What was changed on this Mac</h3>
+    <table>
+      <tr><th>Where</th><th>What</th><th>How to undo</th></tr>
+      <tr><td>VS Code</td><td>The BuildPilot extension</td><td>Uninstall script (page 12)</td></tr>
+      <tr><td><code>~/.claude/settings.json</code></td><td>Added background <b>hooks</b> (so BuildPilot sees each session's activity) and a <b>status line</b> (exact context %). Every other setting was kept, and a backup was saved first.</td><td>Uninstall script, or <b>Connect → Disconnect</b></td></tr>
+      <tr><td><code>~/.buildpilot/</code></td><td>BuildPilot's private local data (sessions, notes, backups)</td><td>Uninstall script moves it to the Trash</td></tr>
+    </table>
+  </section>
+</div>
+
+<!-- INSTALL + FIRST FIVE -->
+<div class="page">
+  <div class="eyebrow">Install on another computer</div>
+  <h2>Two minutes, no technical steps</h2>
+  <p>You need <b>Visual Studio Code</b> and <b>Claude Code</b> installed. Node.js is optional (it lets the installer connect Claude Code for you).</p>
+  <ol class="steps">
+    <li>Copy the whole <b>BuildPilot</b> folder from the Desktop to the other Mac.</li>
+    <li>Double-click <b>2 - Install BuildPilot.command</b>. If macOS says it can't verify the developer, right-click the file → <b>Open</b> → <b>Open</b>.</li>
+    <li>When it asks <i>Connect to Claude Code now?</i>, type <b>y</b>. (Or skip it and click <b>Connect</b> inside BuildPilot later.)</li>
+    <li>Open VS Code and click the BuildPilot icon.</li>
+  </ol>
+  <p class="small">Manual install: in VS Code, open the Command Palette (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>) → <b>Extensions: Install from VSIX…</b> → choose <code>BuildPilot 0.2.1.vsix</code>.</p>
+
+  <div style="height: 10pt"></div>
+  <div class="eyebrow">Your first five minutes</div>
+  <h2>From zero to a useful next step</h2>
+  <ol class="steps">
+    <li><b>Open a project you're building.</b> BuildPilot reads it (locally) and tells you what it is, what it's built with, and its stage.</li>
+    <li><b>Look at the Next step card</b> on Overview. It's the single most valuable thing to do right now. Click its button, or <b>Not now</b> to hide it for a day.</li>
+    <li><b>Write down what "done" means.</b> In <b>Memory</b>, add 3–7 requirements with a "done when…" line each (e.g. <i>Users can pay by card · done when a test payment succeeds and a receipt is emailed</i>). Progress is measured only against these.</li>
+    <li><b>Run your tests once</b> (Supervisor → <b>Run tests</b>) so BuildPilot has a verified baseline.</li>
+    <li><b>Start Claude Code as usual</b> (type <code>claude</code> in a terminal), or use <b>Prompt Studio → Start in Claude Code</b>. The session appears in <b>Sessions</b> instantly.</li>
+  </ol>
+  <div class="callout"><b>Want to look around first?</b>Connect tab → <b>Load demo data</b>. Demo sessions are clearly labelled DEMO, never send alerts, and are removed with one click.</div>
+</div>
+
+<!-- OVERVIEW -->
+<div class="page">
+  <div class="eyebrow">Tab 1</div>
+  <h2>Overview: the 10-second answer</h2>
+  <div class="split">
+    <div><img class="shot" src="img/overview.png" alt="Overview tab"><div class="cap">Overview (shown with demo data)</div></div>
+    <div>
+      <h3>Next step</h3>
+      <p>The one recommendation that matters most, ranked by severity, impact and urgency. It always says <i>why</i>, and <b>Why BuildPilot thinks so</b> shows the evidence it saw.</p>
+      <h3>What's happening? · Anything wrong?</h3>
+      <p>Plain-English status of your sessions (including ones <b>waiting for you in other projects</b>) and the most important problem.</p>
+      <h3>Project</h3>
+      <p>What the product is, what it's built with, its <b>stage</b> (planning → prototyping → … → maintenance), <b>progress</b>, tests and Git state.</p>
+      <h3>Features</h3>
+      <p>Your requirements sorted into <b>Done &amp; verified</b>, <b>Partly done / unproven</b> and <b>Not started</b>. Something only counts as verified after tests pass, because "the AI said it's done" isn't proof.</p>
+      <h3>Recently resolved</h3>
+      <p>Recommendations whose problem BuildPilot no longer observes. This is how it confirms a fix actually worked.</p>
+      <div class="callout"><b>Status bar</b>At the bottom of VS Code, BuildPilot shows how many sessions are working or waiting. Click it to jump here.</div>
+    </div>
+  </div>
+</div>
+
+<!-- SESSIONS -->
+<div class="page">
+  <div class="eyebrow">Tab 2</div>
+  <h2>Sessions: every Claude Code session, live</h2>
+  <div class="split">
+    <div><img class="shot" src="img/sessions.png" alt="Sessions tab"><div class="cap">Two sessions: one waiting, one looping</div></div>
+    <div>
+      <p>Each card shows what a session is doing <b>right now</b>, from Claude Code's own events. Nothing is guessed.</p>
+      <table>
+        <tr><th>Status</th><th>Meaning</th></tr>
+        <tr><td><span class="v">● Working</span></td><td>Actively running tools or thinking</td></tr>
+        <tr><td><span class="u">● Needs approval</span></td><td>Paused until you approve in its terminal</td></tr>
+        <tr><td><span class="u">● Needs input</span></td><td>Asked you a question</td></tr>
+        <tr><td><span class="i">● Idle</span></td><td>Finished; waiting for your next prompt</td></tr>
+        <tr><td><span class="f">● Failed</span></td><td>The AI service returned an error (e.g. rate limit)</td></tr>
+        <tr><td><span class="k">○ Unknown</span></td><td>Nothing heard for 10+ minutes. BuildPilot says so rather than pretend</td></tr>
+      </table>
+      <h3>On each card</h3>
+      <ul>
+        <li>The <b>task</b> (your last prompt), what it's doing now, and a suggested intervention</li>
+        <li><b>Context bar</b>: how full its memory is, exactly as Claude Code reports it. Past 80%, start a fresh session with a handoff.</li>
+        <li><b>Cost</b>: Claude Code's own estimate at list price (your plan may differ)</li>
+        <li><b>Details</b>: changed files (click to open), errors, full timeline, and <b>Explain with AI</b></li>
+        <li>Warnings when two sessions edit the same files</li>
+      </ul>
+      <h3>Other projects</h3>
+      <p>Sessions running in other folders appear at the top, so you see every agent across all your work, and VS Code tells you when one of them needs approval.</p>
+      <h3>Copy handoff for a new session</h3>
+      <p>A compact summary (goal, requirements, state, what was already tried, next step) to paste into a fresh Claude Code session so nothing is lost.</p>
+    </div>
+  </div>
+</div>
+
+<!-- SUPERVISOR -->
+<div class="page">
+  <div class="eyebrow">Tab 3</div>
+  <h2>Supervisor: the senior engineer's checklist</h2>
+  <div class="split">
+    <div><img class="shot" src="img/supervisor.png" alt="Supervisor tab"><div class="cap">Issues, recommendations and checks</div></div>
+    <div>
+      <h3>Issues, with evidence</h3>
+      <p>Each issue says how serious it is (<span class="f">Blocker</span> · <span class="u">Important</span> · <span class="i">Worth doing</span> · <span class="k">Optional</span>), what it means in plain English, and the evidence. BuildPilot catches:</p>
+      <ul>
+        <li>An agent <b>stuck in a loop</b> (same error 3+ times, or rewriting one file over and over)</li>
+        <li><b>"Done" without proof</b>: files changed after the last test, or no tests run</li>
+        <li><b>Two sessions in the same file</b>. Fix with <b>Separate the sessions</b>, which gives one agent its own copy of the code (a Git worktree)</li>
+        <li>Failing tests, no tests, no Git, many unsaved changes</li>
+        <li><b>Leaked secrets</b> in code, <code>.env</code> files saved in Git, missing settings</li>
+        <li>Context nearly full, 5-hour limit nearly used, work that isn't in your requirements</li>
+      </ul>
+      <h3>Checks you can run (each asks first)</h3>
+      <ul>
+        <li><b>Run tests / Build / Lint</b>: results are saved as evidence</li>
+        <li><b>Check dependencies</b>: known vulnerabilities in your libraries</li>
+        <li><b>Visual check</b>: opens your running app, spots error screens, saves a screenshot. <b>Start the app first</b> launches it in a visible terminal.</li>
+      </ul>
+      <h3>Ready to ship?</h3>
+      <p>Build, tests, secrets, dependencies, app loads, config, CI, deployment, rollback. Each item is marked <span class="v">Verified</span>, <span class="f">Failed</span> or <span class="k">Unknown</span>, never "production-ready" on opinion.</p>
+      <h3>Safe changes</h3>
+      <p><b>Save checkpoint</b> before anything risky. It snapshots every file without touching your branch. Later, <b>changed since</b> lists what differs, and you can restore just the files you pick (BuildPilot saves another checkpoint first, so even that is undoable).</p>
+    </div>
+  </div>
+</div>
+
+<!-- PROMPT STUDIO -->
+<div class="page">
+  <div class="eyebrow">Tab 4 · <kbd>⌘</kbd><kbd>⌥</kbd><kbd>P</kbd></div>
+  <h2>Prompt Studio: expert prompts from plain English</h2>
+  <div class="split">
+    <div><img class="shot" src="img/prompts.png" alt="Prompt Studio"><div class="cap">"Make my Gmail integration work perfectly"</div></div>
+    <div>
+      <ol class="steps">
+        <li><b>Pick a goal.</b> Each one carries its own best practices (see below).</li>
+        <li><b>Say what you want</b> in a sentence or two. Mention who it's for and what "working" looks like. The hints under the box tell you what helps.</li>
+        <li><b>Build prompt.</b> BuildPilot adds your project's stack, commands, test status, likely files, open requirements, known problems, past decisions and preferences.</li>
+        <li>Review the <b>Worth adding</b> and <b>Assumptions</b> notes, then edit freely.</li>
+        <li><b>Copy</b> into a running session, or <b>Start in Claude Code</b> to open a new terminal with it (you confirm first).</li>
+      </ol>
+      <h3>Every prompt includes</h3>
+      <ul>
+        <li>Guardrails: keep working code and your unsaved work, nothing destructive, no needless new libraries</li>
+        <li><b>Done means…</b>: concrete acceptance criteria ("perfectly" becomes checkable)</li>
+        <li><b>Verify before saying it's done</b>: the exact test/build commands for your project</li>
+        <li>A short <b>final report</b>: what changed, how it was verified, what's left for you</li>
+      </ul>
+      <div class="callout"><b>Optional: Refine with AI</b>Uses your own Anthropic API key or a local Ollama model to sharpen a prompt. Off by default; it shows what will be sent and asks each time.</div>
+    </div>
+  </div>
+  <h3 style="break-before: page">The eleven goals at a glance</h3>
+  <table>
+    <tr><th>Goal</th><th>Use it when…</th><th>What it makes Claude do</th></tr>
+    <tr><td>Build a feature</td><td>adding something new</td><td>Plan first, follow existing patterns, handle empty/loading/error states, add tests</td></tr>
+    <tr><td>Fix a bug</td><td>something's broken</td><td>Reproduce, find the root cause (no guess-and-retry), failing test first, smallest fix</td></tr>
+    <tr><td>Connect a service</td><td>Gmail, Stripe, Supabase…</td><td>Check current docs, keys only in .env, handle expiry/limits/failures, real end-to-end test</td></tr>
+    <tr><td>Add tests</td><td>proving it works</td><td>Most important journey first, test behavior, one command to run</td></tr>
+    <tr><td>Clean up code</td><td>it's getting messy</td><td>No behavior change, small steps, tests before and after</td></tr>
+    <tr><td>Improve the UI</td><td>design &amp; usability</td><td>Reuse your design system, every state, accessible, look at the result</td></tr>
+    <tr><td>Security check</td><td>before launch</td><td>Secrets, auth, input validation, highest risk first, honest limits</td></tr>
+    <tr><td>Get ready to ship</td><td>deploying</td><td>Build/tests pass, config listed, rollback plan, <b>never deploys without asking</b></td></tr>
+    <tr><td>Make it faster</td><td>it's slow</td><td>Measure first, one bottleneck at a time, before/after numbers</td></tr>
+    <tr><td>Explain / plan</td><td>understanding</td><td>No file changes; plain English first, then the technical detail</td></tr>
+    <tr><td>Session handoff</td><td>starting fresh</td><td>Reads the handoff, confirms the state, continues without redoing work</td></tr>
+  </table>
+</div>
+
+<!-- MEMORY -->
+<div class="page">
+  <div class="eyebrow">Tab 5</div>
+  <h2>Memory: what every new session should know</h2>
+  <div class="split">
+    <div><img class="shot" src="img/memory.png" alt="Memory tab"><div class="cap">Goal, requirements, decisions</div></div>
+    <div>
+      <p>AI sessions start from zero. Memory is how BuildPilot carries your project's knowledge between them, and how it measures real progress.</p>
+      <h3>Goal</h3>
+      <p>One or two sentences: what you're building, for whom, what success looks like.</p>
+      <h3>Requirements</h3>
+      <p>The things the product must do, each with a <b>done when…</b> line. Set the status as you go. Marking one <b>Done</b> counts as <span class="u">Unverified</span> until a passing test run, then it becomes <span class="v">Verified</span> automatically. Already have a checklist in a doc (<code>- [ ] item</code>)? Click <b>Import from docs</b>.</p>
+      <h3>Decisions</h3>
+      <p>Choices you don't want undone ("Use Gmail API, not SMTP"). They're added to every prompt.</p>
+      <h3>Preferences</h3>
+      <p>How you like to work ("Keep the UI minimal. Explain things simply."). Also added to every prompt.</p>
+      <h3>Session handoff</h3>
+      <p><b>Copy handoff</b>, turn it into a ready prompt (<b>Handoff prompt</b>), or save it to <code>.buildpilot/HANDOFF.md</code> in your project.</p>
+      <h3>CLAUDE.md</h3>
+      <p>Claude Code reads a <code>CLAUDE.md</code> file at the start of every session. <b>Draft a CLAUDE.md</b> writes one from your project (stack, commands, rules, decisions) and opens it unsaved for you to review. BuildPilot never overwrites your files.</p>
+      <h3>Your data</h3>
+      <p>Delete this project's data, or everything, any time.</p>
+    </div>
+  </div>
+</div>
+
+<!-- PHONE & GLASSES -->
+<div class="page">
+  <div class="eyebrow">Tab 6 · Connect</div>
+  <h2>Phone, glasses &amp; alerts</h2>
+  
+  <div class="two">
+    <div>
+      <h3>A. Alerts on your phone (2 minutes)</h3>
+      <ol class="steps">
+        <li>Install the free <b>ntfy</b> app (App Store / Google Play).</li>
+        <li>In ntfy, tap <b>+</b> and subscribe to a private, hard-to-guess topic, e.g. <code>mohil-bp-7k2q9</code>.</li>
+        <li>In BuildPilot: <b>Connect → Set up notifications</b>, and paste <code>https://ntfy.sh/mohil-bp-7k2q9</code>.</li>
+        <li>Click <b>Send test</b>. Your phone buzzes.</li>
+      </ol>
+      <p class="small">You'll get alerts only when it matters: approval needed, a session failed, a loop, or a conflict. Slack and Discord incoming-webhook URLs work too. Only short alerts and the project name are sent, never code.</p>
+      <div class="callout"><b>Meta Ray-Ban &amp; other smart glasses</b>Glasses paired to your phone can read phone notifications aloud. Allow notifications from ntfy in the Meta AI app's notification settings.</div>
+    </div>
+    <div>
+      <h3>B. Pocket: live status that talks</h3>
+      <img class="shot" src="img/pocket.png" alt="Pocket page" style="width: 50%; display: block; margin: 0 auto 6pt">
+      <ol class="steps">
+        <li>VS Code Settings → search <b>BuildPilot</b> → tick <b>Integration API: Enabled</b> and <b>Allow Lan</b> (only on your own, trusted Wi-Fi).</li>
+        <li><b>Connect → Copy link for my phone</b>, send it to yourself and open it on your phone (same Wi-Fi). <b>Share → Add to Home Screen</b>.</li>
+        <li>Tap <b>Read aloud</b>, or tick <b>Speak when something needs me</b>. Sound plays through your phone's audio, so <b>glasses connected over Bluetooth will speak it</b>.</li>
+      </ol>
+      <p class="small">The link contains your private token. Send it only to yourself. <b>Connect → New token</b> disables old links instantly.</p>
+    </div>
+  </div>
+  <h3>C. Siri, Shortcuts, Raycast, Stream Deck, bots</h3>
+  <p>With the Integration API on, anything can ask BuildPilot for a one-sentence status. Copy the token from <b>Connect → Copy token</b>:</p>
+  <pre>curl -H "Authorization: Bearer YOUR_TOKEN" "http://127.0.0.1:47821/v1/brief?format=text"
+# → "invoice-app: 1 session working, 1 waiting for you. Next: Fix the failing tests before building more."</pre>
+  <p class="small">On this Mac use <code>127.0.0.1</code> as above. From your <b>phone</b>, turn on <b>Allow Lan</b> and use your Mac's network address instead (the one shown in the Pocket link, e.g. <code>http://192.168.1.20:47821</code>). iOS Shortcut: <b>Get Contents of URL</b> (that address + <code>/v1/brief?format=text</code>, with header <code>Authorization: Bearer …</code>) → <b>Speak Text</b>. Name it "Build status" and say <i>"Hey Siri, build status."</i> Other endpoints: <code>/v1/status</code>, <code>/v1/sessions</code>, <code>/v1/next</code>, and <code>POST /v1/prompt</code> to generate a prompt. The API is read-only: it can't run anything or change files.</p>
+</div>
+
+<!-- LABELS + PRIVACY -->
+<div class="page">
+  <div class="eyebrow">Reading the labels</div>
+  <h2>BuildPilot always tells you how it knows</h2>
+  <table>
+    <tr><th>Label</th><th>Meaning</th><th>Example</th></tr>
+    <tr><td><span class="pill v">Verified</span></td><td>Checked directly</td><td>Tests passed when BuildPilot ran them</td></tr>
+    <tr><td><span class="pill i">Inferred</span></td><td>Its best reading of the evidence; could be wrong</td><td>Stage: testing</td></tr>
+    <tr><td><span class="pill u">Unverified</span></td><td>Claimed or assumed, not proven</td><td>You marked a requirement done; no passing test since</td></tr>
+    <tr><td><span class="pill f">Failed</span></td><td>Checked, and it failed</td><td>Build exited with an error</td></tr>
+    <tr><td><span class="pill k">Unknown</span></td><td>Not enough information</td><td>Cost on a subscription; a quiet session</td></tr>
+  </table>
+  <p>Evidence lines are tagged <b>seen</b> (observed directly) or <b>inferred</b>.</p>
+
+  <div style="height: 8pt"></div>
+  <div class="eyebrow">Privacy &amp; safety</div>
+  <h2>Local by default. Nothing happens without you.</h2>
+  <div class="two">
+    <div>
+      <h3>Your data stays here</h3>
+      <ul>
+        <li>Everything is stored in <code>~/.buildpilot/</code> on this Mac, readable only by you.</li>
+        <li>API keys, tokens and passwords are <b>blanked out</b> before anything is saved or shown.</li>
+        <li>From <code>.env</code> files, only the setting <b>names</b> are read, never the values.</li>
+        <li>No code is ever sent anywhere. Network is used only when you ask: dependency check, alerts, optional AI.</li>
+        <li>History is kept 30 days. Delete anytime from Memory.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>It asks before it acts</h3>
+      <ul>
+        <li>Running tests or scripts, starting Claude Code or your app, checkpoints, restoring files, worktrees, alerts and AI calls each show exactly what will happen and wait for <b>OK</b>.</li>
+        <li>It <b>never</b> deletes your work, resets or force-pushes Git, deploys, or publishes.</li>
+        <li>The hooks never slow down or change Claude Code; they only copy events to your Mac.</li>
+        <li>Text from your code, logs and prompts is treated as data, never as instructions.</li>
+        <li>In VS Code's Restricted Mode, BuildPilot only reads.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout warn"><b>Honest limits</b>The secret scan and checks catch common problems; they aren't a full security audit. "Verified" means a specific check passed, not that the product is perfect.</div>
+</div>
+
+<!-- TROUBLESHOOTING -->
+<div class="page">
+  <div class="eyebrow">Troubleshooting</div>
+  <h2>If something looks off</h2>
+  <table>
+    <tr><th>Problem</th><th>Fix</th></tr>
+    <tr><td>No BuildPilot icon</td><td>Reload VS Code: <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd> → <b>Reload Window</b>. Still missing? Run the installer again.</td></tr>
+    <tr><td>"Open a project"</td><td>Open a folder in VS Code (<b>File → Open Folder…</b>), or click the project name at the top to pick one.</td></tr>
+    <tr><td>A session doesn't appear</td><td>Check <b>Connect</b> says <i>Connected</i>. A session appears on its next action; if not, exit and restart that Claude Code session. Sessions in other folders appear under <b>Other projects</b>.</td></tr>
+    <tr><td>Session shows Unknown</td><td>Nothing has been heard for 10+ minutes. It may be running a long command, or the terminal was closed. Check the terminal.</td></tr>
+    <tr><td>Context % shows Unknown</td><td><b>Connect → Exact context % → turn on</b>. Numbers appear after that session's next reply.</td></tr>
+    <tr><td>"Settings file problem"</td><td>Your <code>~/.claude/settings.json</code> has a typo. BuildPilot refuses to edit a broken file. Fix it (backups are in <code>~/.buildpilot/backups/</code>) and click Connect again.</td></tr>
+    <tr><td>Run tests is greyed out</td><td>The project has no <code>test</code> script, or VS Code is in Restricted Mode (trust the folder).</td></tr>
+    <tr><td>Dependency check fails</td><td>Needs internet and a <code>package-lock.json</code> (run <b>npm install</b> once). Python needs <code>pip install pip-audit</code>.</td></tr>
+    <tr><td>Visual check: not reachable</td><td>Your app isn't running, or the address is wrong. Click <b>Start the app first</b>, or type the address shown in your app's terminal.</td></tr>
+    <tr><td>Phone can't open Pocket</td><td>Turn on <b>Allow Lan</b>, use the same Wi-Fi, and allow incoming connections for VS Code if macOS asks.</td></tr>
+    <tr><td>Too many suggestions</td><td>Click <b>Not now</b> (hides for 24 h). Pop-ups can be turned off: Settings → BuildPilot → Notifications → off.</td></tr>
+    <tr><td>See what BuildPilot is doing</td><td>View → Output → choose <b>BuildPilot</b> in the dropdown.</td></tr>
+  </table>
+  <h3>Useful commands (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>, type "BuildPilot")</h3>
+  <p>Open Mission Control · New Prompt · Copy Session Handoff · Save Checkpoint · Run Tests · Check Dependencies · Visual Check · Show Brief · Getting Started · Connect / Disconnect · Show Exact Context % · Set Notification URL · Set Anthropic API Key · Load / Remove Demo Sessions · Delete Data</p>
+</div>
+
+<!-- UNINSTALL + CLI -->
+<div class="page" style="break-after: auto">
+  <div class="eyebrow">Uninstall &amp; undo</div>
+  <h2>Everything is reversible</h2>
+  <ol class="steps">
+    <li>Double-click <b>3 - Uninstall BuildPilot.command</b> on the Desktop.</li>
+    <li>It disconnects Claude Code (your original settings and status line are restored), removes the extension, and asks whether to move BuildPilot's data to the Trash.</li>
+  </ol>
+  <p class="small">To only stop watching Claude Code: BuildPilot → <b>Connect → Disconnect</b>. Settings backups: <code>~/.buildpilot/backups/</code>. Checkpoints live in your project's Git as <code>refs/buildpilot/checkpoints/*</code> and never affect your branches.</p>
+
+  <div style="height: 8pt"></div>
+  <div class="eyebrow">For the curious</div>
+  <h2>Command line &amp; file locations</h2>
+  <p>The same engine works in Terminal (needs Node.js). From <code>~/buildpilot</code>:</p>
+  <pre>node dist/cli.js status [folder]          # stage, health, issues, next step
+node dist/cli.js sessions [folder]        # Claude Code sessions for a folder
+node dist/cli.js brief [folder]           # one-sentence status
+node dist/cli.js handoff [folder]         # handoff for a new session
+node dist/cli.js prompt bugfix "Checkout page is blank after paying" [folder]
+node dist/cli.js audit [folder]           # dependency vulnerabilities
+node dist/cli.js visual [folder] [url]    # check your running app + screenshot
+node dist/cli.js hooks status|install|uninstall
+node dist/cli.js statusline status|install|uninstall
+node dist/cli.js serve [folder]           # Integration API without VS Code</pre>
+  <table>
+    <tr><th>What</th><th>Where</th></tr>
+    <tr><td>This folder</td><td><code>~/Desktop/BuildPilot/</code>: guide, installer, uninstaller, extension file</td></tr>
+    <tr><td>Source code &amp; technical docs</td><td><code>~/buildpilot/</code> (<code>README.md</code>, <code>docs/</code>: architecture, security, testing, roadmap)</td></tr>
+    <tr><td>Local data</td><td><code>~/.buildpilot/</code>: database, settings backups, screenshots, API token</td></tr>
+    <tr><td>Claude Code settings</td><td><code>~/.claude/settings.json</code></td></tr>
+  </table>
+  <h3>What's next (roadmap)</h3>
+  <p class="small">Scripted multi-step visual tests · a native smart-glasses companion app · verified Windows &amp; Linux support · audits for pnpm/yarn/bun · VS Code Marketplace publishing.</p>
+</div>
+
+</body>
+</html>

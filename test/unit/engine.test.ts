@@ -52,6 +52,16 @@ describe("engine end-to-end", () => {
     expect(engine.snapshot().out.sessions.map((s) => s.id)).toEqual(["real1"]);
   });
 
+  it("shows active sessions from other projects (mission control across folders) and mentions them in the brief", async () => {
+    const { engine, home } = await setup();
+    spool(home, "o1.json", { session_id: "other1", cwd: "/work/shop-app", hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "npm publish" } });
+    spool(home, "o2.json", { session_id: "demo-x", cwd: "/work/ignored", hook_event_name: "UserPromptSubmit", prompt: "x" });
+    engine.drainNow();
+    const st = engine.snapshot();
+    expect(st.elsewhere.map((s) => [s.folder, s.status])).toEqual([["shop-app", "awaiting_approval"]]);
+    expect(engine.brief(st)).toMatch(/Also waiting for you in shop-app/);
+  });
+
   it("recommends hook setup when Claude Code isn't connected", async () => {
     const { engine } = await setup();
     const st = engine.snapshot();

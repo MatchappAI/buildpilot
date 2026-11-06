@@ -51,8 +51,8 @@ async function refresh(){
   try{
     const b=await get("/v1/brief"); const ss=await get("/v1/sessions");
     $("brief").textContent=b.text; $("when").textContent="Updated "+new Date().toLocaleTimeString();
-    const live=ss.filter(s=>s.status!=="completed").slice(0,6);
-    $("sessions").innerHTML=live.length?live.map(s=>'<div class="s"><span class="dot '+esc(s.status)+'"></span><div><b>'+esc(LBL[s.status]||s.status)+'</b> <span class="mut">'+esc(s.id.slice(0,8))+'</span><div>'+esc(s.task||"")+'</div>'+(s.needsYou?'<div class="mut">'+esc(s.needsYou)+'</div>':"")+'</div></div>').join(""):'<div class="mut">No active sessions.</div>';
+    const live=ss.filter(s=>s.status!=="completed").slice(0,10);
+    $("sessions").innerHTML=live.length?live.map(s=>'<div class="s"><span class="dot '+esc(s.status)+'"></span><div><b>'+esc(LBL[s.status]||s.status)+'</b> <span class="mut">'+esc(s.folder||s.id.slice(0,8))+(s.contextPct!=null?' · '+Math.round(s.contextPct)+'% context':'')+'</span><div>'+esc(s.task||"")+'</div>'+(s.needsYou?'<div class="mut">'+esc(s.needsYou)+'</div>':"")+'</div></div>').join(""):'<div class="mut">No active sessions.</div>';
     const need=ss.filter(s=>s.status==="awaiting_approval"||s.status==="blocked"||s.status==="failed").map(s=>s.id+s.status+s.lastEventAt).join("|");
     if($("auto").checked&&need&&need!==lastAlert) say(b.text);
     lastAlert=need; last=b.text;

@@ -112,7 +112,10 @@ export class IntegrationApi {
               demo: st.demo,
             });
           case "/v1/sessions":
-            return this.send(res, 200, st.out.sessions.slice(0, 20).map((s) => ({ id: s.id, status: s.displayStatus, reason: s.displayReason, task: s.currentTask, lastEventAt: s.lastEventAt, errors: s.errorCount, needsYou: s.intervention })));
+            return this.send(res, 200, [
+              ...st.out.sessions.slice(0, 20).map((s) => ({ id: s.id, folder: st.facts?.name ?? st.project?.name ?? "", status: s.displayStatus, reason: s.displayReason, task: s.currentTask, lastEventAt: s.lastEventAt, errors: s.errorCount, needsYou: s.intervention, contextPct: st.live[s.id]?.contextPct ?? null })),
+              ...st.elsewhere.map((s) => ({ id: s.id, folder: s.folder, status: s.status, reason: s.reason, task: s.task, lastEventAt: s.lastEventAt, errors: null, needsYou: s.status === "awaiting_approval" ? "Waiting for your approval in its terminal." : s.status === "blocked" ? "Needs your input." : null, contextPct: s.contextPct })),
+            ]);
           case "/v1/next":
             return this.send(res, 200, st.out.next ? { title: st.out.next.title, why: st.out.next.why } : { title: null });
           case "/v1/goals":

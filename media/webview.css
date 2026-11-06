@@ -198,3 +198,7 @@ label.check { display: flex; gap: 6px; align-items: center; margin: 6px 0; font-
 .pre-wrap { white-space: pre-wrap; }
 .pocket { display: flex; gap: 8px; padding: 8px; margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius); }
 .pocket > .codicon { font-size: 18px; color: var(--info); }
+
+.elsewhere { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+li.ew { padding: 4px 0; }
+.ew-task { margin-left: 14px; overflow-wrap: anywhere; }

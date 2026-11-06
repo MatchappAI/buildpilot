@@ -630,6 +630,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     push();
   });
   reg("buildpilot.showBrief", () => vscode.window.showInformationMessage(eng.brief()));
+  reg("buildpilot.walkthrough", () => vscode.commands.executeCommand("workbench.action.openWalkthrough", "buildpilot-local.buildpilot#buildpilot.start", false));
+  // First run: open the walkthrough once.
+  if (!context.globalState.get<boolean>("buildpilot.welcomed")) {
+    void context.globalState.update("buildpilot.welcomed", true);
+    setTimeout(() => void vscode.commands.executeCommand("buildpilot.walkthrough"), 1500);
+  }
 
   // ---------- lifecycle ----------
   const applyUrlSetting = () => (eng.appUrlOverride = cfg().get<string>("visualQa.url", ""));

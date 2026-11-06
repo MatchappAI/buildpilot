@@ -11,6 +11,7 @@ VS Code extension + local engine that supervises Claude Code sessions. TypeScrip
 - `npm run build`: esbuild bundles to `dist/` and `media/`
 - `npm run typecheck` · `npm run lint` · `npm test` (vitest, unit + engine e2e) · `npm run test:smoke` (real VS Code extension host)
 - `npm run package`: `dist/buildpilot.vsix`
+- `npm run desktop`: rebuilds the user-facing Desktop folder `~/Desktop/BuildPilot/` (guide PDF from `docs/guide/guide.html`, install/uninstall `.command` scripts from `scripts/desktop/`, VSIX). Keep the guide in sync with features and the version number.
 - UI screenshots: `npx esbuild test/ui/fixture.ts --bundle --platform=node --outfile=test/ui/fixture.cjs && cp node_modules/sql.js/dist/sql-wasm.wasm test/ui/ && node test/ui/fixture.cjs && node test/ui/make-preview.mjs`, then open `test/ui/preview-*.html`
 
 ## Rules

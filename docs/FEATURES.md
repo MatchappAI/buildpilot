@@ -8,13 +8,18 @@ Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 - ✅ Error, empty, loading, disconnected (hooks missing / Claude missing) and Restricted-Mode states
 - ✅ CLI with the same engine
 
+## Onboarding & delivery
+- ✅ Getting Started walkthrough (opens once on first run; Command Palette → BuildPilot: Getting Started)
+- ✅ Desktop folder: 13-page START HERE guide, one-click install/uninstall scripts (sandbox-tested: uninstall restores Claude settings byte-for-byte; data goes to Trash)
+
 ## Live sessions
 - ✅ Safe hook install/uninstall (user or project scope), backup, idempotent, refuses invalid JSON
 - ✅ Real event ingestion (verified with a live `claude -p` session: 8/8 events)
 - ✅ Multiple concurrent sessions, lifecycle state machine, out-of-order safety, de-duplication, malformed quarantine
 - ✅ Timeline, changed files (click to open), errors, last prompt as task, intervention hint
 - ✅ Token usage from local transcripts (labelled estimate); cost shown as Unknown
-- ✅ Staleness → Unknown; sessions from other folders counted
+- ✅ Staleness → Unknown
+- ✅ **Other projects**: active sessions in other folders listed (status, task, context %), included in brief/Pocket/API; approval alerts from any folder
 - ✅ Exact context %, window size, Claude Code's own cost estimate (labelled "at list price"), 5-hour/7-day rate-limit % via the documented status-line JSON. Chains (never replaces) an existing status line; uninstall restores it exactly
 - 🟡 Model name: from transcript/status line; hook payloads don't include it
 - ⏳ Terminal ↔ session association (no reliable identifier exposed; deliberately not guessed)
