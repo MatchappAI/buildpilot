@@ -146,7 +146,7 @@ async function main(): Promise<void> {
 
 Everyday
   bp limits                 your builds, chat % full, plan limits + forecast, tips
-  bp new "<name>"           start another build in its own copy of this project
+  bp new "<name>"           start another build in its own copy of this project (--no-env: don't copy .env files)
   bp builds · bp done <name>  list extra builds · remove a finished one (branch kept)
   bp prompt auto "<what>"   turn plain words into an expert prompt (prints it; run: claude "$(bp prompt auto '...')")
   bp license [key]          show your plan, or unlock Pro with a key
@@ -215,7 +215,9 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
       return;
     }
     try {
-      const w = await engine.createWorktree(rest[0] || "build");
+      const noEnv = rest.includes("--no-env");
+      const w = await engine.createWorktree(rest.filter((x) => !x.startsWith("--"))[0] || "build", { copyEnv: !noEnv });
+      if (w.copied.length) console.log(`Copied ${w.copied.join(", ")} into the new build (use --no-env to skip).`);
       engine.stop();
       if (process.env.TMUX) {
         execFile("tmux", ["new-window", "-c", w.dir, "-n", path.basename(w.dir).slice(0, 20), "claude"], () => {});

@@ -512,7 +512,7 @@ export class Engine extends EventEmitter {
   }
 
   /** Approved action: a separate working copy (git worktree) on a new branch, so a session can't collide with another. */
-  async createWorktree(label: string): Promise<{ dir: string; branch: string }> {
+  async createWorktree(label: string, opts: { copyEnv?: boolean } = {}): Promise<{ dir: string; branch: string; copied: string[] }> {
     const p = this.project;
     if (!p) throw new Error("Open a project first");
     const head = await run("git", ["rev-parse", "--verify", "-q", "HEAD"], p.root);
@@ -529,18 +529,22 @@ export class Engine extends EventEmitter {
     const r = await run("git", ["worktree", "add", "-b", branch, dir], p.root, { timeoutMs: 60_000 });
     if (r.code !== 0) throw new Error(r.stderr.trim() || "git worktree add failed");
     // A fresh copy has no local secrets: copy untracked .env files so the new build can run (same machine, same permissions).
-    for (const f of fs.readdirSync(p.root)) {
+    const copied: string[] = [];
+    for (const f of opts.copyEnv === false ? [] : fs.readdirSync(p.root)) {
       if (!/^\.env(\..+)?$/.test(f) || f === ".env.example") continue;
       const src = path.join(p.root, f);
       try {
-        if (fs.statSync(src).isFile() && !fs.existsSync(path.join(dir, f))) fs.copyFileSync(src, path.join(dir, f));
+        if (fs.statSync(src).isFile() && !fs.existsSync(path.join(dir, f))) {
+          fs.copyFileSync(src, path.join(dir, f));
+          copied.push(f);
+        }
       } catch {
         /* best effort */
       }
     }
     this.store.run("INSERT INTO approvals (project_id, action, detail, approved_at, outcome) VALUES (?, 'worktree', ?, ?, ?)", [p.id, dir, ts, branch]);
     this.addDecision(`Separate worktree for parallel work: ${path.basename(dir)}`, `Branch ${branch}. Merge it back when that session's work is done.`);
-    return { dir, branch };
+    return { dir, branch, copied };
   }
 
   /** BuildPilot-made builds (worktrees on bp/ or buildpilot/ branches) for this project. */

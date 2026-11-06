@@ -1,21 +1,17 @@
 # BuildPilot for Claude Code
 
-**Mission control for building software with Claude Code.** See every Claude Code session at a glance, know the moment one needs you, watch context and plan limits, and always know the next best step.
-
-BuildPilot sits beside Claude Code and works like a calm senior engineer looking over your shoulder. It never edits your code on its own.
+**One calm page beside your terminal: every Claude build, what needs you, how full each chat is, your plan limits (and when you'll run out), and tips for right now.** Made for people who build with Claude Code, including people who aren't engineers.
 
 ## What you get
 
-- **Live sessions.** Every Claude Code session in every project, with its status (working, needs approval, needs input, failed), its current task, changed files, errors, and the **exact context %** reported by Claude Code. A session waiting for your approval is surfaced immediately.
-- **One next step.** A prioritized recommendation with the evidence behind it, such as "Tests are failing", "Two sessions are editing the same file" or "Secrets in Git", plus a ready-to-run fix prompt.
-- **Supervisor.** Loop detection (the same error over and over), conflicting sessions, "done" claimed without passing tests, leaked secrets, missing environment variables, dependency vulnerabilities, a visual check of your running app, and a ship-readiness checklist.
-- **Prompt Studio.** Pick a goal (feature, bug, integration, tests, refactor, UI, security, deploy, performance, handoff), describe it in plain words, and get a best-practice Claude Code prompt that includes your project's context, guardrails, acceptance criteria and verification commands. Copy it, or start Claude Code with it in one click.
-- **Project memory.** Goals, requirements with "done when…" criteria, decisions and a one-click session handoff, so a fresh session never loses the plot.
-- **Safe changes.** Checkpoints that never touch your branch or staging area, and per-file restore with an automatic safety checkpoint first.
-- **Everywhere you are:**
-  - **Menu-bar widget (macOS).** Sessions, needs-you and plan limits in your menu bar, even with VS Code closed, plus a notification when a session is waiting.
-  - **Terminal.** A short summary in every new terminal, and the `bp` command.
-  - **Phone, smart glasses, Slack, Discord, ntfy.** Short alerts, and a phone page that can read status aloud.
+- **Builds.** Every Claude Code chat across your projects, the one that needs you first, with **Review in terminal**. It never approves anything for you.
+- **Plan limits.** 5-hour and weekly usage and when each resets. Pro adds *"At this pace you'll run out around 5:47 PM, then wait 1 h 37 min"* and which build is using your limit. API-key users see spend per build.
+- **Tips for right now.** Only when they apply, each with one button: Start fresh chat, Turn on undo, pause the biggest build, plan first when a build is stuck.
+- **+ New build.** Another Claude in its own copy of the project, so builds can't undo each other's work. It copies `.env` files and installs packages.
+- **Prompt box.** Plain words in, an expert prompt out, with your project's setup, guardrails, checks and "settle these first" questions.
+- **Everywhere:** Claude Code plugin (`/bp`), terminal (`bp limits`, `bp new`, `bp tmux`), and a Mac menu-bar widget.
+
+**Free forever:** builds, chat %, limits, tips, 20 prompts, 2 builds at once. **Pro, $9/mo:** run-out forecast and per-build usage, unlimited builds and prompts. Everyone gets a 14-day Pro trial with no card needed.
 
 ## Honest by design
 

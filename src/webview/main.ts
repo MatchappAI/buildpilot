@@ -120,7 +120,7 @@ function trialNotice(): string {
   const p = P!.plan;
   if (!p.sellable || p.licensed || p.trialDaysLeft == null || p.trialDaysLeft > 3) return "";
   const day = p.trialEndsAt ? new Date(p.trialEndsAt).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }) : "soon";
-  return `<p class="note">Your Pro trial ends ${esc(day)}. After that the run-out forecast and per-build usage turn off, and you can run 2 builds at once. Everything else stays free. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
+  return `<p class="note">Your Pro trial ends ${esc(day)}. After that the run-out forecast and per-build usage turn off, and you can run 2 builds at once. Everything else stays free. No card is on file and nothing is charged unless you choose Pro. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
 }
 
 function connectCard(): string {
@@ -143,7 +143,7 @@ function buildsSection(): string {
     ${b.length ? `<ul class="builds">${b
       .map((x) => `<li class="${x.needsYou ? "needs" : ""}">
         <span class="dot dot-${x.status}" aria-hidden="true"></span>
-        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub" title="${esc(x.cwd)}">${esc(x.needsYou ? x.reason || STATUS_WORD[x.status] : x.task || STATUS_WORD[x.status] || x.word)} · ${x.needsYou ? `waiting ${ago(x.lastEventAt).replace(" ago", "")}` : ago(x.lastEventAt)}</div></div>
+        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub" title="${esc(x.cwd)}">${x.needsYou ? `Waiting ${ago(x.lastEventAt).replace(" ago", "")} · ${esc(x.reason || STATUS_WORD[x.status])}` : `${esc(x.task || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`}</div></div>
         <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude usage today (Claude Code's own estimate)">${x.share}% of your usage today</span>` : ""}</div>
         <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>
       </li>`)
@@ -176,7 +176,7 @@ function limitsSection(): string {
   if (L.fullAt) {
     const gap = L.fiveHourResetsAt && L.fiveHourResetsAt > L.fullAt ? Math.round((L.fiveHourResetsAt - L.fullAt) / 60_000) : 0;
     const urgent = L.fullAt - Date.now() < 3600_000;
-    forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}.</p>`;
+    forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}. <span class="muted small">Estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}.</span></p>`;
   } else if (L.forecastLocked && P!.plan.sellable) {
     forecast = `<p class="locked">At this pace you'll run out around <span class="blur" aria-hidden="true">0:00 PM</span> <a href="#" data-act="upgrade" class="lock-link">Unlock with Pro</a></p>`;
   }
@@ -196,7 +196,7 @@ function paywallCard(): string {
     <b>You've used your ${FREE} free prompts.</b>
     <ul>${p.points.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
     <div class="actions"><button class="primary" data-act="upgrade">Get Pro — ${esc(p.price)}</button><button class="link" data-act="enterLicense">I have a license key</button></div>
-    <p class="muted tiny">Cancel anytime. Watching builds, limits and tips stays free.</p>
+    <p class="muted tiny">Separate from your Claude plan. Cancel anytime. Watching builds, limits and tips stays free. The checkout link includes a random id only so your payment can be matched to your key.</p>
   </div>`;
 }
 

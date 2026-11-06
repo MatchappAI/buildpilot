@@ -316,6 +316,12 @@ export class SpoolReader {
     this.draining = true;
     let accepted = 0;
     try {
+      // Heartbeat: hooks stop writing if no reader has touched this for 2 days (e.g. BuildPilot removed, hooks left).
+      fs.writeFileSync(path.join(this.dir, ".alive"), "");
+    } catch {
+      /* read-only: hooks fall back to writing */
+    }
+    try {
       let files: { name: string; mtime: number }[];
       try {
         files = fs

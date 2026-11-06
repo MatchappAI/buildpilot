@@ -28,7 +28,7 @@ window.acquireVsCodeApi = () => ({ getState: () => st, setState: (s) => { st = s
   if (chrome) {
     const prof = fs.mkdtempSync(path.join(os.tmpdir(), "bp-chr-"));
     try {
-      execFileSync(chrome, ["--headless=new", "--disable-gpu", "--allow-file-access-from-files", `--user-data-dir=${prof}`, "--hide-scrollbars", "--window-size=760,1250", "--virtual-time-budget=1500", `--screenshot=${path.join(out, `${name}.png`)}`, `file://${file}`], { stdio: "ignore", timeout: 30000 });
+      execFileSync(chrome, ["--headless=new", "--disable-gpu", "--allow-file-access-from-files", `--user-data-dir=${prof}`, "--hide-scrollbars", "--window-size=760,1700", "--virtual-time-budget=1500", `--screenshot=${path.join(out, `${name}.png`)}`, `file://${file}`], { stdio: "ignore", timeout: 30000 });
     } catch {
       /* screenshot best-effort */
     }

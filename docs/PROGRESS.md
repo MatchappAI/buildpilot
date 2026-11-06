@@ -1,4 +1,12 @@
-# Progress (2026-11-05)
+# Progress (2026-11-06)
+
+## State: v0.5.0, one white page, Free/Pro with a trial, Claude Code plugin, license Worker, persona-tested (3 rounds × 8 user types)
+- Sidebar replaced by one page (`src/extension/sidebar.ts` → BuildPilotPanel). Data: `src/core/page.ts`, `tips.ts`. Plans: `license.ts`. Counts: `counts.ts`.
+- Plugin in `plugin/`, validated and installed in a scratch config (events captured). Worker in `server/`, tested; **not deployed** (needs Stripe + Cloudflare).
+- Persona results: docs/PERSONA_REVIEW.md. Every user type scores at least 4/5 on usability; willingness to pay is 2.5/5. Real-user plan: docs/VALIDATION.md.
+- Needs the owner: Stripe Payment Link, Cloudflare deploy, publisher accounts, a public GitHub repo for the plugin marketplace (docs/PUBLISHING.md).
+
+# Earlier (2026-11-05)
 
 ## State: v0.3.2, full review pass done; installed and connected on this Mac; Desktop folder delivered; BuildPilot shows in every terminal
 

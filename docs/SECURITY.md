@@ -27,3 +27,18 @@ Install merges into settings (preserving all keys and hooks), writes a timestamp
 
 ## Limits
 The secret scan uses high-confidence patterns and is not a security audit. Readiness "Verified" means a specific check passed, not that the product is secure or production-ready.
+
+## Hooks, spool and retention (v0.5)
+- **Connect** adds 13 async command hooks and a status-line reporter to `~/.claude/settings.json`. "See exactly what changes" shows the exact JSON first. Your settings are backed up, and Disconnect removes exactly these lines. If you already have a status line, it keeps working (BuildPilot chains it).
+- The hooks copy each event Claude Code sends (up to 1 MB) into `~/.buildpilot/spool`. They never block Claude, never print, and stop writing if more than 5000 events are waiting unread.
+- BuildPilot reads each spool file, validates it, redacts secrets, stores a short log (tool names, commands, file names, errors; no file contents) in `buildpilot.db`, and **deletes the spool file**. The log is pruned at 30 days or 2000 events per session.
+
+## Licenses and payments
+- Pro keys are Ed25519-signed and checked offline. The extension contains only the public key, so keys can't be forged from the code.
+- The checkout link carries a random install id (`client_reference_id`) so the license Worker can match a payment to a key. It identifies nothing else.
+- The Worker stores only `session id → key`. It never sees your code, prompts or projects.
+
+## Anonymous counts (opt-in)
+- Off by default. Three days after install, BuildPilot asks once in a notification.
+- If you say yes, it sends 4 events once each: installed, connected, still using after 7 days, upgraded. Each event carries a separate random id used only for counts, so it can't be linked to the checkout id. Nothing else is sent: no names, paths, prompts, code or IPs stored.
+- The answer is stored in `~/.buildpilot/counts.json`. Delete the file to be asked again.
