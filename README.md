@@ -56,6 +56,7 @@ node dist/cli.js prompt bugfix "Checkout page is blank after paying" [folder]
 node dist/cli.js audit [folder]       # dependency vulnerabilities
 node dist/cli.js visual [folder] [url]  # check the running app + screenshot
 node dist/cli.js hooks status|install|uninstall [--project <folder>]
+node dist/cli.js statusline status|install|uninstall   # exact context % from Claude Code
 node dist/cli.js serve [folder]       # Integration API without VS Code
 ```
 

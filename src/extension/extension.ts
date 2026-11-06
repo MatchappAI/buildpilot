@@ -507,14 +507,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     const file = claudeSettingsPath(scope.scope, eng.currentProject?.root);
     const ok = await confirm(
       "Connect BuildPilot to Claude Code?",
-      `BuildPilot will add small background hooks to:\n${file}\n\nWhat they do: copy each Claude Code event (prompts, tool calls, errors) to a private folder on this computer (${eng.home}/spool). Nothing leaves your machine. They run in the background and never slow down or change Claude Code.\n\nYour existing settings are kept, a backup is saved first, and "Disconnect" removes them. Already-running Claude sessions pick them up after a restart.`,
+      `BuildPilot will add small background hooks to:\n${file}\n\nWhat they do: copy each Claude Code event (prompts, tool calls, errors) to a private folder on this computer (${eng.home}/spool). Nothing leaves your machine. They run in the background and never slow down or change Claude Code.\n\nYour existing settings are kept, a backup is saved first, and "Disconnect" removes them. Open Claude Code sessions pick them up on their next action (verified with Claude Code 2.1.318); restart one if it doesn't appear.`,
       "Connect",
     );
     if (!ok) return;
     try {
       const r = installHooks(file, eng.home);
       eng.setClaudeSettingsFile(file);
-      void vscode.window.showInformationMessage(r.changed ? `Connected. Start (or restart) Claude Code to see live sessions.${r.backup ? " Backup saved." : ""}` : "Already connected.", "Also show context %").then((c) => c && vscode.commands.executeCommand("buildpilot.installStatusline"));
+      void vscode.window.showInformationMessage(r.changed ? `Connected. Claude Code sessions will appear as soon as they do something.${r.backup ? " Backup saved." : ""}` : "Already connected.", "Also show context %").then((c) => c && vscode.commands.executeCommand("buildpilot.installStatusline"));
     } catch (e) {
       void vscode.window.showErrorMessage((e as Error).message);
     }

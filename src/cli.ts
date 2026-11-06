@@ -8,12 +8,13 @@
  *   node dist/cli.js hooks status|install|uninstall [--project <folder>]
  *   node dist/cli.js audit [folder]          dependency vulnerability check (npm audit / pip-audit)
  *   node dist/cli.js visual [folder] [url]   check the running app + screenshot
+ *   node dist/cli.js statusline status|install|uninstall   exact context % from Claude Code
  *   node dist/cli.js serve [folder]          run the Integration API (token in ~/.buildpilot/api-token)
  */
 import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
-import { claudeSettingsPath, hookStatus, installHooks, uninstallHooks } from "./core/hooks";
+import { claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
 import { GOALS } from "./core/prompts";
 import { GoalType } from "./core/types";
 
@@ -26,6 +27,14 @@ async function main(): Promise<void> {
     if (sub === "install") console.log(installHooks(file));
     else if (sub === "uninstall") console.log(uninstallHooks(file));
     else console.log(hookStatus(file));
+    return;
+  }
+  if (cmd === "statusline") {
+    const file = claudeSettingsPath("user");
+    const sub = rest[0] ?? "status";
+    if (sub === "install") console.log(installStatusline(file));
+    else if (sub === "uninstall") console.log(uninstallStatusline(file));
+    else console.log(statuslineStatus(file));
     return;
   }
   if (cmd === "help" || cmd === "--help") {
