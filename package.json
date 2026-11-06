@@ -233,6 +233,11 @@
         "command": "buildpilot.widgetLogin",
         "title": "Menu-Bar Widget: Start at Login",
         "category": "BuildPilot"
+      },
+      {
+        "command": "buildpilot.enterLicense",
+        "title": "Enter License Key",
+        "category": "BuildPilot"
       }
     ],
     "keybindings": [

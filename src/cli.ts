@@ -17,10 +17,11 @@ import * as os from "os";
 import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
-import { claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
+import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
 import { glance, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
+import { paywallText, readLicense, saveLicense } from "./core/license";
 import { openUri } from "./core/extId";
 import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
@@ -125,6 +126,18 @@ async function main(): Promise<void> {
     } else return usage(`Unknown option "${sub}". Use: bp statusline status | install | uninstall`);
     return;
   }
+  if (cmd === "license") {
+    const home = buildpilotHome();
+    if (rest[0]) {
+      const v = saveLicense(home, rest[0]);
+      if (!v.valid) { process.exitCode = 1; return usage(`That key didn't work (${v.reason}). Nothing was saved.`); }
+      console.log(`Pro unlocked${v.sub ? ` for ${v.sub}` : ""}. Unlimited prompts.`);
+    } else {
+      const l = readLicense(home);
+      console.log(l.valid ? `Pro${l.sub ? ` (${l.sub})` : ""}. Unlimited prompts.` : "Free plan. Add a key: bp license <your-key>");
+    }
+    return;
+  }
   if (cmd === "help" || cmd === "--help") {
     console.log(`BuildPilot: mission control for Claude Code
 
@@ -134,6 +147,7 @@ async function main(): Promise<void> {
   bp brief                 one-sentence status
   bp open                  open BuildPilot in VS Code for this folder
   bp prompt <goal> "<what you want>"   write an expert Claude Code prompt
+  bp license [key]         show your plan, or unlock Pro with a key
   bp handoff               context handoff for a new session
   bp audit                 check dependencies for known vulnerabilities
   bp visual [url]          check your running app + screenshot
@@ -196,7 +210,14 @@ async function main(): Promise<void> {
     }
     case "prompt": {
       const goal = rest[0] as GoalType;
-      console.log(engine.prompt({ goal, request: rest[1] ?? "" }, st).text);
+      const r = engine.gatedPrompt({ goal, request: rest[1] ?? "" }, st);
+      if ("paywall" in r) {
+        console.log(paywallText(r.paywall));
+        process.exitCode = 2;
+        break;
+      }
+      console.log(r.prompt.text);
+      if (r.remaining !== null && r.remaining <= 5) console.error(`\n${r.remaining} free prompt${r.remaining === 1 ? "" : "s"} left.`);
       break;
     }
     case "serve": {

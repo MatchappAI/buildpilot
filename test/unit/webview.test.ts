@@ -13,6 +13,7 @@ import { makeRepo, tmpDir } from "./helpers";
 const bundle = path.join(__dirname, "../../media/webview.js");
 let state: UiState;
 let built: unknown;
+let paywallNext = false;
 const settings = { beginner: true, trusted: true, aiProvider: "none", aiModel: "", apiEnabled: true, apiAddress: "http://127.0.0.1:47821", apiAllowLan: false, notifications: "important", platform: "darwin", home: "~/.buildpilot", pocketUrl: "http://127.0.0.1:47821/pocket", screenshotUri: null, shellInstalled: false, openWithTerminal: true, widget: { supported: true, installed: false, running: false, startAtLogin: false } };
 
 beforeAll(async () => {
@@ -42,7 +43,7 @@ function mount(initial: Record<string, unknown> = {}) {
       sent.push(m);
       const reply = (result: unknown) => setTimeout(() => w.postMessage({ type: "reply", id: m.id, result }, "*"), 0);
       if (m.type === "goals") reply(GOALS);
-      else if (m.type === "buildPrompt") reply(built);
+      else if (m.type === "buildPrompt") reply(paywallNext ? { paywall: { url: "https://buy.stripe.com/x" } } : { prompt: built, remaining: 3 });
       else if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, settings }, "*"), 0);
       else if (m.id) reply(null);
     },
@@ -101,6 +102,28 @@ describe("sidebar UI (real bundle in jsdom)", () => {
     expect(sent.find((m) => m.type === "copy")?.text).toBe(out.value);
     await click('[data-act="sendPrompt"]');
     expect(sent.find((m) => m.type === "sendToClaude")?.text).toBe(out.value);
+  });
+
+  it("Prompt Studio: free limit shows one quiet line with Upgrade + Enter key, both handled", async () => {
+    paywallNext = true;
+    try {
+      const { doc, sent, click, tick } = mount({ tab: "prompts", request: "Fix the footer" });
+      await tick();
+      await tick();
+      await click('[data-act="build"]');
+      await tick();
+      expect(doc.getElementById("ptext")).toBeNull();
+      expect(doc.body.textContent).toContain("Free prompts used up.");
+      await click('[data-act="upgrade"]');
+      await click('[data-act="enterLicense"]');
+      const ext = fs.readFileSync(path.join(__dirname, "../../src/extension/extension.ts"), "utf8");
+      for (const t of ["upgrade", "enterLicense"]) {
+        expect(sent.some((m) => m.type === t)).toBe(true);
+        expect(ext).toContain(`case "${t}":`);
+      }
+    } finally {
+      paywallNext = false;
+    }
   });
 
   it("recommendation actions post the right messages", async () => {

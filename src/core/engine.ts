@@ -11,6 +11,7 @@ import { buildpilotHome, claudeSettingsPath, ensureHome, hookStatus, HookStatus,
 import { Ingestor, rowToEvent, rowToSession, SpoolReader } from "./ingest";
 import { buildClaudeMd, buildHandoff } from "./memory";
 import { buildPrompt, BuiltPrompt, PromptOptions, relevantFiles } from "./prompts";
+import { gate, Paywall, recordUse } from "./license";
 import { clip } from "./redact";
 import { deriveDisplayStatus, lastTestRun, normalizeError, supervise, SupervisorOutput } from "./supervisor";
 import { readUsage } from "./transcript";
@@ -644,6 +645,14 @@ export class Engine extends EventEmitter {
       handoff: opts.goal === "handoff" ? this.handoff(state) : undefined,
       relevantFiles: relevantFiles(opts.request, this.files),
     });
+  }
+
+  /** Prompt Studio entry point for users: free limit applies; licensed users are never counted. */
+  gatedPrompt(opts: PromptOptions, state = this.snapshot()): { prompt: BuiltPrompt; remaining: number | null } | { paywall: Paywall } {
+    const g = gate(this.home);
+    if (!g.allowed) return { paywall: g.paywall };
+    const prompt = this.prompt(opts, state);
+    return { prompt, remaining: recordUse(this.home) };
   }
 
   handoff(state = this.snapshot()): string {

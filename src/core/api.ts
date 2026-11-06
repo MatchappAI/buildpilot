@@ -140,8 +140,10 @@ export class IntegrationApi {
           }
           const goalId = (GOALS.some((g) => g.id === parsed.goal) ? parsed.goal : "feature") as GoalType;
           if (typeof parsed.request !== "string" || !parsed.request.trim()) return this.send(res, 400, { error: "request (string) is required" });
-          const p = this.engine.prompt({ goal: goalId, request: parsed.request });
-          return this.send(res, 200, { prompt: p.text, missingInfo: p.missingInfo, assumptions: p.assumptions });
+          const r = this.engine.gatedPrompt({ goal: goalId, request: parsed.request });
+          if ("paywall" in r) return this.send(res, 402, { error: r.paywall.message, upgradeUrl: r.paywall.url });
+          const p = r.prompt;
+          return this.send(res, 200, { prompt: p.text, missingInfo: p.missingInfo, assumptions: p.assumptions, freeRemaining: r.remaining });
         });
         return;
       }

@@ -41,6 +41,8 @@ const vs: ViewState = { tab: "overview", open: {}, goal: "feature", request: "",
 let S: UiState | null = null;
 let settings: Settings | null = null;
 let built: BuiltPrompt | null = null;
+let paywalled = false;
+let freeLeft: number | null = null;
 let promptText = "";
 let goals: GoalSpec[] = [];
 let cpFiles: Record<string, string[]> = {};
@@ -519,6 +521,7 @@ function promptsTab(): string {
       <textarea id="acc" rows="2">${esc(vs.acceptance)}</textarea>
       <label class="check"><input type="checkbox" id="planFirst" ${vs.planFirst ? "checked" : ""}> Ask Claude for a plan before it edits</label>`)}
     <div class="actions"><button class="primary" data-act="build">${icon("sparkle")} Build prompt</button></div>
+    ${paywalled ? `<p class="small">Free prompts used up. <a href="#" data-act="upgrade">Upgrade</a> · <a href="#" data-act="enterLicense">Enter key</a></p>` : freeLeft !== null && freeLeft <= 5 ? `<p class="muted small">${freeLeft} free prompt${freeLeft === 1 ? "" : "s"} left</p>` : ""}
   </section>
   ${built ? `
   <section class="built">
@@ -707,9 +710,16 @@ const val = (id: string) => ((document.getElementById(id) as HTMLInputElement | 
 
 async function buildNow(): Promise<void> {
   vs.request = val("req") || vs.request;
-  const r = await call<BuiltPrompt>("buildPrompt", { goal: vs.goal, request: vs.request, mustNotChange: vs.mustNotChange, acceptance: vs.acceptance, beginner: beginner(), planFirst: vs.planFirst });
-  built = r;
-  promptText = r.text;
+  const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } }>("buildPrompt", { goal: vs.goal, request: vs.request, mustNotChange: vs.mustNotChange, acceptance: vs.acceptance, beginner: beginner(), planFirst: vs.planFirst });
+  if ("paywall" in r) {
+    paywalled = true;
+    built = null;
+    return render();
+  }
+  paywalled = false;
+  freeLeft = r.remaining;
+  built = r.prompt;
+  promptText = r.prompt.text;
   render();
   document.getElementById("ptext")?.scrollIntoView?.({ block: "nearest" });
 }

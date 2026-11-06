@@ -12,6 +12,7 @@ import { restoreFiles, diffSinceCheckpoint } from "../core/git";
 import { claudeSettingsPath, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
 import { isLocalUrl } from "../core/checks";
 import { GOALS } from "../core/prompts";
+import { gate, saveLicense } from "../core/license";
 import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
 import { SidebarProvider, WebviewMessage } from "./sidebar";
@@ -186,6 +187,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     eng.store.run("INSERT INTO approvals (project_id, action, detail, approved_at) VALUES (?, 'start_claude', ?, ?)", [eng.currentProject!.id, prompt.slice(0, 300), Date.now()]);
   };
 
+  async function enterLicense(): Promise<void> {
+    const key = await vscode.window.showInputBox({ title: "BuildPilot Pro", prompt: "Paste your license key", placeHolder: "BP1.…", ignoreFocusOut: true, password: true });
+    if (!key) return;
+    const v = saveLicense(eng.home, key);
+    if (v.valid) void vscode.window.showInformationMessage("BuildPilot Pro unlocked. Unlimited prompts.");
+    else void vscode.window.showErrorMessage(`That key didn't work (${v.reason}).`);
+    push();
+  }
+
   async function handle(m: WebviewMessage): Promise<unknown> {
     const st = cached ?? state();
     switch (m.type) {
@@ -252,7 +262,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         return;
       }
       case "buildPrompt":
-        return eng.prompt({ goal: m.goal as GoalType, request: String(m.request ?? ""), mustNotChange: String(m.mustNotChange ?? ""), extraAcceptance: String(m.acceptance ?? "").split("\n"), beginner: !!m.beginner, planFirst: m.planFirst as boolean | undefined });
+        return eng.gatedPrompt({ goal: m.goal as GoalType, request: String(m.request ?? ""), mustNotChange: String(m.mustNotChange ?? ""), extraAcceptance: String(m.acceptance ?? "").split("\n"), beginner: !!m.beginner, planFirst: m.planFirst as boolean | undefined });
+      case "upgrade": {
+        const g = gate(eng.home);
+        if (!g.allowed) void vscode.env.openExternal(vscode.Uri.parse(g.paywall.url));
+        return;
+      }
+      case "enterLicense":
+        return enterLicense();
       case "copy":
         await vscode.env.clipboard.writeText(String(m.text));
         void vscode.window.setStatusBarMessage("$(check) Copied", 2000);
@@ -587,6 +604,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     void vscode.window.showInformationMessage(removed ? "Disconnected. Your other Claude Code settings are unchanged." : "BuildPilot wasn't connected, so nothing changed.");
     push();
   });
+  reg("buildpilot.enterLicense", () => enterLicense());
   reg("buildpilot.newPrompt", () => {
     void vscode.commands.executeCommand("buildpilot.main.focus");
     sidebar.post({ type: "navigate", tab: "prompts" });
