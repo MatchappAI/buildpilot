@@ -14,6 +14,8 @@ const persist = () => vscode.setState(vs);
 let S: UiState | null = null;
 let P: PageData | null = null;
 let trusted = true;
+let theme: "white" | "match" = "white";
+const FREE = 20;
 let promptText = "";
 let built: BuiltPrompt | null = null;
 let paywalled = false;
@@ -30,7 +32,7 @@ function call<T = unknown>(type: string, data: Record<string, unknown> = {}): Pr
   });
 }
 window.addEventListener("message", (e: MessageEvent) => {
-  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean } };
+  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean; theme?: string } };
   if (m.type === "reply" && m.id) {
     waiting.get(m.id)?.(m.result);
     waiting.delete(m.id);
@@ -38,8 +40,9 @@ window.addEventListener("message", (e: MessageEvent) => {
     S = m.state ?? null;
     P = m.page ?? null;
     trusted = m.settings?.trusted ?? true;
+    theme = m.settings?.theme === "match" ? "match" : "white";
     // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
-    const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted });
+    const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted, theme });
     if (key === lastKey) return;
     lastKey = key;
     render();
@@ -84,21 +87,17 @@ function render(): void {
     app.innerHTML = `<div class="loading">Starting BuildPilot…</div>`;
     return;
   }
+  document.body.classList.toggle("match", theme === "match");
   app.innerHTML = `
   <main class="page">
     <header class="head">
       <h1>BuildPilot</h1>
-      ${P.plan.pro ? `<span class="pill">Pro</span>` : ""}
+      ${planPill()}
     </header>
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
-    ${!P.connected ? connectCard() : buildsSection()}
-    ${limitsSection()}
-    ${tipsSection()}
-    ${promptSection()}
-    ${P.askCounts ? `<p class="ask small">Help make BuildPilot better by sharing 4 anonymous counts (installed, connected, still using after a week, upgraded)? No names, code or prompts. <a href="#" data-act="countsYes">Yes</a> · <a href="#" data-act="countsNo">No thanks</a></p>` : ""}
+    ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
     <footer class="foot">
-      ${!P.plan.pro && P.plan.freeLeft != null && P.plan.freeLeft <= 5 && !paywalled ? `<span>${P.plan.freeLeft} free prompt${P.plan.freeLeft === 1 ? "" : "s"} left</span> · ` : ""}
-      <a href="#" data-act="more">More tools</a>
+      ${P.connected ? `<a href="#" data-act="more">More tools</a> · <a href="#" data-act="disconnect">Disconnect</a>` : `<a href="#" data-act="more">More tools</a>`}
     </footer>
   </main>
   <div id="flash" class="flash" aria-hidden="true"></div>`;
@@ -114,29 +113,39 @@ function render(): void {
   }
 }
 
+function planPill(): string {
+  const p = P!.plan;
+  if (p.licensed) return `<span class="pill">Pro</span>`;
+  if (!p.sellable) return "";
+  if (p.trialDaysLeft != null) return `<span class="pill soft" title="Every Pro feature is on during your trial. After it, watching builds, limits and tips stays free.">Pro trial · ${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? "" : "s"} left</span>`;
+  return "";
+}
+
 function connectCard(): string {
   return `<section class="card connect">
     <h2>Connect Claude Code</h2>
-    <p>One click lets BuildPilot see your builds, memory and plan limits. Everything stays on this computer.</p>
-    <button class="primary" data-act="connectAll">Connect</button>
+    <p>BuildPilot adds a few lines to your Claude Code settings so it can see your builds, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and you can disconnect anytime.</p>
+    <div class="actions"><button class="primary" data-act="connectAll">Connect</button><button class="link" data-act="showConnectChanges">See exactly what changes</button></div>
   </section>`;
 }
+
+const STATUS_WORD: Record<string, string> = { running: "Working", idle: "Idle", blocked: "Waiting for your answer", awaiting_approval: "Waiting for your OK", completed: "Done", failed: "Stopped with an error", unknown: "Quiet" };
 
 function buildsSection(): string {
   const b = P!.builds;
   const summary = !b.length
-    ? "No builds running."
+    ? "No builds running"
     : `${b.length} build${b.length === 1 ? "" : "s"}${P!.working ? ` · ${P!.working} working` : ""}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}`;
   return `<section class="block" aria-label="Builds">
-    <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild">+ New build</button></div>
+    <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild" title="Starts Claude in a separate copy of this project, so two builds can't undo each other's work">+ New build</button></div>
     ${b.length ? `<ul class="builds">${b
       .map((x) => `<li class="${x.needsYou ? "needs" : ""}">
         <span class="dot dot-${x.status}" aria-hidden="true"></span>
-        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub">${esc(x.needsYou ? x.reason || x.word : x.task || x.word)} · ${ago(x.lastEventAt)}</div></div>
-        ${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How full this build's memory is">${Math.round(x.contextPct)}% memory</span>` : ""}
-        <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}">${x.needsYou ? "Go" : "Open"}</button>
+        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub">${esc(x.needsYou ? x.reason || STATUS_WORD[x.status] : x.task || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}</div></div>
+        <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.share != null ? `<span class="share" title="Share of today's usage (Claude Code's own estimate)">${x.share}% of today</span>` : ""}</div>
+        <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>
       </li>`)
-      .join("")}</ul>` : `<p class="muted">Run <code>claude</code> in a terminal, or press <b>+ New build</b>.</p>`}
+      .join("")}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
   </section>`;
 }
 
@@ -147,37 +156,62 @@ function bar(label: string, pct: number | null, right: string): string {
   </div>`;
 }
 
+function weekday(t: number): string {
+  return `${new Date(t).toLocaleDateString([], { weekday: "long" })} ${clock(t)}`;
+}
+
 function limitsSection(): string {
   const L = P!.limits;
   if (P!.billing === "api") {
-    return `<section class="block" aria-label="Spend"><h2>Spend today</h2><p class="big">${P!.costTodayUsd != null ? `~$${P!.costTodayUsd.toFixed(2)}` : "—"}</p><p class="muted small">Claude Code's own estimate for your API key.</p></section>`;
+    return `<section class="block" aria-label="Spend"><h2>Spend today</h2><p class="big">${P!.costTodayUsd != null ? `~$${P!.costTodayUsd.toFixed(2)}` : "—"}</p><p class="muted small">Claude Code's own estimate for your API key, across all builds today.</p></section>`;
   }
   if (P!.billing === "unknown" || (L.fiveHourPct == null && L.sevenDayPct == null)) {
-    return P!.connected ? `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2><p class="muted">Shows up after your next Claude message.</p></section>` : "";
+    return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2><p class="muted">Shows up after your next message to Claude.</p></section>`;
   }
-  const fiveRight = L.fiveHourPct == null ? "unknown" : `${Math.round(L.fiveHourPct)}%${L.fiveHourResetsAt ? ` · resets ${clock(L.fiveHourResetsAt)}` : ""}`;
-  const weekRight = L.sevenDayPct == null ? "unknown" : `${Math.round(L.sevenDayPct)}%${L.sevenDayResetsAt ? ` · resets ${until(L.sevenDayResetsAt)}` : ""}`;
-  const forecast = L.fullAt ? `<p class="small ${L.fullAt - Date.now() < 3600_000 ? "warn-text" : "muted"}">At this pace you'll run out around ${clock(L.fullAt)}.</p>` : "";
-  return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}${forecast}</section>`;
+  const fiveRight = L.fiveHourPct == null ? "unknown" : `${Math.round(L.fiveHourPct)}% used${L.fiveHourResetsAt ? ` · back to 0% at ${clock(L.fiveHourResetsAt)}` : ""}`;
+  const weekRight = L.sevenDayPct == null ? "unknown" : `${Math.round(L.sevenDayPct)}% used${L.sevenDayResetsAt ? ` · resets ${weekday(L.sevenDayResetsAt)}` : ""}`;
+  let forecast = "";
+  if (L.fullAt) {
+    const gap = L.fiveHourResetsAt && L.fiveHourResetsAt > L.fullAt ? Math.round((L.fiveHourResetsAt - L.fullAt) / 60_000) : 0;
+    const urgent = L.fullAt - Date.now() < 3600_000;
+    forecast = `<p class="forecast ${urgent ? "urgent" : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}.</p>`;
+  } else if (L.forecastLocked && P!.plan.sellable) {
+    forecast = `<p class="muted small">See when you'll run out and what's using your limit — <a href="#" data-act="upgrade">Pro</a></p>`;
+  }
+  return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
 }
 
 function tipsSection(): string {
   if (!P!.tips.length) return "";
   return `<section class="block" aria-label="Tips"><h2>Tips for right now</h2><ul class="tips">${P!.tips
-    .map((t) => `<li><span>${esc(t.text)}</span>${t.action ? ` <button class="link" data-act="tip" data-tip="${t.action}" title="${esc(t.why)}">${esc(t.actionLabel ?? "Do it")}</button>` : ""}</li>`)
+    .map((t) => `<li><span>${esc(t.text)}</span>${t.action ? `<button class="secondary small-btn" data-act="tip" data-tip="${t.action}" ${t.cwd ? `data-cwd="${esc(t.cwd)}"` : ""} title="${esc(t.why)}">${esc(t.actionLabel ?? "Do it")}</button>` : ""}</li>`)
     .join("")}</ul></section>`;
 }
 
+function paywallCard(): string {
+  const p = P!.plan;
+  return `<div class="paywall" role="status">
+    <b>You've used your ${FREE} free prompts.</b>
+    <ul>${p.points.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+    <div class="actions"><button class="primary" data-act="upgrade">Get Pro — ${esc(p.price)}</button><button class="link" data-act="enterLicense">I have a license key</button></div>
+    <p class="muted tiny">Cancel anytime. Watching builds, limits and tips stays free.</p>
+  </div>`;
+}
+
 function promptSection(): string {
+  const p = P!.plan;
+  const counter = !p.pro && p.freeLeft != null && !paywalled ? `<span class="muted small">${p.freeLeft} of ${FREE} free prompts left</span>` : "";
+  const folder = S?.facts?.name ?? S?.project?.name ?? "this project";
   return `<section class="block" aria-label="Prompt">
     <h2><label for="req">What do you want to build next?</label></h2>
     <textarea id="req" rows="3" placeholder="e.g. Add a contact form that emails me"></textarea>
-    <div class="actions"><button class="primary" data-act="build">Write my prompt</button></div>
-    ${paywalled ? `<p class="small">You've used your free prompts. <a href="#" data-act="upgrade">Go unlimited — ${esc(P!.plan.price)}</a> · <a href="#" data-act="enterLicense">Enter key</a></p>` : ""}
+    <div class="actions center"><button class="primary" data-act="build">Write my prompt</button>${counter}</div>
+    ${paywalled ? paywallCard() : ""}
     ${built ? `
+      <p class="summary">This asks Claude to <b>${esc(vs.request.trim().replace(/[.!]+$/, ""))}</b> in ${esc(folder)}, using your project's setup, with a short plan first and checks at the end.${built.missingInfo.length ? ` Worth adding: ${esc(built.missingInfo[0]!)}` : ""}</p>
       <label class="lbl" for="ptext">Your prompt. Edit anything.</label>
-      <textarea id="ptext" class="mono" rows="12"></textarea>
-      <div class="actions"><button class="primary" data-act="sendPrompt">Send to Claude</button><button class="secondary" data-act="copyPrompt">Copy</button></div>` : ""}
+      <textarea id="ptext" class="mono" rows="16"></textarea>
+      <div class="actions"><button class="primary" data-act="sendPrompt" title="Opens a new terminal in ${esc(folder)} and starts Claude with this prompt">Start Claude with this</button><button class="secondary" data-act="copyPrompt">Copy</button></div>` : ""}
   </section>`;
 }
 
@@ -196,7 +230,7 @@ async function buildNow(): Promise<void> {
     document.getElementById("req")?.focus();
     return;
   }
-  const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } } | null>("buildPrompt", { goal: guessGoal(text), request: text, beginner: true, planFirst: true });
+  const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } } | null>("buildPrompt", { goal: guessGoal(text), request: text, beginner: true, planFirst: true, defer: true });
   if (!r) return;
   if ("paywall" in r) {
     paywalled = true;
@@ -214,12 +248,13 @@ async function act(el: HTMLElement): Promise<void> {
   const a = el.dataset.act!;
   switch (a) {
     case "build": return buildNow();
-    case "copyPrompt": await call("copy", { text: promptText }); return flash("Copied");
-    case "sendPrompt": return void call("sendToClaude", { text: promptText });
+    case "copyPrompt": await call("copy", { text: promptText }); void call("promptUsed"); return flash("Copied");
+    case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
     case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd });
     case "tip": {
       const t = el.dataset.tip;
-      if (t === "handoff") { await call("copyHandoff"); return flash("Handoff copied"); }
+      if (t === "startFresh") return void call("startFresh", { cwd: el.dataset.cwd });
+      if (t === "setupUndo") return void call("setupUndo");
       if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
       if (t === "newBuild") return void call("newBuild");
       if (t === "planMode") {

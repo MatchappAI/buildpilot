@@ -2,7 +2,7 @@
   "name": "buildpilot",
   "displayName": "BuildPilot for Claude Code",
   "description": "Mission control for Claude Code: see every session, what needs you, context and plan limits, what's broken and the next best step. Local-first, menu-bar widget on Mac.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "buildpilot-local",
   "license": "UNLICENSED",
   "private": true,
@@ -294,6 +294,19 @@
           "type": "boolean",
           "default": true,
           "description": "Open the BuildPilot panel whenever you open a terminal or a new Claude Code session starts in this project (your cursor stays in the terminal)."
+        },
+        "buildpilot.theme": {
+          "type": "string",
+          "enum": [
+            "white",
+            "match"
+          ],
+          "default": "white",
+          "enumDescriptions": [
+            "Calm white page (default).",
+            "Match your VS Code color theme (e.g. dark)."
+          ],
+          "description": "How the BuildPilot page looks."
         }
       }
     },

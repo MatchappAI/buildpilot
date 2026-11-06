@@ -648,11 +648,11 @@ export class Engine extends EventEmitter {
   }
 
   /** Prompt Studio entry point for users: free limit applies; licensed users are never counted. */
-  gatedPrompt(opts: PromptOptions, state = this.snapshot()): { prompt: BuiltPrompt; remaining: number | null } | { paywall: Paywall } {
+  gatedPrompt(opts: PromptOptions, state = this.snapshot(), record = true): { prompt: BuiltPrompt; remaining: number | null } | { paywall: Paywall } {
     const g = gate(this.home);
     if (!g.allowed) return { paywall: g.paywall };
     const prompt = this.prompt(opts, state);
-    return { prompt, remaining: recordUse(this.home) };
+    return { prompt, remaining: record ? recordUse(this.home) : g.remaining };
   }
 
   handoff(state = this.snapshot()): string {

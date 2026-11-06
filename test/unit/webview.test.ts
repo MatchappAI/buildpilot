@@ -18,7 +18,8 @@ let page: PageData;
 let built: unknown;
 
 const now = Date.now();
-const session = (o: Partial<PageData["builds"][number]>): PageData["builds"][number] => ({ id: "s1", folder: "shop", cwd: "/p/shop", status: "running", word: "working", reason: "", task: "Adding checkout", contextPct: 34, lastEventAt: now - 60_000, needsYou: false, next: null, ...o });
+const session = (o: Partial<PageData["builds"][number]>): PageData["builds"][number] => ({ id: "s1", folder: "shop", cwd: "/p/shop", status: "running", word: "working", reason: "", task: "Adding checkout", contextPct: 34, lastEventAt: now - 60_000, needsYou: false, next: null, share: null, ...o });
+const freePlan = { pro: false, licensed: false, trialDaysLeft: null, sellable: true, freeLeft: 3, price: "$9/mo", points: ["See when you'll run out, and what's using your limit", "Unlimited builds side by side", "Unlimited prompts"] };
 const full = (o: Partial<PageData> = {}): PageData => ({
   ...page,
   connected: true,
@@ -26,9 +27,9 @@ const full = (o: Partial<PageData> = {}): PageData => ({
   needs: 1,
   working: 1,
   billing: "plan",
-  limits: { fiveHourPct: 72, fiveHourResetsAt: now + 2 * 3600_000, sevenDayPct: 30, sevenDayResetsAt: now + 3 * 86400_000, fullAt: now + 40 * 60_000 },
-  tips: [{ key: "memory", text: "blog's memory is 88% full. Start a fresh build and paste the handoff.", why: "x", action: "handoff", actionLabel: "Copy handoff" }],
-  plan: { pro: false, freeLeft: 3, price: "$9/mo" },
+  limits: { fiveHourPct: 72, fiveHourResetsAt: now + 2 * 3600_000, sevenDayPct: 30, sevenDayResetsAt: now + 3 * 86400_000, fullAt: now + 40 * 60_000, forecastLocked: false },
+  tips: [{ key: "memory", text: "blog's chat is 88% full, so Claude will start forgetting details.", why: "x", action: "startFresh", actionLabel: "Start fresh", cwd: "/p/blog" }],
+  plan: freePlan,
   ...o,
 });
 
@@ -87,14 +88,17 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelector("h1")?.textContent).toBe("BuildPilot");
     const css = fs.readFileSync(path.join(__dirname, "../../src/webview/style.css"), "utf8");
     expect(css).toMatch(/--bg:\s*#fafafa/);
-    expect(css).not.toMatch(/--vscode-/);
+    expect(css.slice(0, css.indexOf("body.match")).match(/--vscode-/g)).toBeNull(); // white unless the user picks "match"
   });
 
-  it("not connected: one Connect card, nothing else to figure out", async () => {
+  it("not connected: one Connect card that says what changes, nothing else to figure out", async () => {
     const { doc, sent, tick, click } = mount({ ...page, connected: false });
     await tick();
     await tick();
-    expect(doc.querySelector(".card.connect")?.textContent).toMatch(/Connect Claude Code/);
+    expect(doc.querySelector(".card.connect")?.textContent).toMatch(/adds a few lines to your Claude Code settings/);
+    expect(doc.getElementById("req")).toBeNull();
+    await click('[data-act="showConnectChanges"]');
+    expect(sent.some((m) => m.type === "showConnectChanges")).toBe(true);
     await click('[data-act="connectAll"]');
     expect(sent.some((m) => m.type === "connectAll")).toBe(true);
   });
@@ -106,7 +110,8 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelector(".status")?.textContent).toMatch(/1 needs you/);
     expect(doc.body.innerHTML).toContain("&lt;img src=x");
     expect(w.__xss).toBeUndefined();
-    expect(doc.querySelector(".mem")?.textContent).toBe("34% memory");
+    expect(doc.querySelector(".mem")?.textContent).toBe("chat 34% full");
+    expect(doc.querySelector('[data-act="openBuild"]')?.textContent).toBe("Review in terminal");
     await click('[data-act="openBuild"]');
     expect(sent.find((m) => m.type === "openBuild")?.cwd).toBe("/p/shop");
   });
@@ -117,14 +122,15 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     const t = doc.body.textContent ?? "";
     expect(t).toMatch(/Next 5 hours/);
-    expect(t).toMatch(/72% · resets/);
+    expect(t).toMatch(/72% used · back to 0% at/);
+    expect(t).toMatch(/then wait 1 h 20 min until it's back/);
     expect(t).toMatch(/This week/);
     expect(t).toMatch(/At this pace you'll run out around/);
     expect(t).not.toMatch(/\$\d/);
   });
 
   it("API users see today's spend instead of plan bars", async () => {
-    const { doc, tick } = mount(full({ billing: "api", costTodayUsd: 4.2, limits: { fiveHourPct: null, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null, fullAt: null } }));
+    const { doc, tick } = mount(full({ billing: "api", costTodayUsd: 4.2, limits: { fiveHourPct: null, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null, fullAt: null, forecastLocked: false } }));
     await tick();
     await tick();
     expect(doc.body.textContent).toMatch(/~\$4\.20/);
@@ -137,7 +143,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     expect(doc.querySelectorAll(".tips li").length).toBe(1);
     await click('[data-act="tip"]');
-    expect(sent.some((m) => m.type === "copyHandoff")).toBe(true);
+    expect(sent.find((m) => m.type === "startFresh")?.cwd).toBe("/p/blog");
   });
 
   it("prompt: plain words in, goal picked automatically, then Send to Claude / Copy", async () => {
@@ -149,9 +155,13 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     expect(sent.find((m) => m.type === "buildPrompt")).toMatchObject({ goal: "bugfix", request: "The login button is broken on mobile" });
     const out = doc.getElementById("ptext") as HTMLTextAreaElement;
-    expect(out.value).toContain("# Goal: Fix a bug");
+    expect(out.value.length).toBeGreaterThan(200);
+    expect(doc.querySelector(".summary")?.textContent).toMatch(/This asks Claude to The login button is broken on mobile/);
+    expect(sent.find((m) => m.type === "buildPrompt")?.defer).toBe(true);
+    expect(sent.some((m) => m.type === "promptUsed")).toBe(false); // not counted until used
     await click('[data-act="sendPrompt"]');
     expect(sent.find((m) => m.type === "sendToClaude")?.text).toBe(out.value);
+    expect(sent.filter((m) => m.type === "promptUsed").length).toBe(1);
     await click('[data-act="copyPrompt"]');
     expect(doc.getElementById("flash")?.textContent).toBe("Copied");
   });
@@ -173,14 +183,29 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await click('[data-act="build"]');
     await tick();
     expect(doc.getElementById("ptext")).toBeNull();
-    expect(doc.body.textContent).toMatch(/You've used your free prompts\. Go unlimited — \$9\/mo/);
+    expect(doc.body.textContent).toMatch(/You've used your 20 free prompts\./);
+    expect(doc.querySelector(".paywall")?.textContent).toMatch(/Unlimited builds side by side/);
+    expect(doc.querySelector(".paywall")?.textContent).toMatch(/Cancel anytime/);
+    expect((doc.getElementById("req") as HTMLTextAreaElement).value).toBe("Add a footer"); // typed text kept
     await click('[data-act="upgrade"]');
     await click('[data-act="enterLicense"]');
     expect(sent.some((m) => m.type === "upgrade") && sent.some((m) => m.type === "enterLicense")).toBe(true);
   });
 
+  it("free prompts counter is visible from the start; trial shows days left; locked forecast shows a quiet Pro link", async () => {
+    const { doc, tick } = mount(full({ plan: { ...freePlan, freeLeft: 17 }, limits: { ...full().limits, fullAt: null, forecastLocked: true } }));
+    await tick();
+    await tick();
+    expect(doc.body.textContent).toMatch(/17 of 20 free prompts left/);
+    expect(doc.body.textContent).toMatch(/See when you'll run out and what's using your limit — Pro/);
+    const t = mount(full({ plan: { ...freePlan, pro: true, trialDaysLeft: 9, freeLeft: null } }));
+    await t.tick();
+    await t.tick();
+    expect(t.doc.querySelector(".pill")?.textContent).toBe("Pro trial · 9 days left");
+  });
+
   it("Pro shows a small pill and no counters", async () => {
-    const { doc, tick } = mount(full({ plan: { pro: true, freeLeft: null, price: "$9/mo" } }));
+    const { doc, tick } = mount(full({ plan: { ...freePlan, pro: true, licensed: true, freeLeft: null } }));
     await tick();
     await tick();
     expect(doc.querySelector(".pill")?.textContent).toBe("Pro");
@@ -188,13 +213,15 @@ describe("one-page UI (real bundle in jsdom)", () => {
   });
 
   it("every button posts a message the extension actually handles", async () => {
-    for (const p of [full(), { ...page, connected: false }]) {
+    for (const p of [full(), { ...page, connected: false }, full({ tips: [{ key: "nogit", text: "x", why: "y", action: "setupUndo", actionLabel: "Turn on undo" }] })]) {
       const { doc, sent, tick, type } = mount(p);
       await tick();
       await tick();
-      type("req", "Add a footer");
-      (doc.querySelector('[data-act="build"]') as HTMLElement).click();
-      await tick();
+      if (doc.getElementById("req")) {
+        type("req", "Add a footer");
+        (doc.querySelector('[data-act="build"]') as HTMLElement).click();
+        await tick();
+      }
       const clicked = new Set<string>();
       for (let guard = 0; guard < 40; guard++) {
         const next = [...doc.querySelectorAll("[data-act]")].find((el) => !clicked.has(`${el.getAttribute("data-act")}:${el.getAttribute("data-tip") ?? ""}`));

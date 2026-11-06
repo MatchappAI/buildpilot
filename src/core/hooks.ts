@@ -88,6 +88,13 @@ function readSettings(file: string): { data: Json; error: string | null } {
   }
 }
 
+/** Exactly what Connect adds to Claude Code's settings (shown before the user agrees). */
+export function connectPreview(home = buildpilotHome()): string {
+  const hooks: Record<string, unknown> = {};
+  for (const ev of HOOK_EVENTS) hooks[ev] = [{ hooks: [{ type: "command", command: hookCommand(home), async: true, timeout: 10 }] }];
+  return JSON.stringify({ hooks, statusLine: { type: "command", command: `sh "${path.join(home, "statusline.sh")}"` } }, null, 2);
+}
+
 export function hookStatus(settingsFile: string, home = buildpilotHome()): HookStatus {
   const { data, error } = readSettings(settingsFile);
   const hooks = (data.hooks ?? {}) as Record<string, unknown>;

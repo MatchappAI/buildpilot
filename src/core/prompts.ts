@@ -257,11 +257,20 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
     assumptions.push("\"Perfect\" was turned into concrete, checkable acceptance criteria below.");
   }
 
-  lines.push(`# Goal: ${g.label}`);
+  const title = request ? clip(request.replace(/\s+/g, " ").replace(/[.!]+$/, ""), 80) : g.label;
+  lines.push(`# ${title.charAt(0).toUpperCase()}${title.slice(1)}`);
+  lines.push(`_Type: ${g.label}_`);
   lines.push("");
   lines.push("## What I want");
   lines.push(request || (g.id === "handoff" ? "(continue from the handoff below)" : "[Describe what you want here before sending]"));
   lines.push("");
+  const qs = settleFirst(request);
+  if (qs.length) {
+    lines.push("## Settle these first");
+    lines.push("If my request doesn't already answer these, ask me (one short message, max 3 questions) before writing code:");
+    for (const q of qs) lines.push(`- ${q}`);
+    lines.push("");
+  }
 
   lines.push("## Project context");
   if (f) {
@@ -363,6 +372,21 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
 }
 
 /** Quote a prompt for `claude "<prompt>"` in a POSIX shell. */
+/** Request-specific decisions a beginner forgets to state. Keyword-driven, max 3. */
+const SETTLE: Array<[RegExp, string[]]> = [
+  [/\b(e-?mail|emails|mailer|newsletter|contact form)\b/i, ["Which email service to send with (e.g. Resend, Postmark, SMTP), and where its API key is kept (never in the code).", "Where the emails go and what they should say.", "Spam protection for any public form (rate limit, honeypot or captcha)."]],
+  [/\b(pay|payment|payments|checkout|stripe|subscription|billing)\b/i, ["One-time payment or subscription, and which prices.", "Use the payment provider's test mode until I say go live.", "What happens after a successful or failed payment."]],
+  [/\b(login|log in|sign ?up|signup|auth|account|password)\b/i, ["Which sign-in methods (email link, password, Google, …) and which provider/library.", "Where user data is stored.", "What signed-out visitors can still see."]],
+  [/\b(database|db|store|save|saved|persist)\b/i, ["Which database or storage to use, and whether data must survive restarts.", "Who can read or change the saved data."]],
+  [/\b(upload|image|file|photo|pdf)\b/i, ["Allowed file types and maximum size.", "Where uploaded files are stored."]],
+  [/\b(deploy|launch|host|go live|publish)\b/i, ["Which host (e.g. Vercel, Netlify, Fly) and which domain.", "Which secrets/environment variables the live app needs."]],
+];
+export function settleFirst(request: string): string[] {
+  const out: string[] = [];
+  for (const [re, qs] of SETTLE) if (re.test(request)) for (const q of qs) if (out.length < 3 && !out.includes(q)) out.push(q);
+  return out;
+}
+
 export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }

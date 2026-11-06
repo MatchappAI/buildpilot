@@ -21,7 +21,8 @@ import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installSt
 import { glance, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
-import { paywallText, readLicense, saveLicense } from "./core/license";
+import { gateParallel, paywallText, readLicense, saveLicense } from "./core/license";
+import { worktrees } from "./core/git";
 import { pageData, PageData } from "./core/page";
 import { guessGoal } from "./core/goal";
 import { openUri } from "./core/extId";
@@ -143,22 +144,61 @@ async function main(): Promise<void> {
   if (cmd === "help" || cmd === "--help") {
     console.log(`BuildPilot: mission control for Claude Code
 
-  bp                       full status of this folder (stage, health, issues, next step)
-  bp glance                the short summary shown when a terminal opens
-  bp sessions              Claude Code sessions in this folder
-  bp brief                 one-sentence status
-  bp open                  open BuildPilot in VS Code for this folder
-  bp prompt <goal> "<what you want>"   write an expert Claude Code prompt
-  bp limits                builds, memory %, plan limits + forecast, tips
-  bp prompt auto "<what>"  same as prompt, goal picked for you
-  bp license [key]         show your plan, or unlock Pro with a key
-  bp handoff               context handoff for a new session
-  bp audit                 check dependencies for known vulnerabilities
-  bp visual [url]          check your running app + screenshot
-  bp bar status|install|uninstall   menu-bar widget (macOS)
-  bp hooks|statusline|shell  status | install | uninstall   (add --json for scripts)
-  bp serve                 Integration API without VS Code`);
+Everyday
+  bp limits                 your builds, chat % full, plan limits + forecast, tips
+  bp new "<name>"           start another build in its own copy of this project
+  bp prompt auto "<what>"   turn plain words into an expert Claude Code prompt
+  bp license [key]          show your plan, or unlock Pro with a key
+
+Setup
+  bp statusline install     exact chat % and plan limits (keeps your own status line)
+  bp hooks install          let BuildPilot see your builds   (uninstall to undo)
+  bp tmux                   one-line status for tmux/your prompt
+
+More: bp (folder status) · glance · sessions · brief · handoff · audit · visual [url]
+      prompt <goal> "<what>" · open · bar · shell · serve   (add --json to setup commands)`);
     console.log(`\ngoals: ${GOALS.map((g) => g.id).join(", ")}`);
+    return;
+  }
+  if (cmd === "tmux") {
+    const engine = new Engine({ light: true });
+    await engine.start();
+    const p = pageData(engine, null);
+    engine.stop();
+    const L = p.limits;
+    const bits = [`BP ${p.working}▶`];
+    if (p.needs) bits.push(`${p.needs}!`);
+    if (L.fiveHourPct != null) bits.push(`5h ${Math.round(L.fiveHourPct)}%`);
+    if (L.fullAt) bits.push(`out ~${new Date(L.fullAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+    process.stdout.write(bits.join(" "));
+    return;
+  }
+  if (cmd === "new") {
+    const folder = path.resolve(process.cwd());
+    const engine = new Engine();
+    await engine.start();
+    await engine.openProject(folder);
+    const extra = Math.max(0, (await worktrees(folder)).length - 1);
+    const g = gateParallel(engine.home, extra);
+    if (!g.allowed) {
+      engine.stop();
+      console.log(paywallText(g.paywall));
+      process.exitCode = 2;
+      return;
+    }
+    try {
+      const w = await engine.createWorktree(rest[0] || "build");
+      engine.stop();
+      if (process.env.TMUX) {
+        execFile("tmux", ["new-window", "-c", w.dir, "-n", path.basename(w.dir).slice(0, 20), "claude"], () => {});
+        console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).`);
+      } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast.`);
+    } catch (e) {
+      engine.stop();
+      const msg = (e as Error).message;
+      console.log(/at least one commit/.test(msg) ? "A new build needs undo (Git) with one save point first. Run:  git init && git add -A && git commit -m \"First save point\"" : `Couldn't start the build: ${msg}`);
+      process.exitCode = 1;
+    }
     return;
   }
   if (cmd === "limits") {
@@ -260,14 +300,15 @@ main().catch((e) => {
 function limitsText(p: PageData): string {
   const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const lines: string[] = [];
+  if (p.limits.forecastLocked && p.plan.sellable) lines.push("(Forecast and per-build usage are Pro: bp license <key>)");
   lines.push(p.builds.length ? `${p.builds.length} build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
-  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? b.reason || b.word : b.word}${b.contextPct != null ? ` · ${Math.round(b.contextPct)}% memory` : ""}`);
+  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? b.reason || b.word : b.word}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.share != null ? ` · ${b.share}% of today` : ""}`);
   const L = p.limits;
   if (p.billing === "api") lines.push("", `Spend today   ${p.costTodayUsd != null ? `~$${p.costTodayUsd.toFixed(2)}` : "unknown"}`);
   else if (L.fiveHourPct != null || L.sevenDayPct != null) {
     lines.push("", `Next 5 hours  ${L.fiveHourPct != null ? `${Math.round(L.fiveHourPct)}%` : "unknown"}${L.fiveHourResetsAt ? ` · resets ${t(L.fiveHourResetsAt)}` : ""}${L.fullAt ? ` · runs out ~${t(L.fullAt)} at this pace` : ""}`);
     lines.push(`This week     ${L.sevenDayPct != null ? `${Math.round(L.sevenDayPct)}%` : "unknown"}`);
-  } else lines.push("", "Plan limits   unknown (turn on: bp statusline install)");
+  } else lines.push("", "Plan limits   not reported yet. Turn on with /bp-connect (plugin) or: bp statusline install");
   if (p.tips.length) lines.push("", "Tips", ...p.tips.map((x) => `  → ${x.text}`));
   return lines.join("\n");
 }

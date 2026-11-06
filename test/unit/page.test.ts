@@ -63,18 +63,19 @@ describe("tips for right now", () => {
 
   it("memory ≥80% → handoff tip with action", () => {
     const t = tips({ ...base, builds: [b({ contextPct: 91 })] });
-    expect(t[0]).toMatchObject({ key: "memory", action: "handoff" });
-    expect(t[0]!.text).toMatch(/91% full/);
+    expect(t[0]).toMatchObject({ key: "memory", action: "startFresh", cwd: "/p/shop" });
+    expect(t[0]!.text).toMatch(/chat is 91% full/);
   });
 
   it("limit soon (forecast < 1 h or ≥85%) → limit tip", () => {
     expect(tips({ ...base, limits: { ...base.limits, fiveHourPct: 87 } })[0]!.key).toBe("limit");
     expect(tips({ ...base, limits: { ...base.limits, fullAt: base.now + 30 * 60_000 } })[0]!.text).toMatch(/around/);
+    expect(tips({ ...base, limits: { ...base.limits, fiveHourPct: 90 }, biggest: { folder: "shop", share: 61 } })[0]!.text).toMatch(/shop is using 61% today; pause it/);
   });
 
   it("two builds in one folder → new build tip; no git → undo tip; many unsaved → save point", () => {
     expect(tips({ ...base, builds: [b({}), b({ id: "y" })] }).map((t) => t.key)).toContain("overlap");
-    expect(tips({ ...base, isGit: false })[0]!.key).toBe("nogit");
+    expect(tips({ ...base, isGit: false })[0]).toMatchObject({ key: "nogit", action: "setupUndo" });
     expect(tips({ ...base, unsaved: 20 })[0]).toMatchObject({ key: "unsaved", action: "checkpoint" });
   });
 

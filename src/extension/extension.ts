@@ -8,16 +8,16 @@ import { pocketLink } from "./pocketLink";
 import { installCliCopy, installShell, shellStatus, uninstallShell } from "../core/shell";
 import { installWidget, pickRuntime, setStartAtLogin, uninstallWidget, widgetStatus } from "../core/widget";
 import { Alert, Engine, UiState } from "../core/engine";
-import { restoreFiles, diffSinceCheckpoint, worktrees } from "../core/git";
-import { claudeSettingsPath, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
+import { restoreFiles, diffSinceCheckpoint, run as runCmd, worktrees } from "../core/git";
+import { claudeSettingsPath, connectPreview, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
 import { isLocalUrl } from "../core/checks";
 import { GOALS } from "../core/prompts";
-import { gate, gateParallel, saveLicense } from "../core/license";
+import { gate, gateParallel, recordUse, saveLicense } from "../core/license";
 import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
 import { BuildPilotPanel, WebviewMessage } from "./sidebar";
 import { pageData } from "../core/page";
-import { count, setConsent } from "../core/counts";
+import { count, setConsent, shouldAsk } from "../core/counts";
 
 let engine: Engine | null = null;
 let api: IntegrationApi | null = null;
@@ -69,6 +69,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     shellInstalled: shellStatus().installed,
     widget: widgetStatus(),
     openWithTerminal: cfg().get<boolean>("openWithTerminal", true),
+    theme: cfg().get<string>("theme", "white"),
     pocketUrl: api ? pocketLink(api.address, cfg().get<number>("integrationApi.port", 47821), cfg().get<boolean>("integrationApi.allowLan", false)) : null,
     screenshotUri: (() => {
       const shot = cached?.visual?.screenshot;
@@ -100,6 +101,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
   eng.on("changed", push);
   void count(eng.home, "installed");
   void count(eng.home, "day7");
+  setTimeout(() => {
+    const first = context.globalState.get<number>("buildpilot.firstRun") ?? Date.now();
+    if (!context.globalState.get<number>("buildpilot.firstRun")) void context.globalState.update("buildpilot.firstRun", first);
+    if (!shouldAsk(eng.home) || Date.now() - first < 3 * 86_400_000 || !cached?.hooks.installed) return;
+    void vscode.window.showInformationMessage("Help improve BuildPilot? It would send 4 anonymous counts, once each: installed, connected, still using after a week, upgraded. No names, code or prompts.", "Yes, share", "No thanks").then((c) => {
+      if (!c) return;
+      setConsent(eng.home, c === "Yes, share");
+      if (c === "Yes, share") { void count(eng.home, "installed"); void count(eng.home, "connected"); }
+    });
+  }, 20_000);
   eng.on("alert", (a: Alert) => void onAlert(a));
   context.subscriptions.push({ dispose: () => eng.stop() });
 
@@ -265,7 +276,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         return;
       }
       case "buildPrompt":
-        return eng.gatedPrompt({ goal: m.goal as GoalType, request: String(m.request ?? ""), mustNotChange: String(m.mustNotChange ?? ""), extraAcceptance: String(m.acceptance ?? "").split("\n"), beginner: !!m.beginner, planFirst: m.planFirst as boolean | undefined });
+        return eng.gatedPrompt({ goal: m.goal as GoalType, request: String(m.request ?? ""), mustNotChange: String(m.mustNotChange ?? ""), extraAcceptance: String(m.acceptance ?? "").split("\n"), beginner: !!m.beginner, planFirst: m.planFirst as boolean | undefined }, undefined, !m.defer);
       case "connectAll": {
         const file = claudeSettingsPath("user");
         const ok = await confirm(
@@ -293,14 +304,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const extra = Math.max(0, (await worktrees(root)).length - 1);
         const g = gateParallel(eng.home, extra);
         if (!g.allowed) {
-          const c = await vscode.window.showInformationMessage(g.paywall.message.replace(/: https?:\/\/\S+$/, "."), "Upgrade", "Enter key");
+          const c = await vscode.window.showInformationMessage(g.paywall.message.replace(/: https?:\/\/\S+$/, "."), "Upgrade", "I have a license key");
           if (c === "Upgrade") void vscode.env.openExternal(vscode.Uri.parse(g.paywall.url));
-          if (c === "Enter key") await enterLicense();
+          if (c === "I have a license key") await enterLicense();
+          return;
+        }
+        const head = await runCmd("git", ["rev-parse", "--verify", "-q", "HEAD"], root);
+        if (head.code !== 0) {
+          const c = await vscode.window.showInformationMessage("A new build needs undo (Git) turned on first, so each build gets its own safe copy.", "Turn on undo");
+          if (c) await handle({ type: "setupUndo" });
           return;
         }
         const label = await vscode.window.showInputBox({ title: "New build", prompt: "What's this build for? (a few words)", placeHolder: "e.g. checkout page", ignoreFocusOut: true });
         if (label === undefined) return;
-        if (!(await confirm("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy (a Git worktree on a new branch) next to your project and opens Claude there. Your current files are not touched.", "Start build"))) return;
+        if (!(await confirm("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy of your project next to it and opens Claude there, so the two builds can't undo each other's work. Your current files are not touched.\n\nTip: two builds use your plan limit about twice as fast.", "Start build"))) return;
         try {
           const w = await eng.createWorktree(label.trim() || "build");
           const term = vscode.window.createTerminal({ name: `Build · ${label.trim() || "build"}`, cwd: w.dir });
@@ -327,12 +344,56 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         await vscode.env.clipboard.writeText(eng.handoff());
         void vscode.window.setStatusBarMessage("$(check) Handoff copied. Paste it into a new Claude session.", 4000);
         return;
-      case "countsYes":
-      case "countsNo":
-        setConsent(eng.home, m.type === "countsYes");
-        if (m.type === "countsYes") { void count(eng.home, "installed"); void count(eng.home, "connected"); }
+      case "promptUsed":
+        recordUse(eng.home);
         push();
         return;
+      case "startFresh": {
+        const cwd = String(m.cwd ?? eng.currentProject?.root ?? "");
+        if (!cwd || !fs.existsSync(cwd)) return;
+        if (!requireTrust("start Claude Code")) return;
+        if (!(await confirm("Start a fresh chat that picks up where this one left off?", "BuildPilot copies a short summary of the work so far, then opens a new terminal running Claude in the same folder. Paste the summary as your first message (Cmd/Ctrl+V). You can close the old chat once the new one is going.", "Start fresh"))) return;
+        await vscode.env.clipboard.writeText(eng.handoff());
+        const t = vscode.window.createTerminal({ name: `Fresh · ${path.basename(cwd)}`, cwd });
+        t.show();
+        t.sendText("claude");
+        void vscode.window.showInformationMessage("Summary copied. Paste it into the new Claude chat.");
+        return;
+      }
+      case "showConnectChanges": {
+        const doc = await vscode.workspace.openTextDocument({ language: "jsonc", content: `// BuildPilot adds these entries to ${claudeSettingsPath("user")}\n// (your existing settings are kept and backed up first; "Disconnect" removes exactly these).\n// Hooks copy each Claude Code event to ${path.join(eng.home, "spool")} on this computer; BuildPilot reads,\n// redacts and stores a short log (no file contents) in ${path.join(eng.home, "buildpilot.db")}, deletes the copies,\n// and keeps the log at most 30 days. The status line saves chat % and plan limits; your own status line keeps working.\n${connectPreview(eng.home)}\n` });
+        await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Active });
+        return;
+      }
+      case "disconnect": {
+        if (!(await confirm("Disconnect BuildPilot from Claude Code?", "Removes exactly the lines BuildPilot added to your Claude Code settings and restores your own status line. Your data stays until you delete it (More tools → Delete all data).", "Disconnect"))) return;
+        try {
+          for (const f of [claudeSettingsPath("user"), ...(eng.currentProject ? [claudeSettingsPath("project", eng.currentProject.root)] : [])]) if (fs.existsSync(f)) uninstallHooks(f, eng.home);
+          uninstallStatusline(claudeSettingsPath("user"), eng.home);
+          void vscode.window.setStatusBarMessage("$(check) Disconnected. Your Claude Code settings are back to how they were.", 5000);
+        } catch (e) {
+          void vscode.window.showErrorMessage((e as Error).message);
+        }
+        push();
+        return;
+      }
+      case "setupUndo": {
+        const root = eng.currentProject?.root;
+        if (!root) return;
+        if (!requireTrust("set up undo")) return;
+        if (!(await confirm("Turn on undo for this project?", "BuildPilot sets up Git here and saves everything as a first save point, so any later AI change can be undone. Nothing is uploaded anywhere.", "Turn on undo"))) return;
+        const steps: string[][] = [];
+        if (!fs.existsSync(path.join(root, ".git"))) steps.push(["init", "-q"]);
+        steps.push(["add", "-A"], ["-c", "user.name=BuildPilot", "-c", "user.email=buildpilot@localhost", "commit", "-q", "--allow-empty", "-m", "First save point (BuildPilot)"]);
+        for (const a of steps) {
+          const r = await runCmd("git", a, root, { timeoutMs: 60_000 });
+          if (r.code !== 0) return void vscode.window.showErrorMessage(`Couldn't turn on undo: ${r.stderr.trim() || "git failed"}`);
+        }
+        void vscode.window.setStatusBarMessage("$(check) Undo is on. First save point made.", 5000);
+        await eng.analyze();
+        push();
+        return;
+      }
       case "more":
         return vscode.commands.executeCommand("workbench.action.quickOpen", ">BuildPilot: ");
       case "upgrade": {

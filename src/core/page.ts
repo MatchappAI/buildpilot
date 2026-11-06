@@ -3,9 +3,8 @@ import * as path from "path";
 import type { Engine, UiState } from "./engine";
 import { widgetData, WidgetSession } from "./glance";
 import { LiveStatus, readLiveStatus } from "./hooks";
-import { FREE_PROMPTS, gate, PRICE } from "./license";
+import { FREE_PROMPTS, plan as planOf, PRICE, PRO_POINTS } from "./license";
 import { Tip, tips } from "./tips";
-import { shouldAsk } from "./counts";
 
 /**
  * Everything the one-page BuildPilot view shows. Pure data, no vscode imports.
@@ -17,12 +16,16 @@ export interface Limits {
   fiveHourResetsAt: number | null;
   sevenDayPct: number | null;
   sevenDayResetsAt: number | null;
-  /** When the 5-hour limit will be hit at the current pace; null = not enough data or it resets first. */
+  /** When the 5-hour limit will be hit at the current pace; null = not enough data, it resets first, or locked (free plan). */
   fullAt: number | null;
+  /** The forecast exists but is a Pro feature (free plan after the trial). */
+  forecastLocked: boolean;
 }
+/** A build plus its share of today's usage (from Claude Code's own per-session estimate; Pro). */
+export type PageBuild = WidgetSession & { share: number | null };
 export interface PageData {
   connected: boolean;
-  builds: WidgetSession[];
+  builds: PageBuild[];
   needs: number;
   working: number;
   billing: Billing;
@@ -30,9 +33,7 @@ export interface PageData {
   /** Claude Code's own list-price estimate, summed over today's builds. Only meaningful for API billing. */
   costTodayUsd: number | null;
   tips: Tip[];
-  plan: { pro: boolean; freeLeft: number | null; price: string };
-  /** Ask once whether to share 4 anonymous counts. */
-  askCounts: boolean;
+  plan: { pro: boolean; licensed: boolean; trialDaysLeft: number | null; sellable: boolean; freeLeft: number | null; price: string; points: string[] };
 }
 
 const DAY = 86_400_000;
@@ -122,31 +123,37 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
   const five = pickLimit(statuses, "fiveHourPct", "fiveHourResetsAt", now);
   const seven = pickLimit(statuses, "sevenDayPct", "sevenDayResetsAt", now);
   const samples = recordLimitSample(engine.home, five.pct, five.resetsAt, now);
-  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: forecastFullAt(samples, now) };
+  const p = planOf(engine.home, env, now);
+  const forecast = forecastFullAt(samples, now);
+  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: p.pro ? forecast : null, forecastLocked: !p.pro && five.pct != null };
   const midnight = new Date(now).setHours(0, 0, 0, 0);
   const today = statuses.filter((s) => s.updatedAt >= midnight && s.costUsd != null);
   const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd!, 0) : null;
-  const g = gate(engine.home, env);
+  // Share of today's usage per build, from Claude Code's own per-session estimate (a proxy for limit use).
+  const costById = new Map(today.map((s) => [s.sessionId, s.costUsd!]));
+  const total = [...costById.values()].reduce((a, b) => a + b, 0);
+  const builds: PageBuild[] = w.sessions.map((b) => ({ ...b, share: p.pro && total > 0 && costById.has(b.id) ? Math.round((costById.get(b.id)! / total) * 100) : null }));
+  const top = builds.filter((b) => b.share != null).sort((a, b) => b.share! - a.share!)[0];
   const changes = st?.changes;
   const tipList = tips({
     now,
-    builds: w.sessions,
-    limits,
+    builds,
+    limits: { ...limits, fullAt: forecast },
+    biggest: top && builds.length > 1 ? { folder: top.folder, share: top.share! } : null,
     isGit: st?.facts ? st.facts.isGit : null,
     unsaved: changes ? changes.staged.length + changes.unstaged.length + changes.untracked.length : null,
     stuck: (st?.out.issues ?? []).filter((i) => i.key.startsWith("loop:")).map((i) => i.title),
   });
   return {
     connected: !!st?.hooks.installed,
-    builds: w.sessions,
+    builds,
     needs: w.needs,
     working: w.working,
     billing,
     limits,
     costTodayUsd,
     tips: tipList,
-    plan: { pro: g.allowed && g.licensed, freeLeft: g.allowed ? g.remaining : 0, price: PRICE },
-    askCounts: !!st?.hooks.installed && shouldAsk(engine.home),
+    plan: { pro: p.pro, licensed: p.licensed, trialDaysLeft: p.trialDaysLeft, sellable: p.sellable, freeLeft: p.freeLeft, price: PRICE, points: PRO_POINTS },
   };
 }
 

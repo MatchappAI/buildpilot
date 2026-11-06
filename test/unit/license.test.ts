@@ -3,8 +3,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { describe, expect, it } from "vitest";
-import { checkoutUrl, gateParallel, FREE_PROMPTS, gate, paywallText, readLicense, recordUse, saveLicense, verifyKey } from "../../src/core/license";
+import { checkoutUrl, gateParallel, plan, FREE_PROMPTS, gate, paywallText, readLicense, recordUse, saveLicense, verifyKey } from "../../src/core/license";
 
+const SELL = { BUILDPILOT_CHECKOUT_URL: "https://buy.stripe.com/test_x", BUILDPILOT_TRIAL_DAYS: "0" };
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "bp-lic-"));
 const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
 const pub = publicKey.export({ type: "spki", format: "pem" }).toString();
@@ -16,7 +17,7 @@ const mint = (p: object, k = privateKey) => {
 describe("license gate", () => {
   it("allows 20 free prompts, then shows the paywall with the install id", () => {
     const home = tmp();
-    const env = {};
+    const env = { BUILDPILOT_CHECKOUT_URL: "https://buy.stripe.com/test_x", BUILDPILOT_TRIAL_DAYS: "0" };
     for (let i = 0; i < FREE_PROMPTS; i++) {
       expect(gate(home, env).allowed).toBe(true);
       recordUse(home, env);
@@ -49,19 +50,27 @@ describe("license gate", () => {
     expect(readLicense(home, { BUILDPILOT_LICENSE_KEY: "BP1.abc.def" }).valid).toBe(false);
     expect(saveLicense(home, "BP1.abc.def").valid).toBe(false);
     expect(fs.existsSync(path.join(home, "license.json"))).toBe(false);
-    recordUse(home, {});
-    expect(gate(home, { BUILDPILOT_AUTH_TOKEN: "nope" })).toMatchObject({ allowed: true, licensed: false, remaining: FREE_PROMPTS - 1 });
+    recordUse(home, SELL);
+    expect(gate(home, { ...SELL, BUILDPILOT_AUTH_TOKEN: "nope" })).toMatchObject({ allowed: true, licensed: false, remaining: FREE_PROMPTS - 1 });
   });
 
   it("parallel builds: one extra free, more needs Pro", () => {
     const home = tmp();
-    expect(gateParallel(home, 0, {}).allowed).toBe(true);
-    expect(gateParallel(home, 1, {}).allowed).toBe(false);
+    expect(gateParallel(home, 0, SELL).allowed).toBe(true);
+    expect(gateParallel(home, 1, SELL).allowed).toBe(false);
+  });
+
+  it("never blocks while Pro isn't on sale; 14-day trial unlocks everything first", () => {
+    const home = tmp();
+    for (let i = 0; i < 30; i++) recordUse(home, { BUILDPILOT_TRIAL_DAYS: "0" });
+    expect(gate(home, { BUILDPILOT_TRIAL_DAYS: "0" }).allowed).toBe(true); // placeholder checkout link
+    expect(plan(home, { BUILDPILOT_CHECKOUT_URL: "https://buy.stripe.com/x" })).toMatchObject({ pro: true, trialDaysLeft: 14, sellable: true });
+    expect(plan(home, SELL)).toMatchObject({ pro: false, trialDaysLeft: null, freeLeft: FREE_PROMPTS });
   });
 
   it("recovers from a corrupt usage file", () => {
     const home = tmp();
     fs.writeFileSync(path.join(home, "usage.json"), "{not json");
-    expect(gate(home, {})).toMatchObject({ allowed: true, remaining: FREE_PROMPTS });
+    expect(gate(home, SELL)).toMatchObject({ allowed: true, remaining: FREE_PROMPTS });
   });
 });
