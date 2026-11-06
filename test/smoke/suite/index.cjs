@@ -41,6 +41,27 @@ exports.run = async function () {
   await check("demo data loads and is labelled", async () => { await vscode.commands.executeCommand("buildpilot.loadDemo"); assert.ok(engine.snapshot().demo); assert.ok(engine.snapshot().out.sessions.some((s) => s.id.startsWith("demo-"))); });
   await check("demo produces supervisor findings (loop + approval)", () => { const st = engine.snapshot(); assert.ok(st.out.issues.some((i) => i.key.startsWith("loop:demo-"))); assert.ok(st.out.recommendations.some((r) => r.key.startsWith("approve:demo-"))); });
   await check("demo data removable", async () => { await vscode.commands.executeCommand("buildpilot.clearDemo"); assert.ok(!engine.snapshot().out.sessions.some((s) => s.id.startsWith("demo-"))); });
+  for (const c of ["buildpilot.installStatusline", "buildpilot.audit", "buildpilot.visualCheck"]) {
+    await check(`command ${c} registered`, () => assert.ok(cmds.includes(c)));
+  }
+  await check("Integration API + Pocket start from settings", async () => {
+    await vscode.workspace.getConfiguration("buildpilot").update("integrationApi.port", 47911, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration("buildpilot").update("integrationApi.enabled", true, vscode.ConfigurationTarget.Global);
+    const res = await until(async () => { try { const r = await fetch("http://127.0.0.1:47911/pocket"); return r.ok ? r : null; } catch { return null; } });
+    assert.ok((await res.text()).includes("BuildPilot Pocket"));
+    const unauth = await fetch("http://127.0.0.1:47911/v1/brief");
+    assert.strictEqual(unauth.status, 401);
+    const token = fs.readFileSync(path.join(process.env.BUILDPILOT_HOME, "api-token"), "utf8").trim();
+    const brief = await (await fetch("http://127.0.0.1:47911/v1/brief?format=text", { headers: { authorization: `Bearer ${token}` } })).text();
+    assert.ok(brief.includes("smoke-app"), brief);
+  });
+  await check("statusline data appears on the session", async () => {
+    fs.mkdirSync(path.join(process.env.BUILDPILOT_HOME, "status"), { recursive: true });
+    fs.writeFileSync(path.join(process.env.BUILDPILOT_HOME, "status", "smoke-session-1.json"), JSON.stringify({ session_id: "smoke-session-1", context_window: { used_percentage: 87, context_window_size: 200000 } }));
+    const st = engine.snapshot();
+    assert.strictEqual(st.live["smoke-session-1"].contextPct, 87);
+    assert.ok(st.out.recommendations.some((r) => r.key === "context:smoke-session-1"));
+  });
   await check("checkpoint works on a repo with no commits", async () => { const cp = await engine.checkpoint("smoke"); assert.ok(cp.sha.length === 40); });
   console.log("\n" + results.join("\n") + "\n");
   if (results.some((r) => r.startsWith("FAIL"))) throw new Error("smoke checks failed");

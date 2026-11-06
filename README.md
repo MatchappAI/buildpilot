@@ -33,8 +33,8 @@ If `code` isn't on your PATH, use VS Code → Command Palette → *Extensions: I
 | Tab | What it's for |
 |---|---|
 | **Overview** | Next step · what's happening · anything wrong · project summary, stage, progress vs. requirements, tests, Git |
-| **Sessions** | Every observed Claude Code session: status, current task, timeline, changed files, errors, tokens, overlaps |
-| **Supervisor** | Issues (with evidence), ranked recommendations, run tests/build, ship-readiness checklist, environment doctor, checkpoints & scoped rollback |
+| **Sessions** | Every observed Claude Code session: status, current task, exact context % (optional status-line integration), timeline, changed files, errors, overlaps, Explain with AI |
+| **Supervisor** | Issues (with evidence), ranked recommendations, run tests/build, dependency audit, visual check with screenshot, ship-readiness checklist, environment doctor, checkpoints & scoped rollback, worktree for conflicting sessions |
 | **Prompts** | Prompt Studio: pick a goal (feature, bug, integration, tests, refactor, UI, security, deploy, performance, explain, handoff), describe it, get a best-practice prompt. **Copy** it, or **Start in Claude Code** (opens a terminal running `claude` with it, after you confirm) |
 | **Memory** | Goal, requirements with acceptance criteria, decisions, preferences, session handoff, CLAUDE.md draft, data deletion |
 | **Connect** | Claude Code connection, phone/glasses/Slack alerts, Integration API, optional AI refinement, beginner mode |
@@ -42,6 +42,7 @@ If `code` isn't on your PATH, use VS Code → Command Palette → *Extensions: I
 ## Phones, smart glasses and other tools
 
 - **Alerts anywhere:** *Connect → Set up notifications* sends short alerts ("Claude needs your approval", "Tests failing") to ntfy (phone push), Slack, Discord or any webhook. Smart glasses that announce phone notifications (e.g. Meta Ray-Ban paired with your phone) will read them out. Only short alerts and the project name are sent, never code.
+- **Pocket (phone & glasses):** turn on the Integration API, then *Connect → Copy link for my phone*. The page shows live status and can **read it aloud**, including automatically when Claude needs you. Audio plays through your phone's output, so Bluetooth smart glasses or earbuds work.
 - **Ask BuildPilot from anything:** turn on the **Integration API** (token-protected, localhost by default). `GET /v1/brief?format=text` returns a one-sentence spoken-style status, for Siri Shortcuts, Raycast, Stream Deck, a glasses companion app, or a bot. `POST /v1/prompt` generates prompts. It's read-only: it cannot run commands or change files. See `docs/ARCHITECTURE.md#integration-api`.
 
 ## Command line (same engine, no VS Code)
@@ -52,6 +53,8 @@ node dist/cli.js sessions [folder]    # observed Claude Code sessions
 node dist/cli.js brief [folder]       # one-line status
 node dist/cli.js handoff [folder]     # context handoff for a new session
 node dist/cli.js prompt bugfix "Checkout page is blank after paying" [folder]
+node dist/cli.js audit [folder]       # dependency vulnerabilities
+node dist/cli.js visual [folder] [url]  # check the running app + screenshot
 node dist/cli.js hooks status|install|uninstall [--project <folder>]
 node dist/cli.js serve [folder]       # Integration API without VS Code
 ```

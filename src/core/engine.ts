@@ -6,7 +6,8 @@ import { analyzeRepo, listFiles, RepoFacts, scanSecrets, SecretFinding } from ".
 import { Store } from "./db";
 import { DoctorCheck, runDoctor } from "./doctor";
 import { changeSet, Checkpoint, createCheckpoint, gitAvailable, isRepo, listCheckpoints, recentCommits, Commit, run } from "./git";
-import { buildpilotHome, claudeSettingsPath, ensureHome, hookStatus, HookStatus } from "./hooks";
+import { AuditResult, detectAppUrl, detectDrift, findBrowser, runAudit, VisualCheck, visualCheck } from "./checks";
+import { buildpilotHome, claudeSettingsPath, ensureHome, hookStatus, HookStatus, LiveStatus, readLiveStatus, statuslineStatus, StatuslineStatus } from "./hooks";
 import { Ingestor, rowToEvent, rowToSession, SpoolReader } from "./ingest";
 import { buildClaudeMd, buildHandoff } from "./memory";
 import { buildPrompt, BuiltPrompt, PromptOptions, relevantFiles } from "./prompts";
@@ -45,7 +46,14 @@ export interface UiState {
   decisions: Decision[];
   testRuns: TestRun[];
   usage: Record<string, UsageSnapshot>;
+  live: Record<string, LiveStatus | null>;
+  audit: AuditResult | null;
+  visual: VisualCheck | null;
+  appUrl: { url: string | null; basis: string };
+  browserFound: boolean;
+  drift: string[];
   hooks: HookStatus;
+  statusline: StatuslineStatus;
   integration: { claudeInstalled: boolean | null; claudeVersion: string | null; gitAvailable: boolean | null; spool: SpoolReader["stats"]; otherProjectSessions: number };
   notes: { goal: string; preferences: string };
   errors: string[];
@@ -85,6 +93,7 @@ export class Engine extends EventEmitter {
   private usageCache = new Map<string, { mtime: number; usage: UsageSnapshot }>();
   private lastAlertKeys = new Map<string, number>();
   private runningScript: string | null = null;
+  appUrlOverride = "";
   private settingsFile: string;
   private changeTimer: NodeJS.Timeout | null = null;
   demo = false;
@@ -435,6 +444,76 @@ export class Engine extends EventEmitter {
     return cp;
   }
 
+  private jsonNote<T>(key: string): T | null {
+    const v = this.note(key);
+    if (!v) return null;
+    try {
+      return JSON.parse(v) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  private setJsonNote(key: string, value: unknown): void {
+    if (!this.project) return;
+    // stored directly (not via setNote) so long JSON isn't clipped
+    this.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [this.project.id, key, JSON.stringify(value), Date.now()]);
+    this.emit("changed");
+  }
+
+  /** Prompts typed into Claude Code sessions for this project over the last 7 days (already redacted). */
+  recentPrompts(sessions: Session[], now = Date.now()): string[] {
+    const out: string[] = [];
+    for (const s of sessions) {
+      if (s.id.startsWith("demo-")) continue;
+      for (const r of this.store.all<{ summary: string }>("SELECT summary FROM events WHERE session_id = ? AND hook_event = 'UserPromptSubmit' AND ts > ? ORDER BY ts DESC LIMIT 20", [s.id, now - 7 * 86400_000])) {
+        out.push(r.summary.replace(/^Prompt: /, ""));
+      }
+    }
+    return out.slice(0, 60);
+  }
+
+  /** Approved action: dependency audit (npm audit needs network to the npm registry). */
+  async audit(): Promise<AuditResult> {
+    if (!this.project || !this.facts) throw new Error("Open a project first");
+    this.store.run("INSERT INTO approvals (project_id, action, detail, approved_at) VALUES (?, 'audit', 'dependency audit', ?)", [this.project.id, Date.now()]);
+    const r = await runAudit(this.facts);
+    this.setJsonNote("audit", r);
+    return r;
+  }
+
+  /** Approved action: open the user's local app headlessly, check it and take a screenshot. */
+  async visualCheck(url: string): Promise<VisualCheck> {
+    if (!this.project) throw new Error("Open a project first");
+    const r = await visualCheck(url, path.join(this.home, "visual", this.project.id));
+    this.setJsonNote("visual", r);
+    return r;
+  }
+
+  /** Approved action: a separate working copy (git worktree) on a new branch, so a session can't collide with another. */
+  async createWorktree(label: string): Promise<{ dir: string; branch: string }> {
+    const p = this.project;
+    if (!p) throw new Error("Open a project first");
+    const head = await run("git", ["rev-parse", "--verify", "-q", "HEAD"], p.root);
+    if (head.code !== 0) throw new Error("Worktrees need at least one commit. Commit your work first.");
+    const ts = Date.now();
+    const safe = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "work";
+    const branch = `buildpilot/${safe}-${ts}`;
+    const dir = path.join(path.dirname(p.root), `${path.basename(p.root)}-${safe}-${ts}`);
+    const r = await run("git", ["worktree", "add", "-b", branch, dir], p.root, { timeoutMs: 60_000 });
+    if (r.code !== 0) throw new Error(r.stderr.trim() || "git worktree add failed");
+    this.store.run("INSERT INTO approvals (project_id, action, detail, approved_at, outcome) VALUES (?, 'worktree', ?, ?, ?)", [p.id, dir, ts, branch]);
+    this.addDecision(`Separate worktree for parallel work: ${path.basename(dir)}`, `Branch ${branch}. Merge it back when that session's work is done.`);
+    return { dir, branch };
+  }
+
+  /** Redacted, compact digest of a session for an (opt-in) AI explanation. No file contents. */
+  sessionDigest(sessionId: string): string {
+    const evs = this.eventsFor(sessionId, 120);
+    const lines = evs.map((e) => `${new Date(e.ts).toISOString().slice(11, 16)} ${e.hookEvent}: ${e.summary}${e.isError && e.errorText ? ` | error: ${e.errorText.split("\n").slice(0, 2).join(" ")}` : ""}`);
+    return lines.join("\n").slice(-12_000);
+  }
+
   // ---------- snapshot ----------
 
   snapshot(now = Date.now()): UiState {
@@ -456,6 +535,12 @@ export class Engine extends EventEmitter {
       }
     }
     const lastCp = this.checkpoints[0];
+    const live: Record<string, LiveStatus | null> = {};
+    for (const s of sessions.slice(0, 12)) live[s.id] = readLiveStatus(s.id, this.home);
+    const audit = this.jsonNote<AuditResult>("audit");
+    const visual = this.jsonNote<VisualCheck>("visual");
+    const prompts = this.recentPrompts(sessions, now);
+    const drift = detectDrift(prompts, requirements);
     const out = supervise({
       now,
       facts: this.facts,
@@ -470,6 +555,10 @@ export class Engine extends EventEmitter {
       claudeInstalled: this.claude.installed,
       dismissed: this.dismissed(),
       hasCheckpointSinceChanges: !!lastCp && now - lastCp.ts < 2 * 3600_000,
+      live,
+      audit,
+      drift,
+      visual,
     });
     const resolved = this.trackRecommendations(out, now);
     const usage: Record<string, UsageSnapshot> = {};
@@ -491,7 +580,14 @@ export class Engine extends EventEmitter {
       decisions: this.decisions(),
       testRuns,
       usage,
+      live,
+      audit,
+      visual,
+      appUrl: this.facts ? detectAppUrl(this.facts, this.appUrlOverride) : { url: null, basis: "not analyzed" },
+      browserFound: !!findBrowser(),
+      drift,
       hooks,
+      statusline: statuslineStatus(this.settingsFile, this.home),
       integration: { claudeInstalled: this.claude.installed, claudeVersion: this.claude.version, gitAvailable: this.gitOk, spool: this.spool?.stats ?? { accepted: 0, duplicates: 0, rejected: 0, lastEventAt: 0 }, otherProjectSessions },
       notes: { goal: this.note("goal"), preferences: this.note("preferences") },
       errors: this.errors,

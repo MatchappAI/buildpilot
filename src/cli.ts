@@ -6,6 +6,8 @@
  *   node dist/cli.js handoff [folder]        context handoff for a new session
  *   node dist/cli.js prompt <goal> "<request>" [folder]
  *   node dist/cli.js hooks status|install|uninstall [--project <folder>]
+ *   node dist/cli.js audit [folder]          dependency vulnerability check (npm audit / pip-audit)
+ *   node dist/cli.js visual [folder] [url]   check the running app + screenshot
  *   node dist/cli.js serve [folder]          run the Integration API (token in ~/.buildpilot/api-token)
  */
 import * as path from "path";
@@ -27,7 +29,7 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "help" || cmd === "--help") {
-    console.log("usage: buildpilot brief|status|sessions|handoff|prompt <goal> <request>|hooks [status|install|uninstall]|serve [folder]");
+    console.log("usage: buildpilot brief|status|sessions|handoff|audit|visual [url]|prompt <goal> <request>|hooks [status|install|uninstall]|serve [folder]");
     console.log(`goals: ${GOALS.map((g) => g.id).join(", ")}`);
     return;
   }
@@ -53,6 +55,22 @@ async function main(): Promise<void> {
     case "handoff":
       console.log(engine.handoff(st));
       break;
+    case "audit": {
+      const r = await engine.audit();
+      console.log(r.ok ? `${r.tool}: ${r.counts.critical} critical, ${r.counts.high} high, ${r.counts.moderate} moderate, ${r.counts.low} low` : `audit could not run: ${r.error}`);
+      for (const t of r.top) console.log(`  ${t.severity.padEnd(9)} ${t.name}: ${t.title}${t.fixAvailable ? " (fix available)" : ""}`);
+      break;
+    }
+    case "visual": {
+      const url = rest[1] ?? st.appUrl.url;
+      if (!url) {
+        console.log("No app address detected. Usage: buildpilot visual <folder> <url>");
+        break;
+      }
+      const r = await engine.visualCheck(url);
+      console.log(`${url}: ${r.note}${r.title ? ` (title: ${r.title})` : ""}${r.screenshot ? `\nscreenshot: ${r.screenshot}` : ""}`);
+      break;
+    }
     case "prompt": {
       const goal = (GOALS.some((g) => g.id === rest[0]) ? rest[0] : "feature") as GoalType;
       console.log(engine.prompt({ goal, request: rest[1] ?? "" }, st).text);

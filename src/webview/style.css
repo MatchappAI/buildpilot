@@ -190,3 +190,11 @@ label.check { display: flex; gap: 6px; align-items: center; margin: 6px 0; font-
 .req-title { overflow-wrap: anywhere; }
 .api { background: var(--vscode-textCodeBlock-background); padding: 6px; border-radius: var(--radius); margin: 6px 0; overflow-wrap: anywhere; }
 .error-box { margin: 8px 0; padding: 6px 8px; border: 1px solid var(--vscode-inputValidation-errorBorder, var(--bad)); background: var(--vscode-inputValidation-errorBackground, transparent); border-radius: var(--radius); font-size: 12px; }
+
+.ctx { margin-top: 6px; }
+.ctx .bar { margin: 2px 0; }
+.bar.hot span { background: var(--warn); }
+.shot { display: block; width: 100%; margin-top: 6px; border: 1px solid var(--border); border-radius: var(--radius); }
+.pre-wrap { white-space: pre-wrap; }
+.pocket { display: flex; gap: 8px; padding: 8px; margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius); }
+.pocket > .codicon { font-size: 18px; color: var(--info); }

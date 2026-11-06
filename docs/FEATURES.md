@@ -15,7 +15,8 @@ Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 - ✅ Timeline, changed files (click to open), errors, last prompt as task, intervention hint
 - ✅ Token usage from local transcripts (labelled estimate); cost shown as Unknown
 - ✅ Staleness → Unknown; sessions from other folders counted
-- 🟡 Model name: from transcript; Claude Code hook payloads didn't include it in our live test
+- ✅ Exact context %, window size, Claude Code's own cost estimate (labelled "at list price"), 5-hour/7-day rate-limit % via the documented status-line JSON. Chains (never replaces) an existing status line; uninstall restores it exactly
+- 🟡 Model name: from transcript/status line; hook payloads don't include it
 - ⏳ Terminal ↔ session association (no reliable identifier exposed; deliberately not guessed)
 
 ## Supervisor
@@ -23,7 +24,10 @@ Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 - ✅ Scored recommendations with evidence, one next step, dismiss for 24h, beginner explanations
 - ✅ Verification loop: resolved recommendations recorded when their condition disappears
 - ✅ Stage classification (inferred, with evidence) and progress only from verified requirements
-- ⏳ Requirements-drift detection (compare prompts vs requirements), AI-assisted explanations
+- ✅ Requirements drift: recent prompts that match no requirement
+- ✅ Context-full (≥80%) → handoff recommendation; 5-hour limit ≥85% warning
+- ✅ "Explain with AI" per session (opt-in, redacted event digest only, consent each time)
+- ✅ Conflict → "Separate the sessions": creates a Git worktree on a new branch, opens a terminal there, handoff prompt on clipboard
 
 ## Build guidance (Prompt Studio)
 - ✅ 11 goal types with best-practice steps, acceptance criteria, clarifying questions, plan-first, model class
@@ -31,6 +35,7 @@ Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 - ✅ Missing info + assumptions surfaced; editable result; Copy; Start in Claude Code (new terminal, confirmed)
 - ✅ Optional AI refinement (Anthropic key / Ollama) with per-use consent
 - ✅ Prompt generation over Integration API and CLI
+- ✅ "Start in Claude Code" launch command verified to pass hostile prompts as one exact argument (no evaluation)
 - ⏳ Sending into an already-running session (no documented interface)
 
 ## Memory
@@ -42,13 +47,15 @@ Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 - ✅ Checkpoints (no changes to branch/index/files), diff since checkpoint, scoped per-file rollback with safety checkpoint
 - ✅ Run named package scripts / install only, confirmed, time-limited, recorded as evidence
 - ✅ Release-readiness checklist (Verified/Failed/Unknown/Unverified)
-- 🟡 Security: high-confidence secret scan, tracked `.env`, missing env names. ⏳ dependency vulnerability audit (`npm audit` needs network; planned as an approved action)
+- ✅ Security: high-confidence secret scan (fixtures separated), tracked `.env`, missing env names, dependency audit (`npm audit --json` / `pip-audit`, approved action, verified live)
 - 🟡 Environment doctor: Node version vs engines/.nvmrc, deps installed, lockfile conflicts, missing scripts, env names. ⏳ Python/Go/Rust specifics
 
 ## Integrations
 - ✅ Alerts: VS Code (important only) + webhook (ntfy, Slack, Discord, generic JSON), URL in SecretStorage
 - ✅ Integration API (token, loopback default, optional LAN, read-only)
-- ⏳ Native smart-glasses companion app (Meta Wearables Device Access Toolkit is phone-side); statusline integration for exact context %
+- ✅ **Pocket**: phone page at `/pocket` (status, sessions, Read aloud, auto-speak when something needs you), with audio through Bluetooth glasses or earbuds
+- ⏳ Native smart-glasses companion app (Meta Wearables Device Access Toolkit is phone-side)
 
 ## Visual QA
-- ⏳ Launch app + screenshots + journey checks (interface designed in ROADMAP; BuildPilot's own UI is screenshot-tested via `test/ui`)
+- ✅ Visual QA v1: detect app address, optionally start the dev script in a visible terminal, check it loads (HTTP status, title, error-overlay text, blank page), headless Chrome/Edge screenshot shown in the sidebar; readiness item
+- ⏳ Multi-step user journeys (clicks/forms)

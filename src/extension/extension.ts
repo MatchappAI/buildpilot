@@ -3,10 +3,13 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { IntegrationApi, loadOrCreateToken, rotateToken, sendWebhook } from "../core/api";
 import { complete, ProviderConfig, refineRequest } from "../core/ai";
+import { pocketLink } from "./pocketLink";
 import { Alert, Engine, UiState } from "../core/engine";
 import { restoreFiles, diffSinceCheckpoint } from "../core/git";
-import { claudeSettingsPath, installHooks, uninstallHooks } from "../core/hooks";
-import { GOALS, shellQuote } from "../core/prompts";
+import { claudeSettingsPath, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
+import { isLocalUrl } from "../core/checks";
+import { GOALS } from "../core/prompts";
+import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
 import { SidebarProvider, WebviewMessage } from "./sidebar";
 
@@ -22,7 +25,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
 
   const eng = new Engine();
   engine = eng;
-  const sidebar = new SidebarProvider(context.extensionUri, () => state(), (m) => handle(m));
+  const sidebar = new SidebarProvider(context.extensionUri, () => state(), (m) => handle(m), [vscode.Uri.file(path.join(eng.home, "visual"))]);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider("buildpilot.main", sidebar, { webviewOptions: { retainContextWhenHidden: true } }));
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
@@ -58,6 +61,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     notifications: cfg().get<string>("notifications", "important"),
     platform: process.platform,
     home: eng.home,
+    pocketUrl: api ? pocketLink(api.address, cfg().get<number>("integrationApi.port", 47821), cfg().get<boolean>("integrationApi.allowLan", false)) : null,
+    screenshotUri: (() => {
+      const shot = cached?.visual?.screenshot;
+      return shot && fs.existsSync(shot) ? sidebar.toUri(shot) : null;
+    })(),
   });
 
   const updateStatus = (st: UiState) => {
@@ -163,15 +171,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     fs.writeFileSync(file, prompt, { mode: 0o600 });
     const term = vscode.window.createTerminal({ name: "Claude · BuildPilot", cwd: root });
     term.show();
-    const isWin = process.platform === "win32";
-    const shell = (vscode.env.shell || "").toLowerCase();
-    if (isWin && (shell.includes("powershell") || shell.includes("pwsh"))) term.sendText(`claude (Get-Content -Raw '${file.replace(/'/g, "''")}')`);
-    else if (isWin && !shell.includes("bash")) {
-      // cmd.exe can't safely pass a multi-line argument: start Claude and let the user paste.
+    const plan = launchPlan(file, process.platform, vscode.env.shell || "");
+    if (plan.kind === "paste") {
       await vscode.env.clipboard.writeText(prompt);
-      term.sendText("claude");
       void vscode.window.showInformationMessage("Claude Code is starting. The prompt is on your clipboard: paste it with Ctrl+V.");
-    } else term.sendText(`claude "$(cat ${shellQuote(file)})"`);
+    }
+    term.sendText(plan.text);
     eng.store.run("INSERT INTO approvals (project_id, action, detail, approved_at) VALUES (?, 'start_claude', ?, ?)", [eng.currentProject!.id, prompt.slice(0, 300), Date.now()]);
   };
 
@@ -365,6 +370,107 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       }
       case "hasWebhook":
         return !!(await context.secrets.get("buildpilot.webhookUrl"));
+      case "audit": {
+        if (!requireTrust("run a dependency audit")) return;
+        const tool = st?.facts?.languages.includes("Python") && !st.facts.lockfiles.includes("package-lock.json") ? "pip-audit" : "npm audit --json";
+        if (!(await confirm(`Check dependencies for known vulnerabilities?`, `Runs \`${tool}\` in ${eng.currentProject?.root}. It sends your dependency list (names and versions, not your code) to the public registry's advisory service.`, "Run audit"))) return;
+        try {
+          const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "BuildPilot: checking dependencies…" }, () => eng.audit());
+          void vscode.window.showInformationMessage(r.ok ? `Audit done: ${r.counts.critical} critical, ${r.counts.high} high, ${r.counts.moderate} moderate.` : `Audit couldn't run: ${r.error}`);
+        } catch (e) {
+          void vscode.window.showErrorMessage((e as Error).message);
+        }
+        return;
+      }
+      case "visualCheck": {
+        const url = String(m.url ?? st?.appUrl.url ?? "").trim();
+        if (!url || !isLocalUrl(url)) return void vscode.window.showWarningMessage("Enter your app's local address, e.g. http://localhost:3000");
+        await cfg().update("visualQa.url", url, vscode.ConfigurationTarget.Workspace);
+        try {
+          const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `BuildPilot: opening ${url}…` }, () => eng.visualCheck(url));
+          void vscode.window.showInformationMessage(`Visual check: ${r.note}`);
+        } catch (e) {
+          void vscode.window.showErrorMessage((e as Error).message);
+        }
+        return;
+      }
+      case "startApp": {
+        const script = st?.facts?.scripts.dev ? "dev" : st?.facts?.scripts.start ? "start" : null;
+        if (!script) return void vscode.window.showWarningMessage("No dev or start script found in package.json.");
+        if (!requireTrust("start your app")) return;
+        const pm = st?.facts?.packageManager ?? "npm";
+        if (!(await confirm(`Start your app with \`${pm} run ${script}\`?`, "Opens a visible terminal so you can see and stop it (Ctrl+C). BuildPilot then checks the page when it's up.", "Start app"))) return;
+        const term = vscode.window.createTerminal({ name: "App · BuildPilot", cwd: eng.currentProject?.root });
+        term.show(true);
+        term.sendText(`${pm} run ${script}`);
+        const url = st?.appUrl.url;
+        if (!url) return;
+        for (let i = 0; i < 45; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            await fetch(url, { signal: AbortSignal.timeout(1500) });
+            await eng.visualCheck(url);
+            void vscode.window.showInformationMessage(`App is up at ${url}. Visual check saved.`);
+            return;
+          } catch {
+            /* not up yet */
+          }
+        }
+        void vscode.window.showWarningMessage(`The app didn't answer at ${url} within 90 s. Check the terminal, or set the right address.`);
+        return;
+      }
+      case "openScreenshot": {
+        const shot = st?.visual?.screenshot;
+        if (shot) await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(shot));
+        return;
+      }
+      case "worktree": {
+        if (!requireTrust("create a worktree")) return;
+        const sid = String(m.sessionId ?? "");
+        if (!(await confirm("Give one session its own copy of the code?", "Creates a Git worktree, a separate folder on a new branch next to your project, and opens a terminal there. Your current folder, branch and files are not changed. Then stop the overlapping session and continue it in the new terminal with the handoff prompt.", "Create worktree"))) return;
+        try {
+          const label = (await vscode.window.showInputBox({ prompt: "Short name for this line of work", value: sid.startsWith("demo-") ? "demo" : "parallel" })) ?? "parallel";
+          const w = await eng.createWorktree(label);
+          const term = vscode.window.createTerminal({ name: `Worktree · ${path.basename(w.dir)}`, cwd: w.dir });
+          term.show();
+          await vscode.env.clipboard.writeText(eng.prompt({ goal: "handoff", request: "Continue where the previous session left off, in this separate worktree." }).text);
+          void vscode.window.showInformationMessage(`Worktree ready on branch ${w.branch}. A handoff prompt is on your clipboard: run \`claude\` in the new terminal and paste it.`);
+        } catch (e) {
+          void vscode.window.showErrorMessage(`Worktree failed: ${(e as Error).message}`);
+        }
+        return;
+      }
+      case "explainSession": {
+        const pc = await providerConfig();
+        if (pc.kind === "none") {
+          const c = await vscode.window.showInformationMessage("AI explanations need a provider (your Anthropic API key or a local Ollama model).", "Open Settings");
+          if (c) void vscode.commands.executeCommand("workbench.action.openSettings", "buildpilot.ai");
+          return null;
+        }
+        const digest = eng.sessionDigest(String(m.sessionId));
+        const where = pc.kind === "anthropic" ? "Anthropic's API (billed to your API key)" : `your local Ollama at ${pc.baseUrl}`;
+        if (!(await confirm(`Send this session's activity log to ${where}?`, `Sends the redacted event list BuildPilot recorded (${digest.length} characters: tool names, commands, file names, error messages). No file contents. Model: ${pc.model}.`, "Explain"))) return null;
+        try {
+          const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "BuildPilot: explaining session…" }, () =>
+            complete(pc, ["In 5 short bullets for a non-engineer: what was this Claude Code session trying to do, what happened, what went wrong (if anything), and the single best next step. Say when you're unsure.", "<project_data>", digest, "</project_data>"].join("\n")),
+          );
+          return r.text;
+        } catch (e) {
+          void vscode.window.showErrorMessage((e as Error).message);
+          return null;
+        }
+      }
+      case "statusline":
+        return vscode.commands.executeCommand(m.on ? "buildpilot.installStatusline" : "buildpilot.uninstallStatusline");
+      case "copyPocketLink": {
+        const s2 = uiSettings();
+        if (!s2.pocketUrl) return;
+        const ok = await confirm("Copy a Pocket link that includes your token?", "Anyone with this link (on a network that can reach your computer) can read your BuildPilot status. Send it only to your own phone. You can make a new token anytime.", "Copy link");
+        if (!ok) return;
+        await vscode.env.clipboard.writeText(`${s2.pocketUrl}#t=${loadOrCreateToken(eng.home)}`);
+        void vscode.window.showInformationMessage("Pocket link copied. Open it on your phone.");
+        return;
+      }
     }
     return undefined;
   }
@@ -408,7 +514,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     try {
       const r = installHooks(file, eng.home);
       eng.setClaudeSettingsFile(file);
-      void vscode.window.showInformationMessage(r.changed ? `Connected. Start (or restart) Claude Code to see live sessions.${r.backup ? " Backup saved." : ""}` : "Already connected.");
+      void vscode.window.showInformationMessage(r.changed ? `Connected. Start (or restart) Claude Code to see live sessions.${r.backup ? " Backup saved." : ""}` : "Already connected.", "Also show context %").then((c) => c && vscode.commands.executeCommand("buildpilot.installStatusline"));
+    } catch (e) {
+      void vscode.window.showErrorMessage((e as Error).message);
+    }
+    push();
+  });
+  reg("buildpilot.installStatusline", async () => {
+    const file = claudeSettingsPath("user");
+    const ok = await confirm(
+      "Show exact context and limits from Claude Code?",
+      `Claude Code passes context-window %, estimated cost and rate-limit % to its status line. BuildPilot installs a small status-line script in ${file} that saves those numbers locally.\n\nIf you already have a status line, it keeps running and still shows exactly as before (BuildPilot chains it). A backup is saved, and "Remove" restores your original.`,
+      "Turn on",
+    );
+    if (!ok) return;
+    try {
+      const r = installStatusline(file, eng.home);
+      void vscode.window.showInformationMessage(r.changed ? `Done.${r.chained ? " Your existing status line is preserved." : ""} New or resumed Claude Code sessions will report context %.` : "Already on.");
+    } catch (e) {
+      void vscode.window.showErrorMessage((e as Error).message);
+    }
+    push();
+  });
+  reg("buildpilot.uninstallStatusline", async () => {
+    try {
+      const r = uninstallStatusline(claudeSettingsPath("user"), eng.home);
+      void vscode.window.showInformationMessage(r.changed ? "Status line restored to what you had before." : "Nothing to remove.");
     } catch (e) {
       void vscode.window.showErrorMessage((e as Error).message);
     }
@@ -416,7 +547,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
   });
   reg("buildpilot.uninstallHooks", async () => {
     const files = [claudeSettingsPath("user"), ...(eng.currentProject ? [claudeSettingsPath("project", eng.currentProject.root)] : [])];
-    if (!(await confirm("Disconnect BuildPilot from Claude Code?", `Removes only BuildPilot's hooks from:\n${files.join("\n")}\nEverything else in those files stays. A backup is saved first.`, "Disconnect"))) return;
+    try {
+      uninstallStatusline(claudeSettingsPath("user"), eng.home);
+    } catch {
+      /* reported below if the file is broken */
+    }
+    if (!(await confirm("Disconnect BuildPilot from Claude Code?", `Removes only BuildPilot's hooks (and its status line, restoring yours) from:\n${files.join("\n")}\nEverything else in those files stays. A backup is saved first.`, "Disconnect"))) return;
     for (const f of files) {
       try {
         if (fs.existsSync(f)) uninstallHooks(f, eng.home);
@@ -436,6 +572,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
   });
   reg("buildpilot.checkpoint", () => handle({ type: "checkpoint" }));
   reg("buildpilot.runTests", () => handle({ type: "runScript", script: "test" }));
+  reg("buildpilot.audit", () => handle({ type: "audit" }));
+  reg("buildpilot.visualCheck", () => handle({ type: "visualCheck" }));
   reg("buildpilot.loadDemo", () => {
     try {
       eng.loadDemo();
@@ -494,6 +632,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
   reg("buildpilot.showBrief", () => vscode.window.showInformationMessage(eng.brief()));
 
   // ---------- lifecycle ----------
+  const applyUrlSetting = () => (eng.appUrlOverride = cfg().get<string>("visualQa.url", ""));
+  applyUrlSetting();
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration("buildpilot.visualQa") && applyUrlSetting()));
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => void openWorkspaceProject()),
     vscode.workspace.onDidGrantWorkspaceTrust(() => push()),

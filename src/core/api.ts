@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { Alert, Engine } from "./engine";
+import { pocketHtml } from "./pocket";
 import { GOALS } from "./prompts";
 import { GoalType } from "./types";
 
@@ -82,6 +83,12 @@ export class IntegrationApi {
   }
 
   private handle(req: http.IncomingMessage, res: http.ServerResponse): void {
+    // The Pocket page is static and contains no data; everything it shows is fetched with the token.
+    if (req.method === "GET" && (req.url === "/pocket" || req.url === "/pocket/")) {
+      const nonce = randomBytes(16).toString("base64");
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" });
+      return void res.end(pocketHtml(nonce));
+    }
     // No CORS headers: browsers on other origins can't read responses.
     if (!tokenOk(req.headers.authorization, this.opts.token)) return this.send(res, 401, { error: "unauthorized: send 'Authorization: Bearer <token>'" });
     const url = new URL(req.url ?? "/", "http://localhost");

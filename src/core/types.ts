@@ -120,7 +120,11 @@ export type RecommendedAction =
   | { kind: "run_script"; script: string }
   | { kind: "checkpoint" }
   | { kind: "open_file"; path: string }
-  | { kind: "install_hooks" };
+  | { kind: "install_hooks" }
+  | { kind: "audit" }
+  | { kind: "visual_check" }
+  | { kind: "worktree"; sessionId: string }
+  | { kind: "open_tab"; tab: "overview" | "sessions" | "supervisor" | "prompts" | "memory" | "connect" };
 
 export interface TestRun {
   id: number;

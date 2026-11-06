@@ -1,6 +1,8 @@
 import * as path from "path";
 import { RepoFacts, SecretFinding } from "./analyzer";
+import { AuditResult, VisualCheck } from "./checks";
 import { DoctorCheck } from "./doctor";
+import { LiveStatus } from "./hooks";
 import { isEditTool } from "./ingest";
 import {
   ChangeSet,
@@ -50,6 +52,10 @@ export interface SupervisorInput {
   claudeInstalled: boolean | null;
   dismissed: Set<string>;
   hasCheckpointSinceChanges: boolean;
+  live?: Record<string, LiveStatus | null>; // from the statusline integration
+  audit?: AuditResult | null;
+  drift?: string[]; // recent prompts not covered by any requirement
+  visual?: VisualCheck | null;
 }
 
 export interface SupervisorOutput {
@@ -296,7 +302,7 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
   for (const c of conflicts) {
     if (c.certainty === "actual") {
       issues.push({ key: `conflict:${c.file}`, severity: "high", title: `Two sessions edited ${path.basename(c.file)}`, plain: "Two AI sessions changing the same file can overwrite each other's work. Let one finish, or give each its own Git worktree.", evidence: [{ kind: "observed", text: `sessions ${c.sessions.map(shortId).join(", ")}`, ref: c.file }], sessionId: c.sessions[0] });
-      recs.push(rec(`conflict:${c.file}`, "high", "Stop two sessions editing the same file", "Overlapping edits are the most common way multi-agent work gets lost.", [{ kind: "observed", text: `${path.basename(c.file)} edited by ${c.sessions.length} sessions` }], { kind: "checkpoint" }, 18));
+      recs.push(rec(`conflict:${c.file}`, "high", "Stop two sessions editing the same file", "Overlapping edits are the most common way multi-agent work gets lost. Save a checkpoint, then give one session its own copy of the code (a Git worktree).", [{ kind: "observed", text: `${path.basename(c.file)} edited by ${c.sessions.length} sessions` }], { kind: "worktree", sessionId: c.sessions[c.sessions.length - 1]! }, 18));
     } else {
       issues.push({ key: `possible-conflict:${c.file}`, severity: "low", title: `${c.sessions.length} sessions editing the same working folder`, plain: "No file overlap yet, but both are changing the same copy of the code. Consider separate Git worktrees.", evidence: [{ kind: "inferred", text: `sessions ${c.sessions.map(shortId).join(", ")} share ${c.file}` }] });
     }
@@ -354,6 +360,42 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
     }
   }
 
+
+  // --- context & cost (documented statusline data only)
+  for (const s of sessions) {
+    const l = i.live?.[s.id];
+    if (!l || s.endedAt || i.now - s.lastEventAt > ACTIVE_MS || l.contextPct == null) continue;
+    if (l.contextPct >= 80) {
+      recs.push(rec(`context:${s.id}`, l.contextPct >= 95 ? "high" : "medium", `Session ${shortId(s.id)} is ${Math.round(l.contextPct)}% full. Start fresh with a handoff`, "When the context window fills, Claude compacts (summarizes) its memory and starts forgetting details. A new session with a handoff keeps quality high.", [{ kind: "observed", text: `context ${Math.round(l.contextPct)}% of ${l.contextSize?.toLocaleString() ?? "?"} tokens (from Claude Code)` }], { kind: "prompt", goal: "handoff", request: "Continue where the previous session left off." }, l.contextPct >= 95 ? 16 : 6));
+    }
+  }
+  const limits = Object.values(i.live ?? {}).filter((l): l is LiveStatus => !!l && i.now - l.updatedAt < 6 * 3600_000);
+  const fiveH = Math.max(-1, ...limits.map((l) => l.fiveHourPct ?? -1));
+  if (fiveH >= 85) {
+    recs.push(rec("rate-limit-5h", fiveH >= 95 ? "high" : "medium", `You've used ${Math.round(fiveH)}% of your 5-hour Claude limit`, "Save the remaining budget for the most important task. Avoid broad \"analyze everything\" prompts and pick a smaller model for simple edits.", [{ kind: "observed", text: `rate_limits.five_hour = ${fiveH}% (from Claude Code)` }], undefined, 8));
+  }
+
+  // --- dependency audit
+  if (i.audit?.ok) {
+    const c = i.audit.counts;
+    if (c.critical + c.high > 0) {
+      issues.push({ key: "vulns", severity: c.critical ? "high" : "medium", title: `${c.critical + c.high} high/critical dependency vulnerabilit${c.critical + c.high === 1 ? "y" : "ies"}`, plain: "Some libraries your app uses have known security holes. Most are fixed by upgrading.", evidence: i.audit.top.slice(0, 5).map((t) => ({ kind: "observed" as const, text: `${t.name} (${t.severity}): ${t.title}${t.fixAvailable ? " · fix available" : ""}` })) });
+      recs.push(rec("vulns", c.critical ? "high" : "medium", "Upgrade vulnerable dependencies", "Known vulnerabilities are the easiest way in for attackers, and fixes usually exist.", [{ kind: "observed", text: `${i.audit.tool}: ${c.critical} critical, ${c.high} high, ${c.moderate} moderate` }], { kind: "prompt", goal: "security", request: `Fix the high and critical vulnerabilities reported by ${i.audit.tool} with the smallest safe upgrades (no major-version jumps without asking). Packages: ${i.audit.top.filter((t) => t.severity === "critical" || t.severity === "high").map((t) => t.name).join(", ")}. Re-run the audit and the tests.` }, 9));
+    }
+  } else if (f && (f.lockfiles.includes("package-lock.json") || f.languages.includes("Python")) && !i.audit) {
+    recs.push(rec("audit", "low", "Check dependencies for known vulnerabilities", "A one-minute check against public vulnerability databases.", [{ kind: "inferred", text: "no audit run yet" }], { kind: "audit" }, 2));
+  }
+
+  // --- requirements drift
+  if (i.drift && i.drift.length >= 2) {
+    issues.push({ key: "drift", severity: "low", title: `${i.drift.length} recent requests aren't in your requirements`, plain: "Work is happening that your plan doesn't mention. Either add it as a requirement or check it's really needed (scope creep).", evidence: i.drift.slice(0, 5).map((p) => ({ kind: "observed" as const, text: `"${p.slice(0, 140)}"` })) });
+    recs.push(rec("drift", "low", "Add new work to your requirements (or drop it)", "Keeping requirements current is how BuildPilot measures real progress.", i.drift.slice(0, 3).map((p) => ({ kind: "observed" as const, text: `"${p.slice(0, 120)}"` })), { kind: "open_tab", tab: "memory" }, 2));
+  }
+
+  // --- visual QA
+  if (i.visual && i.visual.reachable && i.visual.errorText && i.now - i.visual.checkedAt < 24 * 3600_000) {
+    issues.push({ key: "visual-error", severity: "high", title: "The app shows an error in the browser", plain: "The page loads but displays an error, so users would see a broken screen.", evidence: [{ kind: "observed", text: `${i.visual.url}: ${i.visual.errorText}`, ref: i.visual.screenshot ?? undefined }] });
+  }
   for (const r of recs) if (i.dismissed.has(r.key)) r.score = -1;
   const recommendations = recs.filter((r) => r.score >= 0).sort((a, b) => b.score - a.score);
   const sevOrder: Severity[] = ["blocker", "high", "medium", "low", "info"];
@@ -390,6 +432,10 @@ export function readiness(i: SupervisorInput): ReadinessItem[] {
   items.push(i.secrets == null ? { key: "secrets", label: "No secrets in code", status: "unknown", detail: "Run a security scan." } : { key: "secrets", label: "No secrets in code", status: real.length ? "failed" : "verified", detail: real.length ? `${real.length} possible secret(s)` : `High-confidence patterns: none found outside tests (not a full audit)${i.secrets.length ? `; ${i.secrets.length} in test/example files` : ""}` });
   const envCheck = i.doctor.find((d) => d.key === "env-vars");
   items.push({ key: "config", label: "Configuration documented", status: f?.envExampleVars.length ? (envCheck?.status === "ok" ? "verified" : "unverified") : "unknown", detail: f?.envExampleVars.length ? `${f.envExampleVars.length} variables in .env.example` : "No .env.example. Document required settings." });
+  const a = i.audit;
+  items.push(!a ? { key: "deps", label: "No known vulnerable dependencies", status: "unknown", detail: "Run a dependency audit." } : !a.ok ? { key: "deps", label: "No known vulnerable dependencies", status: "unknown", detail: a.error ?? "Audit failed" } : { key: "deps", label: "No known vulnerable dependencies", status: a.counts.critical + a.counts.high > 0 ? "failed" : "verified", detail: `${a.tool} ${new Date(a.ranAt).toLocaleDateString()}: ${a.counts.critical} critical, ${a.counts.high} high, ${a.counts.moderate} moderate` });
+  const v = i.visual;
+  items.push(!v ? { key: "visual", label: "App loads in a browser", status: "unknown", detail: "Run a visual check." } : { key: "visual", label: "App loads in a browser", status: v.reachable && !v.errorText ? "verified" : v.reachable ? "failed" : "unknown", detail: `${v.url}: ${v.note}` });
   items.push({ key: "errors", label: "Error handling", status: "unverified", detail: "Can't be verified automatically. Ask Supervisor to review error paths." });
   items.push({ key: "ci", label: "Automated checks (CI)", status: f?.hasCI ? "verified" : "unknown", detail: f?.hasCI ? "CI config present (not run here)" : "No CI configuration found" });
   items.push({ key: "observability", label: "Logging / monitoring", status: f?.frameworks.length ? "unverified" : "unknown", detail: "Recommendation: add error reporting before launch" });

@@ -18,6 +18,8 @@ interface Settings {
   notifications: string;
   platform: string;
   home: string;
+  pocketUrl: string | null;
+  screenshotUri: string | null;
 }
 
 type Tab = "overview" | "sessions" | "supervisor" | "prompts" | "memory" | "connect";
@@ -40,6 +42,7 @@ let promptText = "";
 let goals: GoalSpec[] = [];
 let cpFiles: Record<string, string[]> = {};
 let hasWebhook = false;
+const explanations: Record<string, string> = {};
 const persist = () => vscode.setState(vs);
 
 // ---------- messaging ----------
@@ -191,6 +194,10 @@ function actionButton(r: Recommendation, primary = true): string {
   if (a.kind === "run_script") return `<button class="${cls}" data-act="runScript" data-script="${esc(a.script)}" ${S?.runningScript ? "disabled" : ""}>${icon("play")} ${a.script === "install" ? "Install" : `Run ${esc(a.script)}`}</button>`;
   if (a.kind === "prompt") return `<button class="${cls}" data-act="promptFor" data-goal="${esc(a.goal)}" data-request="${esc(a.request)}">${icon("sparkle")} Write the prompt</button>`;
   if (a.kind === "open_file") return `<button class="${cls}" data-open="${esc(a.path)}">Open</button>`;
+  if (a.kind === "audit") return `<button class="${cls}" data-act="audit">${icon("shield")} Check dependencies</button>`;
+  if (a.kind === "visual_check") return `<button class="${cls}" data-act="visualCheck">${icon("eye")} Check the app</button>`;
+  if (a.kind === "worktree") return `<button class="${cls}" data-act="worktree" data-session="${esc(a.sessionId)}">${icon("git-branch")} Separate the sessions</button>`;
+  if (a.kind === "open_tab") return `<button class="${cls}" data-tab="${a.tab}">Open ${a.tab[0]!.toUpperCase() + a.tab.slice(1)}</button>`;
   return "";
 }
 
@@ -292,6 +299,8 @@ function sessionsTab(): string {
 
 function sessionCard(s: SessionView): string {
   const u = S!.usage[s.id];
+  const lv = S!.live[s.id];
+  const ctx = lv && lv.contextPct != null ? `<div class="ctx" title="From Claude Code's status line"><div class="bar ${lv.contextPct >= 80 ? "hot" : ""}"><span style="width:${Math.min(100, Math.round(lv.contextPct))}%"></span></div><span class="small">Context ${Math.round(lv.contextPct)}% of ${lv.contextSize ? Math.round(lv.contextSize / 1000) + "k" : "?"}${lv.costUsd != null ? ` · ~$${lv.costUsd.toFixed(2)} at list price` : ""}</span></div>` : "";
   const tokens = u && u.source === "transcript"
     ? `${u.lastTurnInputTokens?.toLocaleString() ?? "?"} tokens in context (estimate) · ${u.totalOutputTokens?.toLocaleString() ?? "?"} written · ${u.assistantTurns} turns`
     : "Unknown (no local transcript data)";
@@ -300,6 +309,7 @@ function sessionCard(s: SessionView): string {
     <div class="s-head">${dot(s.displayStatus)}<b>${STATUS_LABEL[s.displayStatus] ?? s.displayStatus}</b><span class="muted small mono">${esc(short(s.id))}</span><span class="spacer"></span><span class="muted small">${ago(s.lastEventAt)}</span></div>
     ${s.currentTask ? `<div class="s-task" title="Last prompt you gave it">“${esc(s.currentTask)}”</div>` : `<div class="s-task muted">Task unknown (no prompt seen yet)</div>`}
     <div class="s-reason">${esc(s.displayReason)}</div>
+    ${ctx}
     ${s.intervention ? `<div class="s-int">${icon("arrow-right")} ${esc(s.intervention)}</div>` : ""}
     ${s.overlapsWith.length ? `<div class="s-int warn">${icon("warning")} Editing the same files as ${s.overlapsWith.map(short).join(", ")}</div>` : ""}
     ${disclosure(`sess:${s.id}`, `Details · ${s.eventCount} events${s.errorCount ? ` · <span class="errc">${s.errorCount} errors</span>` : ""}`, `
@@ -307,11 +317,14 @@ function sessionCard(s: SessionView): string {
         <dt>Folder</dt><dd class="mono">${esc(rel(s.cwd) || ".")}</dd>
         <dt>Model</dt><dd>${esc(u?.model ?? s.model ?? "Unknown")}</dd>
         <dt>Usage</dt><dd>${esc(tokens)}</dd>
-        <dt>Cost</dt><dd>Unknown <span class="muted">(subscriptions don't expose per-session cost)</span></dd>
+        <dt>Context</dt><dd>${lv && lv.contextPct != null ? `${Math.round(lv.contextPct)}% (exact, from Claude Code)` : S!.statusline.installed ? "Waiting for Claude Code to report" : `Unknown · <a href="#" data-act="statuslineOn">show exact %</a>`}</dd>
+        <dt>Cost</dt><dd>${lv && lv.costUsd != null ? `~$${lv.costUsd.toFixed(2)} <span class="muted">(Claude Code's estimate at list price; your plan may differ)</span>` : `Unknown <span class="muted">(not reported)</span>`}</dd>
         <dt>Started</dt><dd>${new Date(s.startedAt).toLocaleString()}</dd>
         ${s.permissionMode ? `<dt>Permissions</dt><dd>${esc(s.permissionMode)}</dd>` : ""}
       </dl>
       ${s.editedFiles.length ? `<div class="sub">Changed files</div><ul class="plain files">${s.editedFiles.map((f) => `<li><a href="#" data-open="${esc(f)}">${esc(rel(f))}</a></li>`).join("")}</ul>` : ""}
+      <div class="actions"><button class="link" data-act="explainSession" data-session="${esc(s.id)}">${icon("sparkle")} Explain with AI</button></div>
+      ${explanations[s.id] ? `<div class="note">${icon("lightbulb")}<div class="pre-wrap">${esc(explanations[s.id])}</div></div>` : ""}
       <div class="sub">Timeline (newest first)</div><ul class="timeline">${timeline || "<li class='muted'>No events</li>"}</ul>`)}
   </article>`;
 }
@@ -345,6 +358,19 @@ function supervisorTab(): string {
     </div>
     ${st.runningScript ? `<p class="muted">${icon("loading", "spin")} Running <code>${esc(st.runningScript)}</code>…</p>` : ""}
     ${st.testRuns.length ? disclosure("runs", `Recent runs (${st.testRuns.length})`, `<ul class="plain">${st.testRuns.slice(0, 8).map((t) => `<li>${t.passed ? icon("pass", "ok") : icon("error", "bad")} <code>${esc(t.command)}</code> <span class="muted small">${ago(t.startedAt)} · ${(t.durationMs / 1000).toFixed(1)}s</span>${disclosure(`run:${t.id}`, "output", `<pre>${esc(t.outputTail)}</pre>`)}</li>`).join("")}</ul>`) : ""}
+  </section>
+  <section>
+    <h3>Dependencies</h3>
+    ${st.audit ? (st.audit.ok ? `<p>${st.audit.counts.critical + st.audit.counts.high ? icon("warning", "bad") : icon("pass", "ok")} ${st.audit.counts.critical} critical · ${st.audit.counts.high} high · ${st.audit.counts.moderate} moderate · ${st.audit.counts.low} low <span class="muted small">(${esc(st.audit.tool)}, ${ago(st.audit.ranAt)})</span></p>${st.audit.top.length ? disclosure("audit-top", "Affected packages", `<ul class="plain">${st.audit.top.map((t) => `<li><code>${esc(t.name)}</code> <span class="sev sev-${t.severity === "critical" ? "blocker" : t.severity === "high" ? "high" : "medium"}">${esc(t.severity)}</span> ${esc(t.title)}${t.fixAvailable ? ` <span class="muted small">fix available</span>` : ""}</li>`).join("")}</ul>`) : ""}` : `<p class="muted">${icon("info")} ${esc(st.audit.error)}</p>`) : `<p class="muted small">Check your libraries against public vulnerability databases. Sends package names and versions only.</p>`}
+    <div class="actions"><button class="secondary" data-act="audit" ${settings?.trusted ? "" : "disabled"}>${icon("shield")} ${st.audit ? "Re-check" : "Check dependencies"}</button></div>
+  </section>
+  <section>
+    <h3>Visual check</h3>
+    <p class="muted small">Open your running app headlessly, check it loads without an error, and save a screenshot.${st.browserFound ? "" : " (No Chrome/Edge found, so no screenshot.)"}</p>
+    <input id="appUrl" type="text" value="${esc(st.visual?.url ?? st.appUrl.url ?? "")}" placeholder="http://localhost:3000" aria-label="App address">
+    <div class="muted small">${st.appUrl.url ? `Detected from ${esc(st.appUrl.basis)}` : "Address not detected. Enter it above."}</div>
+    <div class="actions wrap"><button class="secondary" data-act="visualCheck">${icon("eye")} Check now</button>${f?.scripts.dev || f?.scripts.start ? `<button class="link" data-act="startApp" ${settings?.trusted ? "" : "disabled"}>Start the app first</button>` : ""}</div>
+    ${st.visual ? `<p>${st.visual.reachable && !st.visual.errorText ? icon("pass", "ok") : icon("error", "bad")} ${esc(st.visual.note)} <span class="muted small">${ago(st.visual.checkedAt)}${st.visual.title ? ` · “${esc(st.visual.title)}”` : ""}</span></p>${st.visual.errorText ? `<div class="errtext">${esc(st.visual.errorText)}</div>` : ""}${settings?.screenshotUri ? `<a href="#" data-act="openScreenshot" title="Open full size"><img class="shot" src="${esc(settings.screenshotUri)}" alt="Screenshot of your app"></a>` : ""}` : ""}
   </section>
   <section>
     <h3>Ready to ship?</h3>
@@ -460,6 +486,7 @@ function connectTab(): string {
     <ul class="steps">
       <li>${icon(st.integration.claudeInstalled ? "pass-filled" : "circle-large-outline", st.integration.claudeInstalled ? "ok" : "muted")} <span>${st.integration.claudeInstalled ? `Installed: ${esc(st.integration.claudeVersion)}` : st.integration.claudeInstalled === null ? "Checking…" : "Not found on PATH"}</span></li>
       <li>${icon(st.hooks.installed ? "pass-filled" : "circle-large-outline", st.hooks.installed ? "ok" : "muted")} <span>${st.hooks.installed ? "Connected" : st.hooks.settingsError ? `Settings file problem: ${esc(st.hooks.settingsError)}` : "Not connected"}<div class="muted small mono">${esc(st.hooks.settingsPath)}</div></span></li>
+      <li>${icon(st.statusline.installed ? "pass-filled" : "circle-large-outline", st.statusline.installed ? "ok" : "muted")} <span>${st.statusline.installed ? `Exact context % on${st.statusline.chainedOriginal ? " (your status line is preserved)" : ""}` : "Exact context % off"} ${st.statusline.installed ? `<a href="#" data-act="statuslineOff">remove</a>` : `<a href="#" data-act="statuslineOn">turn on</a>`}</span></li>
       <li>${icon("database", "muted")} <span>${st.integration.spool.accepted} events received this run${st.integration.spool.rejected ? `, ${st.integration.spool.rejected} malformed ignored` : ""}${st.integration.spool.lastEventAt ? ` · last ${ago(st.integration.spool.lastEventAt)}` : ""}</span></li>
     </ul>
     <div class="actions wrap">${st.hooks.installed ? `<button class="link" data-act="uninstallHooks">Disconnect</button>` : `<button class="primary" data-act="installHooks">Connect</button>`}${st.demo ? `<button class="link" data-act="demoOff">Remove demo data</button>` : `<button class="link" data-act="demoOn">Load demo data</button>`}</div>
@@ -473,6 +500,7 @@ function connectTab(): string {
     <h3>Integration API</h3>
     <p class="muted small">Lets your own tools ask BuildPilot what's happening: iOS Shortcuts / Siri, Raycast, Stream Deck, a companion app for smart glasses, or a bot. Read-only plus prompt generation. It can't run commands or change files. Requires a secret token.</p>
     <label class="check"><input type="checkbox" id="apiToggle" ${s.apiEnabled ? "checked" : ""}> Enable on ${s.apiAllowLan ? "your local network" : "this computer only"}</label>
+    ${s.apiEnabled && s.pocketUrl ? `<div class="pocket">${icon("device-mobile")} <div><b>Pocket</b>: a phone page that shows status and can read it aloud (through Bluetooth glasses or earbuds).<div class="mono small">${esc(s.pocketUrl)}</div>${s.apiAllowLan ? "" : `<div class="muted small">To open it on your phone, enable network access in settings (trusted Wi-Fi only).</div>`}<button class="link" data-act="copyPocketLink">Copy link for my phone</button></div></div>` : ""}
     ${s.apiEnabled && s.apiAddress ? `<div class="mono small api">${esc(s.apiAddress)}/v1/brief?format=text<br>${esc(s.apiAddress)}/v1/status · /v1/sessions · /v1/next<br>POST ${esc(s.apiAddress)}/v1/prompt {"goal","request"}</div>
       <div class="actions wrap"><button class="secondary small" data-act="copyApiToken">${icon("key")} Copy token</button><button class="link" data-act="rotateApiToken">New token</button><button class="link" data-act="settings">Port / network settings</button></div>` : ""}
   </section>
@@ -526,7 +554,7 @@ async function buildNow(): Promise<void> {
   built = r;
   promptText = r.text;
   render();
-  document.getElementById("ptext")?.scrollIntoView({ block: "nearest" });
+  document.getElementById("ptext")?.scrollIntoView?.({ block: "nearest" });
 }
 
 async function addReq(): Promise<void> {
@@ -597,6 +625,16 @@ async function act(el: HTMLElement): Promise<void> {
       await call("rollback", { sha, files });
       cpFiles = {};
       return render();
+    }
+    case "statuslineOn": return void call("statusline", { on: true });
+    case "statuslineOff": return void call("statusline", { on: false });
+    case "visualCheck": return void call("visualCheck", { url: val("appUrl") });
+    case "worktree": return void call("worktree", { sessionId: el.dataset.session });
+    case "explainSession": {
+      const sid = el.dataset.session!;
+      const r = await call<string | null>("explainSession", { sessionId: sid });
+      if (r) { explanations[sid] = r; render(); }
+      return;
     }
     case "demoOn": return void call("demo", { on: true });
     case "demoOff": return void call("demo", { on: false });

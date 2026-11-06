@@ -7,8 +7,14 @@ Run everything: `npm run ci` (typecheck → lint → unit/engine tests → real 
 |---|---|
 | `tsc --noEmit` (strict, `noUncheckedIndexedAccess`) | ✅ clean |
 | ESLint (typescript-eslint recommended) | ✅ clean |
-| Vitest: 39 tests (`test/unit/core.test.ts`, `test/unit/engine.test.ts`) | ✅ 39/39 |
-| Extension-host smoke (`test/smoke`), real VS Code, isolated profile | ✅ 20/20 checks |
+| Vitest: 67 tests (core, engine, features, webview) | ✅ 67/67 |
+| Extension-host smoke (`test/smoke`), real VS Code, isolated profile | ✅ 25/25 checks (incl. Integration API + Pocket started from settings, status-line data) |
+| Sidebar click-through (real bundle in jsdom): tabs, Prompt Studio build/copy/start, actions, memory, connect, XSS escaping | ✅ 6/6 |
+| Live `npm audit` on BuildPilot itself | ✅ found 2 critical + 1 high in dev tools → upgraded vitest 2→4 → 0 critical/high |
+| Visual check with real headless Chrome screenshot against a local server; error-page detection | ✅ |
+| Status-line script: saves data, chains an existing status line unchanged, restores exactly | ✅ |
+| "Start in Claude Code" command: hostile prompt reaches `claude` as one exact argument, nothing executed | ✅ |
+| Webhooks (ntfy + generic JSON) against a local receiver | ✅ |
 | Live Claude Code integration (`claude -p` with project-scoped hooks) | ✅ 8/8 events captured and ingested; session linked to project; transcript usage format confirmed |
 | VSIX packaging + install into isolated extensions dir | ✅ `buildpilot-local.buildpilot@0.1.0` |
 | UI screenshots, dark + light, all 6 tabs at 340 px (`test/ui`) | ✅ reviewed |
@@ -32,6 +38,7 @@ Run everything: `npm run ci` (typecheck → lint → unit/engine tests → real 
 
 ## Not run / limits
 - Windows and Linux: not run (no machines here). Paths, shells (PowerShell/cmd/Git Bash) are handled in code but unverified.
-- Webview click-through automation inside VS Code: not automated (webview DOM isn't reachable from the extension-host test API); interactions were checked via the standalone harness, which uses the real bundle.
-- Notifications to real ntfy/Slack endpoints and Anthropic/Ollama refinement: code paths written, not exercised against live services (would need your accounts/keys).
-- "Start in Claude Code" terminal launch: exercised manually only via the CLI equivalent; the VS Code terminal path wasn't automated.
+- Webview inside VS Code itself isn't scriptable from the extension-host API; the same bundle is click-tested in jsdom and screenshot-tested in Chrome.
+- Real ntfy/Slack/Discord endpoints and Anthropic/Ollama calls: formats tested against a local receiver; not sent to live services (needs your accounts/keys).
+- Pocket on a physical phone / glasses audio: page verified rendering live data in Chrome; not tried on a real phone here.
+- Remaining audit findings: 10 moderate, dev-only (typescript-eslint chain), fixed only by a major upgrade (ROADMAP #6).

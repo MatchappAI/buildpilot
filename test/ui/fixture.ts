@@ -33,6 +33,24 @@ import { GOALS } from "../../src/core/prompts";
   engine.addDecision("Use Gmail API, not SMTP", "OAuth refresh tokens; avoids app passwords");
   await engine.runScript("test");
   engine.loadDemo();
+  fs.mkdirSync(path.join(home, "status"), { recursive: true });
+  fs.writeFileSync(path.join(home, "status", "demo-a1b2c3.json"), JSON.stringify({ session_id: "demo-a1b2c3", cost: { total_cost_usd: 2.41 }, context_window: { used_percentage: 83, context_window_size: 200000, total_input_tokens: 166000 }, rate_limits: { five_hour: { used_percentage: 42 } } }));
+  const pid = engine.currentProject!.id;
+  const note = (k: string, v: unknown) => engine.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, ?, ?, ?)", [pid, k, JSON.stringify(v), Date.now()]);
+  note("audit", { ranAt: Date.now() - 600000, tool: "npm audit", ok: true, counts: { critical: 0, high: 1, moderate: 3, low: 0, info: 0, total: 4 }, top: [{ name: "next", severity: "high", fixAvailable: true, title: "Authorization bypass in middleware" }], error: null });
+  note("visual", { url: "http://localhost:3000", checkedAt: Date.now() - 120000, reachable: true, status: 500, title: "Invoices", looksBlank: false, errorText: "Unhandled Runtime Error TypeError: Cannot read properties of undefined (reading 'total')", screenshot: null, note: "The page loaded but shows an error." });
+  if (process.argv.includes("--pocket")) {
+    const { IntegrationApi, loadOrCreateToken } = await import("../../src/core/api");
+    const token = loadOrCreateToken(home);
+    const api = new IntegrationApi(engine, { port: 47950, host: "127.0.0.1", token });
+    await api.start();
+    const shot = process.argv[process.argv.indexOf("--pocket") + 1]!;
+    const { execFile } = await import("child_process");
+    const prof = fs.mkdtempSync(path.join(os.tmpdir(), "bp-chr-"));
+    // async: the API server in this same process must keep answering the page's requests
+    await new Promise<void>((resolve) => execFile("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ["--headless=new", "--disable-gpu", `--user-data-dir=${prof}`, "--hide-scrollbars", "--window-size=500,900", "--timeout=5000", `--screenshot=${shot}`, `http://127.0.0.1:47950/pocket#t=${token}`], { timeout: 30000 }, () => resolve()));
+    await api.stop();
+  }
   const st = engine.snapshot();
   const built = engine.prompt({ goal: "integration", request: "Make my Gmail integration work perfectly" }, st);
   fs.writeFileSync(path.join(__dirname, "fixture.json"), JSON.stringify({ state: st, goals: GOALS, built, handoff: engine.handoff(st) }));

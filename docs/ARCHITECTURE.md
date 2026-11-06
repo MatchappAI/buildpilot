@@ -54,3 +54,12 @@ Example (iOS Shortcut / glasses companion): `curl -H "Authorization: Bearer $TOK
 
 ## Prompt hand-off to Claude Code
 Supported: start a new session with `claude "<prompt>"` (documented CLI). BuildPilot writes the prompt to `~/.buildpilot/prompts/*.md` (0600) and runs `claude "$(cat file)"` (PowerShell: `Get-Content -Raw`; cmd.exe: start `claude` and put the prompt on the clipboard). Injecting text into an *existing* interactive session has no documented interface, so BuildPilot offers Copy instead.
+
+## Status-line data (exact context %)
+`buildpilot.installStatusline` sets Claude Code's `statusLine` to `sh ~/.buildpilot/statusline.sh`. Claude Code pipes documented session JSON to it (`context_window.used_percentage`, `context_window_size`, `cost.total_cost_usd`, `rate_limits.*`). The script saves it to `~/.buildpilot/status/<session_id>.json` (atomic) and then runs the user's original status-line command with the same input, so their display is unchanged. If there was none, it prints `Model · context N% · BuildPilot`. Uninstall restores the original `statusLine` object byte-for-byte (saved in `statusline-original.json`).
+
+## Pocket (phone / glasses)
+`GET /pocket` serves a static page (no data, strict CSP with nonce, `connect-src 'self'`). The page stores the token in that phone's localStorage (it can arrive in the URL fragment, which browsers don't send to servers) and polls `/v1/brief` and `/v1/sessions` every 20 s. "Read aloud" and "Speak when something needs me" use the browser's speech synthesis, which plays through the phone's audio output, including Bluetooth smart glasses. Reaching it from a phone requires `integrationApi.allowLan` (trusted Wi-Fi) or your own tunnel/VPN.
+
+## Additional approved actions
+Dependency audit (`npm audit --json` / `pip-audit -f json`), Visual check (loopback URLs only; headless Chromium screenshot into `~/.buildpilot/visual/<project>/`), start the dev script in a visible terminal, create a Git worktree (`git worktree add -b buildpilot/<name>-<ts> ../<project>-<name>-<ts>`), Explain with AI (redacted event digest).
