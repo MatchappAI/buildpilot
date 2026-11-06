@@ -42,6 +42,14 @@ describe("license worker", () => {
     expect(bad.status).toBe(400);
   });
 
+  it("accepts the optional test-mode secret too", async () => {
+    const e = { ...env(), STRIPE_WEBHOOK_SECRET: "whsec_live_other", STRIPE_WEBHOOK_SECRET_TEST: SECRET };
+    const body = JSON.stringify({ type: "checkout.session.completed", data: { object: { id: "cs_test_dualsecret1", client_reference_id: "x1234567", payment_status: "paid" } } });
+    const r = await worker.fetch(new Request("https://w/stripe/webhook", { method: "POST", body, headers: { "stripe-signature": sign(body) } }), e);
+    expect(r.status).toBe(200);
+    expect(e.LICENSES.m.has("session:cs_test_dualsecret1")).toBe(true);
+  });
+
   it("anonymous counts: only 4 known events with a random id; nothing else accepted", async () => {
     const e = env();
     const post = (b: unknown) => worker.fetch(new Request("https://w/v1/count", { method: "POST", body: JSON.stringify(b) }), e);

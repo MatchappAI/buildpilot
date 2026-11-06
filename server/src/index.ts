@@ -10,7 +10,7 @@ export interface KV {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void>;
 }
-export interface Env { STRIPE_WEBHOOK_SECRET: string; LICENSE_PRIVATE_KEY: string; LICENSES: KV }
+export interface Env { STRIPE_WEBHOOK_SECRET: string; STRIPE_WEBHOOK_SECRET_TEST?: string; LICENSE_PRIVATE_KEY: string; LICENSES: KV }
 
 const enc = new TextEncoder();
 const b64url = (buf: ArrayBuffer | Uint8Array) => {
@@ -60,7 +60,10 @@ export default {
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === "/stripe/webhook") {
       const body = await req.text();
-      if (!(await verifyStripe(body, req.headers.get("stripe-signature"), env.STRIPE_WEBHOOK_SECRET))) return new Response("bad signature", { status: 400 });
+      // Live endpoint secret, plus (optionally) the test-mode endpoint's secret, so both modes can be wired at once.
+      const sig = req.headers.get("stripe-signature");
+      const ok = (await verifyStripe(body, sig, env.STRIPE_WEBHOOK_SECRET)) || (!!env.STRIPE_WEBHOOK_SECRET_TEST && (await verifyStripe(body, sig, env.STRIPE_WEBHOOK_SECRET_TEST)));
+      if (!ok) return new Response("bad signature", { status: 400 });
       const ev = JSON.parse(body) as { type: string; data: { object: { id: string; client_reference_id?: string | null; payment_status?: string } } };
       if (ev.type !== "checkout.session.completed" || ev.data.object.payment_status === "unpaid") return new Response("ignored");
       const s = ev.data.object;
