@@ -260,7 +260,7 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
   const f = i.facts;
   const conflicts = detectConflicts(i.sessions, i.eventsBySession, i.now);
   const sessions = buildSessionViews(i, conflicts);
-  const shortId = (id: string): string => id.slice(0, 8);
+  const shortId = (id: string): string => (id.startsWith("demo-") ? `DEMO ${id.slice(5, 11)}` : id.slice(0, 8));
 
   // --- integration health
   if (i.claudeInstalled === false) {

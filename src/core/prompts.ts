@@ -270,6 +270,10 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
     const cmds = ["dev", "start", "build", "test", "lint", "typecheck"].filter((s) => f.scripts[s]).map((s) => `\`${f.packageManager === "pnpm" ? "pnpm" : f.packageManager === "yarn" ? "yarn" : f.packageManager === "bun" ? "bun run" : "npm run"} ${s}\``);
     if (cmds.length) lines.push(`- Commands: ${cmds.join(", ")}`);
     lines.push(`- Tests: ${f.testFileCount ? `${f.testFileCount} test files` : "none yet"}${ctx.lastTest ? `; last run ${ctx.lastTest.passed ? "PASSED" : "FAILED"} (\`${ctx.lastTest.command}\`)` : "; not run yet"}`);
+    if (f.envExampleVars.length && (g.id === "integration" || g.id === "deploy" || g.id === "security")) {
+      const missing = f.envExampleVars.filter((v) => !f.envFileVars.includes(v));
+      lines.push(`- Config (names only, from .env.example): ${f.envExampleVars.slice(0, 15).join(", ")}${missing.length ? `; NOT set locally: ${missing.slice(0, 10).join(", ")}` : ""}`);
+    }
     if (f.hasClaudeMd) lines.push("- Follow the rules in CLAUDE.md.");
   } else {
     lines.push("- (Project not analyzed yet; inspect the repository first.)");

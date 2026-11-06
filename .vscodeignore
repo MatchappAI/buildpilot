@@ -1,0 +1,9 @@
+**
+!dist/extension.js
+!dist/cli.js
+!dist/sql-wasm.wasm
+!media/**
+!package.json
+!README.md
+!LICENSE
+media/webview.js.map

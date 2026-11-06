@@ -42,6 +42,16 @@ describe("engine end-to-end", () => {
     expect(engine.snapshot().facts?.languages).toEqual([]);
   });
 
+  it("links sessions whose cwd is the real path of a symlinked project folder (macOS /var vs /private/var)", async () => {
+    const { engine, repo, home } = await setup();
+    const link = path.join(tmpDir("bp-link-"), "proj-link");
+    fs.symlinkSync(repo, link);
+    await engine.openProject(link);
+    spool(home, "r.json", { session_id: "real1", cwd: fs.realpathSync(repo), hook_event_name: "SessionStart", source: "startup" });
+    engine.drainNow();
+    expect(engine.snapshot().out.sessions.map((s) => s.id)).toEqual(["real1"]);
+  });
+
   it("recommends hook setup when Claude Code isn't connected", async () => {
     const { engine } = await setup();
     const st = engine.snapshot();

@@ -155,7 +155,7 @@ function render(): void {
     </div>
     ${S.demo ? `<div class="demo-banner">${icon("beaker")} Showing DEMO sessions. They aren't real. <a href="#" data-act="demoOff">Remove demo</a></div>` : ""}
     ${!settings?.trusted ? `<div class="demo-banner">${icon("shield")} Restricted Mode: BuildPilot can read, but won't run scripts or change files.</div>` : ""}
-    <nav class="tabs" role="tablist">${TABS.map((t) => `<button role="tab" aria-selected="${vs.tab === t.id}" class="tab ${vs.tab === t.id ? "active" : ""}" data-tab="${t.id}" title="${t.label}">${icon(t.icon)}<span class="tab-label">${t.label}</span>${badge[t.id] ?? ""}</button>`).join("")}</nav>
+    <nav class="tabs" role="tablist">${TABS.map((t) => `<button role="tab" aria-selected="${vs.tab === t.id}" class="tab ${vs.tab === t.id ? "active" : ""}" data-tab="${t.id}" title="${t.label}" aria-label="${t.label}">${icon(t.icon)}<span class="tab-label">${t.label}</span>${badge[t.id] ?? ""}</button>`).join("")}</nav>
   </header>
   <main class="content" role="tabpanel">${S.errors.map((e) => `<div class="error-box">${icon("error")} ${esc(e)}</div>`).join("")}${renderTab()}</main>`;
   bind();

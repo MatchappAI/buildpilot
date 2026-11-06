@@ -49,8 +49,9 @@ pre { white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow
 .tab:hover { color: var(--vscode-foreground); }
 .tab.active { color: var(--vscode-foreground); border-bottom-color: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder)); }
 .tab:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
-@container (max-width: 330px) { .tab-label { display: none; } }
-@media (max-width: 360px) { .tab-label { display: none; } .tab { padding: 6px 8px 7px; } }
+/* Icons for all tabs; only the active tab shows its label, so six tabs fit a narrow sidebar. */
+.tab:not(.active) .tab-label { display: none; }
+.tab { padding: 6px 7px 7px; }
 .badge { font-size: 10px; min-width: 15px; height: 15px; line-height: 15px; text-align: center; border-radius: 8px; padding: 0 4px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
 .badge.warn { background: var(--warn); color: var(--vscode-editor-background); }
 .badge.err { background: var(--bad); color: var(--vscode-editor-background); }

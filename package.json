@@ -23,7 +23,7 @@
     "lint": "eslint src test",
     "test": "vitest run",
     "test:smoke": "node scripts/build.mjs && node test/smoke/run.mjs",
-    "package": "node scripts/build.mjs && vsce package --no-dependencies --out dist/buildpilot.vsix",
+    "package": "node scripts/build.mjs && vsce package --no-dependencies --no-rewrite-relative-links --allow-missing-repository --out dist/buildpilot.vsix",
     "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke"
   },
   "dependencies": {
@@ -43,10 +43,6 @@
     "vitest": "^2.1.8"
   },
   "icon": "media/icon.png",
-  "repository": {
-    "type": "git",
-    "url": "local"
-  },
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",

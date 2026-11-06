@@ -1,0 +1,41 @@
+// Produces a realistic UI state from the REAL engine (demo sessions clearly labelled) for visual QA.
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { execFileSync } from "child_process";
+import { Engine } from "../../src/core/engine";
+import { GOALS } from "../../src/core/prompts";
+
+(async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "bp-ui-home-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "invoice-app-"));
+  const w = (f: string, c: string) => { fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true }); fs.writeFileSync(path.join(repo, f), c); };
+  w("package.json", JSON.stringify({ name: "invoice-app", description: "Freelancers create invoices and send them by Gmail.", scripts: { dev: "next dev", build: "node -e 0", test: "node -e \"console.error('1 failing: sends invoice email'); process.exit(1)\"" }, dependencies: { next: "15", react: "19", googleapis: "1", stripe: "1" } }));
+  for (let i = 0; i < 14; i++) w(`src/feature${i}.ts`, `export const f${i} = ${i};\n// TODO: handle errors\n`);
+  w("src/gmail.ts", "export async function send() {}\n");
+  w("src/gmail.test.ts", "test('send', () => {})\n");
+  w(".env.example", "GMAIL_CLIENT_ID=\nGMAIL_CLIENT_SECRET=\nSTRIPE_SECRET_KEY=\n");
+  w(".env", "GMAIL_CLIENT_ID=x\n");
+  fs.mkdirSync(path.join(repo, "node_modules"));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["add", "-A"], { cwd: repo });
+  execFileSync("git", ["-c", "user.name=a", "-c", "user.email=a@a", "commit", "-qm", "Add invoice PDF export"], { cwd: repo });
+  w("src/invoice.ts", "export const x = 2;\n");
+  const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "settings.json") });
+  await engine.start();
+  await engine.openProject(repo);
+  engine.setNote("goal", "Help freelancers send professional invoices in under a minute.");
+  engine.addRequirement("Create an invoice", "invoice saved with line items and total");
+  engine.addRequirement("Send invoice via Gmail", "recipient receives email with PDF attached");
+  engine.addRequirement("Accept card payments", "");
+  engine.updateRequirement(engine.requirements()[0]!.id, { status: "done" });
+  engine.updateRequirement(engine.requirements()[1]!.id, { status: "in_progress" });
+  engine.addDecision("Use Gmail API, not SMTP", "OAuth refresh tokens; avoids app passwords");
+  await engine.runScript("test");
+  engine.loadDemo();
+  const st = engine.snapshot();
+  const built = engine.prompt({ goal: "integration", request: "Make my Gmail integration work perfectly" }, st);
+  fs.writeFileSync(path.join(__dirname, "fixture.json"), JSON.stringify({ state: st, goals: GOALS, built, handoff: engine.handoff(st) }));
+  engine.stop();
+  console.log("fixture written");
+})();

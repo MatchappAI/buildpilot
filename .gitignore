@@ -5,3 +5,7 @@ out/
 *.vsix
 .buildpilot/
 .live-test-*
+test/ui/*.cjs
+test/ui/*.wasm
+test/ui/preview-*.html
+test/ui/fixture.json
