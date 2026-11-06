@@ -1,4 +1,4 @@
-// Builds "BuildPilot.app": a double-click launcher that opens BuildPilot in VS Code for your most recent project.
+// Builds "BuildPilot.app": a double-click launcher that opens BuildPilot in its own window (no VS Code needed).
 // Usage: node scripts/make-launcher.mjs <output-dir>   (macOS only)
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -8,7 +8,6 @@ import * as path from "path";
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const outDir = path.resolve(process.argv[2] ?? path.join(os.homedir(), "Desktop"));
 const app = path.join(outDir, "BuildPilot.app");
-const extId = (() => { const p = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")); return `${p.publisher}.${p.name}`; })();
 
 fs.rmSync(app, { recursive: true, force: true });
 fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
@@ -31,20 +30,19 @@ fs.writeFileSync(path.join(app, "Contents/Info.plist"), `<?xml version="1.0" enc
 
 // The launcher: find Node, ask BuildPilot for your most recent project, open it in VS Code with the BuildPilot page.
 fs.writeFileSync(path.join(app, "Contents/MacOS/BuildPilot"), `#!/bin/zsh
-# BuildPilot launcher. Opens BuildPilot in VS Code for the project you were most recently building.
+# BuildPilot launcher. Opens BuildPilot in its own window for the project you were most recently building.
 CLI="$HOME/.buildpilot/bin/cli.js"
+[ -f "$CLI" ] || CLI="$HOME/.claude/plugins/marketplaces/buildpilot/plugin/bin/cli.js"
 NODE=""
 for n in "$(/usr/bin/python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.buildpilot/widget-config.json"))).get("node",""))' 2>/dev/null)" /opt/homebrew/bin/node /usr/local/bin/node "$HOME/.local/bin/node" "$HOME/.volta/bin/node" $(command -v node 2>/dev/null); do
   if [ -n "$n" ] && [ -x "$n" ]; then NODE="$n"; break; fi
 done
-FOLDER=""
-if [ -n "$NODE" ] && [ -f "$CLI" ]; then FOLDER="$("$NODE" "$CLI" recent 2>/dev/null)"; fi
-if [ -n "$FOLDER" ]; then
-  ENC="$(/usr/bin/python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$FOLDER")"
-  /usr/bin/open "vscode://${extId}/open?folder=$ENC" || /usr/bin/open -a "Visual Studio Code" "$FOLDER"
-else
-  /usr/bin/open -a "Visual Studio Code"
+if [ -z "$NODE" ] || [ ! -f "$CLI" ]; then
+  /usr/bin/osascript -e 'display dialog "BuildPilot needs Node.js and the BuildPilot Claude Code plugin. In Claude Code run: /plugin install buildpilot@buildpilot" buttons {"OK"} default button 1 with title "BuildPilot"'
+  exit 1
 fi
+FOLDER="$("$NODE" "$CLI" recent 2>/dev/null)"
+"$NODE" "$CLI" ui "$FOLDER" >/dev/null 2>&1
 `, { mode: 0o755 });
 
 // Icon from the extension's icon.

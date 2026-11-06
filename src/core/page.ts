@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Engine, UiState } from "./engine";
 import { widgetData, WidgetSession } from "./glance";
-import { LiveStatus, readLiveStatus } from "./hooks";
+import { LiveStatus, pluginConnected, readLiveStatus } from "./hooks";
 import { FREE_PROMPTS, plan as planOf, PRICE, PRO_POINTS } from "./license";
 import { Tip, tips } from "./tips";
 
@@ -193,7 +193,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     stuck: (st?.out.issues ?? []).filter((i) => i.key.startsWith("loop:")).map((i) => i.title),
   });
   return {
-    connected: !!st?.hooks.installed,
+    connected: !!st?.hooks.installed || pluginConnected(),
     builds,
     needs: w.needs,
     working: w.working,

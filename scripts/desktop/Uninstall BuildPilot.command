@@ -1,6 +1,7 @@
 #!/bin/bash
 # BuildPilot uninstaller: disconnects Claude Code (restoring your original settings and status line),
-# removes the VS Code extension, and optionally moves BuildPilot's local data to the Trash.
+# removes the Claude Code plugin, the Desktop app and the optional VS Code extension, and optionally moves
+# BuildPilot's local data to the Trash.
 cd "$(dirname "$0")" || exit 1
 EXT_ID="buildpilot-local.buildpilot"   # publisher.name (set from package.json by `npm run desktop`)
 BP_HOME="${BUILDPILOT_HOME:-$HOME/.buildpilot}"
@@ -29,23 +30,31 @@ if command -v node >/dev/null 2>&1 && [ -n "$CLI" ]; then
   node "$CLI" bar uninstall >/dev/null 2>&1 && echo "✓ Menu-bar widget removed (if it was installed)."
 else
   echo "Couldn't disconnect automatically (Node.js not found)."
-  echo "Please open VS Code → BuildPilot → Connect → Disconnect first, then run this again."
+  echo "Install Node.js (https://nodejs.org) or open BuildPilot and click Disconnect, then run this again."
   pause; exit 1
 fi
 
-# 2) Remove the extension
+# 2) Remove the Claude Code plugin and the Desktop app
+if command -v claude >/dev/null 2>&1; then
+  claude plugin uninstall buildpilot@buildpilot >/dev/null 2>&1 && echo "✓ Claude Code plugin removed."
+  claude plugin marketplace remove buildpilot >/dev/null 2>&1
+fi
+[ -d "$HOME/Desktop/BuildPilot.app" ] && mkdir -p "$TRASH" && mv "$HOME/Desktop/BuildPilot.app" "$TRASH/BuildPilot.app $(date +%H%M%S)" && echo "✓ Desktop app moved to the Trash."
+[ -f "$BP_HOME/ui-server.json" ] && kill "$(/usr/bin/python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["pid"])' "$BP_HOME/ui-server.json" 2>/dev/null)" 2>/dev/null
+
+# 3) Remove the optional VS Code extension
 CODE=""
 for c in "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" "$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" "$(command -v code 2>/dev/null)"; do
   [ -n "$c" ] && [ -x "$c" ] && CODE="$c" && break
 done
 if [ -n "$CODE" ]; then
   "$CODE" "${EXT_ARGS[@]}" --uninstall-extension "$EXT_ID" 2>&1 | grep -v -E "DEP0169|trace-deprecation" | tail -n 1
-  echo "✓ Extension removed (reload VS Code if it's open)."
+  echo "✓ VS Code extension removed (if it was installed)."
 else
-  echo "VS Code not found. Remove BuildPilot from its Extensions view if needed."
+  : # no VS Code: nothing to remove
 fi
 
-# 3) Local data (moved to the Trash, never deleted outright)
+# 4) Local data (moved to the Trash, never deleted outright)
 if [ -d "$BP_HOME" ]; then
   if [ -n "$BP_NONINTERACTIVE" ]; then keep="${BP_TRASH_DATA:-n}"; else
     say "Move BuildPilot's data to the Trash?"

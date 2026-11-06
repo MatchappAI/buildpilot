@@ -1,0 +1,340 @@
+import { execFile } from "child_process";
+import { randomBytes } from "crypto";
+import * as fs from "fs";
+import * as http from "http";
+import * as path from "path";
+import { claudeSettingsPath, connectPreview, installHooks, installStatusline, pluginConnected, uninstallHooks, uninstallStatusline } from "./hooks";
+import type { Engine } from "./engine";
+import { pageData } from "./page";
+import { checkoutUrl, gate, gateParallel, plan, readUsage, recordUse, saveLicense } from "./license";
+import { worktrees, run } from "./git";
+import { GoalType } from "./types";
+import { shellQuote } from "./prompts";
+
+/**
+ * BuildPilot as its own app (no VS Code): a private local web server that serves the same one-page UI.
+ * - Listens on 127.0.0.1 only; every request needs a random token (in the URL the launcher opens) and a
+ *   localhost Host header, so other websites can't drive it (CSRF / DNS-rebinding safe).
+ * - Side effects (Connect, merge, new build, …) are confirmed in the page before they're sent.
+ * - Terminals open in the user's Terminal app (macOS), never by building shell strings from untrusted input:
+ *   folders and prompt files are passed as AppleScript arguments and shell-quoted.
+ */
+export interface UiServerOptions { port?: number; token?: string; media: string; idleExitMs?: number }
+
+const MIME: Record<string, string> = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".ttf": "font/ttf" };
+
+/** Open a terminal window in `dir` and run a fixed command there. macOS: Terminal.app; Linux: x-terminal-emulator. */
+export function openTerminal(dir: string, command: string | null): Promise<void> {
+  const line = `cd ${shellQuote(dir)}${command ? ` && ${command}` : ""}`;
+  return new Promise((resolve, reject) => {
+    if (process.platform === "darwin") {
+      execFile("osascript", ["-e", "on run argv", "-e", 'tell application "Terminal" to do script (item 1 of argv)', "-e", 'tell application "Terminal" to activate', "-e", "end run", line], { timeout: 15000 }, (e) => (e ? reject(e) : resolve()));
+    } else if (process.platform === "linux") {
+      execFile("x-terminal-emulator", ["-e", "sh", "-c", `${line}; exec $SHELL`], { timeout: 15000 }, (e) => (e ? reject(e) : resolve()));
+    } else reject(new Error(`Open a terminal in ${dir} and run: ${command ?? "claude"}`));
+  });
+}
+
+export function copyText(text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cmd = process.platform === "darwin" ? "pbcopy" : process.platform === "win32" ? "clip" : "xclip";
+    const args = process.platform === "linux" ? ["-selection", "clipboard"] : [];
+    const p = execFile(cmd, args, (e) => (e ? reject(e) : resolve()));
+    p.stdin?.end(text);
+  });
+}
+
+const openUrl = (u: string) => execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [u], () => {});
+
+export class UiServer {
+  readonly token: string;
+  private server: http.Server | null = null;
+  private lastSeen = Date.now();
+  private idle: NodeJS.Timeout | null = null;
+  private side: unknown[] = [];
+
+  constructor(private engine: Engine, private opts: UiServerOptions) {
+    this.token = opts.token ?? randomBytes(16).toString("hex");
+  }
+
+  get url(): string {
+    const a = this.server?.address();
+    const port = a && typeof a === "object" ? a.port : this.opts.port;
+    return `http://127.0.0.1:${port}/?t=${this.token}`;
+  }
+
+  async start(): Promise<void> {
+    this.server = http.createServer((req, res) => void this.handle(req, res));
+    await new Promise<void>((resolve, reject) => {
+      this.server!.once("error", reject);
+      this.server!.listen(this.opts.port ?? 0, "127.0.0.1", () => resolve());
+    });
+    if (this.opts.idleExitMs) this.idle = setInterval(() => { if (Date.now() - this.lastSeen > this.opts.idleExitMs!) void this.stop().then(() => process.exit(0)); }, 30_000);
+    void this.refreshSide();
+  }
+
+  async stop(): Promise<void> {
+    if (this.idle) clearInterval(this.idle);
+    await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r()));
+    this.server = null;
+  }
+
+  private async refreshSide(): Promise<void> {
+    try {
+      const out = [];
+      for (const b of await this.engine.extraBuilds()) {
+        const c = await this.engine.buildChanges(b.dir, b.branch);
+        out.push({ name: path.basename(b.dir), dir: b.dir, branch: b.branch, changed: c.files.length, unsaved: c.unsaved, commits: c.commits });
+      }
+      this.side = out;
+    } catch {
+      /* not a git project */
+    }
+  }
+
+  private statePayload() {
+    const st = this.engine.snapshot();
+    return { type: "state", state: st, page: { ...pageData(this.engine, st), side: this.side }, settings: { trusted: true, theme: this.theme(), standalone: true } };
+  }
+
+  private theme(): string {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(this.engine.home, "ui.json"), "utf8")).theme === "match" ? "match" : "white";
+    } catch {
+      return "white";
+    }
+  }
+
+  private send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8"): void {
+    res.writeHead(code, { "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+    res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body));
+  }
+
+  private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    try {
+      const host = (req.headers.host ?? "").split(":")[0];
+      if (host !== "127.0.0.1" && host !== "localhost") return this.send(res, 403, { error: "forbidden" });
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (url.pathname.startsWith("/media/")) {
+        const f = path.join(this.opts.media, path.basename(url.pathname));
+        if (!fs.existsSync(f)) return this.send(res, 404, "not found", "text/plain");
+        return this.send(res, 200, fs.readFileSync(f), MIME[path.extname(f)] ?? "application/octet-stream");
+      }
+      if ((url.searchParams.get("t") ?? req.headers["x-bp-token"]) !== this.token) return this.send(res, 401, { error: "missing or wrong token" });
+      this.lastSeen = Date.now();
+      if (req.method === "GET" && url.pathname === "/") return this.send(res, 200, this.html(), "text/html; charset=utf-8");
+      if (req.method === "GET" && url.pathname === "/api/state") return this.send(res, 200, this.statePayload());
+      if (req.method === "POST" && url.pathname === "/api/msg") {
+        let body = "";
+        for await (const c of req) { body += c; if (body.length > 300_000) return this.send(res, 413, { error: "too large" }); }
+        const m = JSON.parse(body || "{}") as Record<string, unknown>;
+        const result = await this.onMessage(m);
+        return this.send(res, 200, { result: result ?? null });
+      }
+      return this.send(res, 404, { error: "not found" });
+    } catch (e) {
+      return this.send(res, 500, { error: (e as Error).message });
+    }
+  }
+
+  /** The same messages the VS Code extension handles, implemented without VS Code. Confirmation happens in the page. */
+  async onMessage(m: Record<string, unknown>): Promise<unknown> {
+    const eng = this.engine;
+    const root = eng.currentProject?.root ?? null;
+    const str = (k: string) => String(m[k] ?? "");
+    switch (m.type) {
+      case "ready": return null;
+      case "buildPrompt": return eng.gatedPrompt({ goal: str("goal") as GoalType, request: str("request"), beginner: true, planFirst: m.planFirst !== false }, undefined, !m.defer);
+      case "promptUsed": return recordUse(eng.home);
+      case "copy": case "useInOpen": await copyText(str("text")); return { flash: m.type === "useInOpen" ? "Copied. Paste it into Claude (Cmd+V)" : "Copied" };
+      case "sendToClaude": {
+        if (!root) return { flash: "Pick a project first" };
+        const dir = path.join(eng.home, "prompts");
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const file = path.join(dir, `prompt-${Date.now()}.md`);
+        fs.writeFileSync(file, str("text"), { mode: 0o600 });
+        await openTerminal(root, `claude "$(cat ${shellQuote(file)})"`);
+        return { flash: "Claude is starting in Terminal" };
+      }
+      case "openBuild": {
+        const cwd = str("cwd");
+        const panes = await new Promise<string>((r) => execFile("tmux", ["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_path}"], { timeout: 3000 }, (_e, o) => r(String(o ?? ""))));
+        const hit = panes.split("\n").map((l) => l.split("\t")).find(([, p]) => p && path.resolve(p) === path.resolve(cwd));
+        if (hit?.[0]) { execFile("tmux", ["select-window", "-t", hit[0]], () => {}); return { flash: "Switched to its tmux window" }; }
+        return { show: `This build is running in a terminal in:\n${cwd}\n\nSwitch to that terminal window to see what Claude is asking. (If you use tmux, BuildPilot switches to it for you.)` };
+      }
+      case "resumeBuild": {
+        const id = str("id");
+        const cwd = str("cwd");
+        if (!/^[A-Za-z0-9-]{8,64}$/.test(id) || !fs.existsSync(cwd)) return { flash: "Can't resume that one" };
+        await openTerminal(cwd, `claude --resume ${id}`);
+        return { flash: "Resuming in Terminal" };
+      }
+      case "startFresh": {
+        const cwd = str("cwd") || root;
+        if (!cwd || !fs.existsSync(cwd)) return null;
+        await copyText(eng.handoff());
+        await openTerminal(cwd, "claude");
+        return { flash: "Summary copied. Paste it into the new Claude (Cmd+V)" };
+      }
+      case "copyHandoff": await copyText(eng.handoff()); return { flash: "Handoff copied" };
+      case "connectAll": {
+        const file = claudeSettingsPath("user");
+        if (!pluginConnected(file)) installHooks(file, eng.home); // the plugin already brings its own hooks
+        installStatusline(file, eng.home);
+        eng.setClaudeSettingsFile(file);
+        return { flash: "Connected. Builds appear as soon as Claude does something" };
+      }
+      case "showConnectChanges": return { show: connectPreview(eng.home) };
+      case "disconnect": {
+        uninstallHooks(claudeSettingsPath("user"), eng.home);
+        if (root) { const pf = claudeSettingsPath("project", root); if (fs.existsSync(pf)) uninstallHooks(pf, eng.home); }
+        uninstallStatusline(claudeSettingsPath("user"), eng.home);
+        return { flash: "Disconnected. Your Claude Code settings are back to how they were" };
+      }
+      case "setupUndo": {
+        if (!root) return null;
+        const steps: string[][] = [];
+        if (!fs.existsSync(path.join(root, ".git"))) steps.push(["init", "-q"]);
+        steps.push(["add", "-A"], ["-c", "user.name=BuildPilot", "-c", "user.email=buildpilot@localhost", "commit", "-q", "--allow-empty", "-m", "First save point (BuildPilot)"]);
+        for (const a of steps) { const r = await run("git", a, root, { timeoutMs: 60_000 }); if (r.code !== 0) return { flash: `Couldn't turn on undo: ${r.stderr.trim()}` }; }
+        await eng.analyze();
+        return { flash: "Undo is on. First save point made" };
+      }
+      case "checkpoint": {
+        const cp = await eng.checkpoint("save point");
+        return { flash: `Save point made (${cp.sha.slice(0, 8)})` };
+      }
+      case "newBuild": {
+        if (!root) return { flash: "Pick a project first" };
+        const extra = Math.max(0, (await worktrees(root)).length - 1);
+        const g = gateParallel(eng.home, extra);
+        if (!g.allowed) return { paywall: g.paywall.message, url: g.paywall.url };
+        const head = await run("git", ["rev-parse", "--verify", "-q", "HEAD"], root);
+        if (head.code !== 0) return { flash: "A new build needs undo (Git) first: use “Turn on undo”" };
+        const w = await eng.createWorktree(str("label") || "build");
+        const install = fs.existsSync(path.join(w.dir, "package.json")) ? `${eng.snapshot().facts?.packageManager === "pnpm" ? "pnpm" : eng.snapshot().facts?.packageManager === "yarn" ? "yarn" : "npm"} install && ` : "";
+        await openTerminal(w.dir, `${install}claude`);
+        void this.refreshSide();
+        return { flash: `New build ${path.basename(w.dir)} started in Terminal` };
+      }
+      case "reviewBuild": {
+        const c = await eng.buildChanges(str("dir"), str("branch"));
+        return { show: c.files.length ? `${path.basename(str("dir"))}: ${c.files.length} file${c.files.length === 1 ? "" : "s"}${c.unsaved ? ` (${c.unsaved} not saved yet)` : ""}\n\n${c.files.map((f) => `${f.status === "A" ? "added  " : f.status === "D" ? "deleted" : "changed"}  ${f.path}`).join("\n")}\n\nFull diff: git -C ${shellQuote(str("dir"))} diff ${c.base ?? "HEAD"}` : "No changes yet." };
+      }
+      case "mergeBuild": {
+        const dir = str("dir");
+        const c = await eng.buildChanges(dir, str("branch"));
+        if (!c.files.length) return { flash: "Nothing to merge yet" };
+        let tests = "";
+        let hasTest = false;
+        try { hasTest = !!JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).scripts?.test; } catch { /* none */ }
+        if (hasTest && plan(eng.home).pro) {
+          const t = await run("npm", ["test"], dir, { timeoutMs: 10 * 60_000 });
+          if (t.code !== 0 && m.force !== true) return { confirmAgain: `Its tests FAIL. Merge anyway?`, force: true };
+          tests = t.code === 0 ? " Its tests passed." : "";
+        }
+        if (c.unsaved) await eng.saveBuild(dir, `Work from ${path.basename(dir)} (saved by BuildPilot before merging)`);
+        const r = await eng.mergeBuild(str("branch"));
+        void this.refreshSide();
+        if (r.merged) return { flash: `${r.message}${tests}` };
+        if (r.conflicts.length) {
+          const main = (await run("git", ["branch", "--show-current"], eng.currentProject!.root)).stdout.trim() || "main";
+          await copyText(`In this folder (${dir}), run \`git merge ${main}\`, resolve the conflicts in: ${r.conflicts.join(", ")}. Keep both sides' intent; ask me if they truly contradict. Run the tests, commit, then tell me it's ready to merge.`);
+          return { show: `${r.message}\n\nFiles: ${r.conflicts.join(", ")}\n\nA fix prompt is on your clipboard: paste it into the Claude in ${path.basename(dir)}, then merge again.` };
+        }
+        return { flash: r.message };
+      }
+      case "removeBuild": {
+        try { await eng.removeBuild(str("dir")); } catch (e) { return { flash: (e as Error).message }; }
+        void this.refreshSide();
+        return { flash: "Removed (its branch is kept)" };
+      }
+      case "upgrade": { const g = gate(eng.home); openUrl(g.allowed ? checkoutUrl(readUsage(eng.home).installId) : g.paywall.url); return null; }
+      case "enterLicense": { const v = saveLicense(eng.home, str("key")); return { flash: v.valid ? "BuildPilot Pro unlocked" : `That key didn't work (${v.reason})` }; }
+      case "toggleTheme": {
+        const f = path.join(eng.home, "ui.json");
+        fs.writeFileSync(f, JSON.stringify({ theme: this.theme() === "match" ? "white" : "match" }));
+        return null;
+      }
+      case "projects": {
+        const rows = eng.store.all<{ root: string; name: string }>("SELECT root, name FROM projects ORDER BY COALESCE(last_analyzed_at, created_at) DESC LIMIT 15").filter((r) => fs.existsSync(r.root));
+        return rows.map((r) => ({ root: r.root, name: path.basename(r.root) }));
+      }
+      case "selectProject": {
+        const r = str("root");
+        if (r && fs.existsSync(r)) { await eng.openProject(r); void this.refreshSide(); }
+        return null;
+      }
+      case "more": return { show: "More tools are in the terminal:\n\n  bp            folder status, issues, next step\n  bp audit      check dependencies for known vulnerabilities\n  bp visual     check your running app + screenshot\n  bp handoff    summary for a new Claude chat\n  bp builds     side builds · bp review / bp merge / bp done\n  bp help       everything" };
+      default: return null;
+    }
+  }
+
+  private html(): string {
+    const t = this.token;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BuildPilot</title><link rel="icon" href="/media/icon.png"><link rel="stylesheet" href="/media/webview.css">
+<style>.bp-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9}.bp-box{background:#fff;color:#111;max-width:560px;width:calc(100% - 32px);border-radius:14px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.2);font:14px/1.5 -apple-system,BlinkMacSystemFont,sans-serif}.bp-box pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;background:#f6f6f6;border-radius:8px;padding:10px;max-height:50vh;overflow:auto}.bp-box .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}.bp-box button{font:inherit;border-radius:10px;padding:8px 16px;border:1px solid #d6d6d6;background:#fff;cursor:pointer}.bp-box button.ok{background:#2f5bea;color:#fff;border-color:#2f5bea;font-weight:600}.bp-box input{width:100%;font:inherit;padding:8px;border:1px solid #d6d6d6;border-radius:8px}.bp-box li{padding:6px 0;cursor:pointer;color:#2f5bea}</style>
+</head><body><div id="app"><div class="loading">Starting BuildPilot…</div></div>
+<script>
+(() => {
+  const T = ${JSON.stringify(t)};
+  const H = { "content-type": "application/json", "x-bp-token": T };
+  // Side effects are confirmed here, in plain words, before anything is sent.
+  const CONFIRM = {
+    connectAll: ["Connect BuildPilot to Claude Code?", "BuildPilot adds a few lines to ~/.claude/settings.json so it can see your builds, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and Disconnect undoes it."],
+    disconnect: ["Disconnect BuildPilot from Claude Code?", "Removes exactly the lines BuildPilot added and restores your own status line."],
+    sendToClaude: ["Start Claude with this prompt?", "Opens Terminal in your project and starts Claude with it. Claude still asks before risky actions."],
+    startFresh: ["Start a fresh chat?", "Your files are kept. BuildPilot copies a summary of the work so far and opens Claude in a new Terminal window. Paste the summary as your first message."],
+    setupUndo: ["Turn on undo for this project?", "Sets up Git here and saves everything as a first save point. Nothing is uploaded."],
+    checkpoint: ["Make a save point?", "Saves a snapshot of every file as a private Git ref. Your files and branch don't change."],
+    mergeBuild: ["Bring this build's work into your main project?", "Its unsaved work is saved first. If both builds changed the same lines, nothing changes and you get a fix prompt."],
+    resumeBuild: ["Resume this Claude conversation?", "Opens Terminal in that folder and continues the same chat (claude --resume)."],
+    removeBuild: ["Remove this build's folder?", "Its branch is kept, so nothing is lost. Folders with unsaved changes are never removed."],
+  };
+  const modal = (html, onReady) => new Promise((resolve) => {
+    const m = document.createElement("div"); m.className = "bp-modal"; m.innerHTML = '<div class="bp-box">' + html + "</div>";
+    document.body.appendChild(m);
+    const done = (v) => { m.remove(); resolve(v); };
+    m.addEventListener("click", (e) => { if (e.target === m) done(null); });
+    document.addEventListener("keydown", function k(e) { if (e.key === "Escape") { document.removeEventListener("keydown", k); done(null); } });
+    onReady(m.querySelector(".bp-box"), done);
+  });
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const ask = (title, detail, ok = "OK") => modal("<b>" + esc(title) + "</b><p>" + esc(detail) + '</p><div class="row"><button data-x>Cancel</button><button class="ok" data-ok>' + esc(ok) + "</button></div>", (b, done) => { b.querySelector("[data-x]").onclick = () => done(false); const o = b.querySelector("[data-ok]"); o.onclick = () => done(true); o.focus(); });
+  const show = (text) => modal("<pre>" + esc(text) + '</pre><div class="row"><button class="ok" data-ok>Close</button></div>', (b, done) => { const o = b.querySelector("[data-ok]"); o.onclick = () => done(true); o.focus(); });
+  const input = (title, placeholder, password) => modal("<b>" + esc(title) + '</b><p><input type="' + (password ? "password" : "text") + '" placeholder="' + esc(placeholder) + '"></p><div class="row"><button data-x>Cancel</button><button class="ok" data-ok>OK</button></div>', (b, done) => { const i = b.querySelector("input"); i.focus(); i.onkeydown = (e) => { if (e.key === "Enter") done(i.value); }; b.querySelector("[data-x]").onclick = () => done(null); b.querySelector("[data-ok]").onclick = () => done(i.value); });
+  const pick = (title, items) => modal("<b>" + esc(title) + "</b><ul>" + items.map((x, n) => '<li data-n="' + n + '">' + esc(x.name) + ' <span style="color:#6b6b6b">' + esc(x.root) + "</span></li>").join("") + '</ul><div class="row"><button data-x>Cancel</button></div>', (b, done) => { b.querySelectorAll("li").forEach((li) => (li.onclick = () => done(items[+li.dataset.n]))); b.querySelector("[data-x]").onclick = () => done(null); });
+  const post = async (m) => (await (await fetch("/api/msg", { method: "POST", headers: H, body: JSON.stringify(m) })).json()).result;
+  const toast = (text) => { const el = document.getElementById("flash"); if (el) { el.textContent = text; el.classList.add("on"); setTimeout(() => el.classList.remove("on"), 2600); } };
+  const pushState = async () => { try { const s = await (await fetch("/api/state", { headers: H })).json(); window.postMessage(s, "*"); } catch {} };
+  let st = {};
+  window.acquireVsCodeApi = () => ({
+    getState: () => { try { return JSON.parse(localStorage.getItem("bp-view") || "{}"); } catch { return st; } },
+    setState: (s) => { st = s; try { localStorage.setItem("bp-view", JSON.stringify(s)); } catch {} },
+    postMessage: async (m) => {
+      const reply = (result) => { if (m.id) window.postMessage({ type: "reply", id: m.id, result }, "*"); };
+      if (m.type === "ready") { await pushState(); return reply(null); }
+      if (CONFIRM[m.type] && !(await ask(CONFIRM[m.type][0], CONFIRM[m.type][1], "Continue"))) return reply(null);
+      if (m.type === "showConnectChanges") { const r = await post(m); await show("BuildPilot adds these entries to ~/.claude/settings.json:\\n\\n" + r.show); return reply(null); }
+      if (m.type === "enterLicense") { const k = await input("Paste your BuildPilot Pro key", "BP1.…", true); if (k) { const r = await post({ type: "enterLicense", key: k }); if (r?.flash) toast(r.flash); await pushState(); } return reply(null); }
+      if (m.type === "newBuild") { const label = await input("New build: what's it for? (a few words)", "e.g. checkout page"); if (label === null) return reply(null); if (!(await ask("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy next to your project (with your .env files), installs packages, and opens Claude in Terminal. Two builds use your plan limit about twice as fast.", "Start build"))) return reply(null); m.label = label; }
+      if (m.type === "selectProject") { const list = await post({ type: "projects" }); const p = await pick("Choose a project", list || []); if (!p) return reply(null); m.root = p.root; }
+      let r = await post(m);
+      if (r && r.confirmAgain) { if (await ask(r.confirmAgain, "Merging now would bring failing code into your main project.", "Merge anyway")) r = await post({ ...m, force: true }); else return reply(null); }
+      if (r && typeof r.paywall === "string") { if (await ask("Go Pro?", r.paywall.replace(/: https?:\\/\\/\\S+$/, "."), "Get Pro")) window.open(r.url, "_blank"); return reply(null); }
+      if (r && r.show) await show(r.show);
+      if (r && r.flash) toast(r.flash);
+      reply(r ?? null);
+      if (!["buildPrompt", "copy", "useInOpen"].includes(m.type)) pushState();
+    },
+  });
+  setInterval(pushState, 3000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pushState(); });
+})();
+</script>
+<script src="/media/webview.js"></script></body></html>`;
+  }
+}
+

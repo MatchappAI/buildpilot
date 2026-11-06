@@ -73,6 +73,50 @@ async function main(): Promise<void> {
     } else return usage(`Unknown option "${sub}". Use: bp bar status | install | uninstall`);
     return;
   }
+  if (cmd === "ui") {
+    // BuildPilot as its own window (no VS Code). One private server per user, reused across launches.
+    const home = buildpilotHome();
+    const info = path.join(home, "ui-server.json");
+    const alive = (): { port: number; token: string } | null => {
+      try {
+        const j = JSON.parse(fs.readFileSync(info, "utf8")) as { port: number; token: string; pid: number };
+        process.kill(j.pid, 0);
+        return j;
+      } catch {
+        return null;
+      }
+    };
+    if (rest[0] === "--serve") {
+      const engine = new Engine();
+      await engine.start();
+      const folder = rest[1] && fs.existsSync(rest[1]) ? rest[1] : null;
+      if (folder) await engine.openProject(folder);
+      const { UiServer } = await import("./core/uiserver");
+      const media = [path.join(__dirname, "..", "media"), path.join(home, "media")].find((d) => fs.existsSync(path.join(d, "webview.js")));
+      if (!media) { console.error("BuildPilot's page files weren't found next to the CLI."); process.exit(1); }
+      const srv = new UiServer(engine, { port: Number(process.env.BUILDPILOT_UI_PORT ?? 0), media, idleExitMs: 15 * 60_000 });
+      await srv.start();
+      const port = Number(new URL(srv.url).port);
+      fs.writeFileSync(info, JSON.stringify({ port, token: srv.token, pid: process.pid }), { mode: 0o600 });
+      return; // keep running
+    }
+    let s = alive();
+    if (!s) {
+      const { spawn } = await import("child_process");
+      const folder = rest[0] ? path.resolve(rest[0]) : "";
+      const child = spawn(process.execPath, [__filename, "ui", "--serve", folder], { detached: true, stdio: "ignore" });
+      child.unref();
+      for (let i = 0; i < 50 && !(s = alive()); i++) await new Promise((r) => setTimeout(r, 100));
+      if (!s) { console.error("BuildPilot couldn't start its window. Try: bp ui again."); process.exitCode = 1; return; }
+    }
+    const url = `http://127.0.0.1:${s.port}/?t=${s.token}`;
+    if (rest.includes("--print")) { console.log(url); return; }
+    const chrome = ["/Applications/Google Chrome.app", "/Applications/Microsoft Edge.app", "/Applications/Brave Browser.app"].find((p) => fs.existsSync(p));
+    if (process.platform === "darwin" && chrome) execFile("open", ["-na", chrome, "--args", `--app=${url}`, "--window-size=780,1000"], () => {});
+    else execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [url], () => {});
+    console.log("BuildPilot is open.");
+    return;
+  }
   if (cmd === "recent") {
     // The project you were most recently building in (for the Desktop launcher). Prints a folder or nothing.
     const engine = new Engine({ light: true });
@@ -168,6 +212,7 @@ async function main(): Promise<void> {
     console.log(`BuildPilot: mission control for Claude Code
 
 Everyday
+  bp ui                     open BuildPilot in its own window
   bp limits                 your builds, chat % full, plan limits + forecast, tips
   bp new "<name>"           start another build in its own copy of this project (--no-env: don't copy .env files)
   bp review · bp merge <name>  see what a side build changed · bring it into your project

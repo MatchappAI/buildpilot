@@ -48,7 +48,7 @@ beforeAll(async () => {
   engine.stop();
 });
 
-function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean } = {}) {
+function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean; standalone?: boolean } = {}) {
   const sent: Record<string, unknown>[] = [];
   const dom = new JSDOM(`<!doctype html><html><body><div id="app"></div></body></html>`, { runScripts: "outside-only", url: "https://webview.local/" });
   const w = dom.window as unknown as Window & typeof globalThis & { acquireVsCodeApi: unknown; eval(s: string): unknown; __xss?: number };
@@ -60,7 +60,7 @@ function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean } = {})
       sent.push(m);
       const reply = (result: unknown) => setTimeout(() => w.postMessage({ type: "reply", id: m.id, result }, "*"), 0);
       if (m.type === "buildPrompt") reply(opts.paywall ? { paywall: { url: "https://buy.stripe.com/x" } } : { prompt: built, remaining: 3 });
-      else if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: opts.trusted ?? true } }, "*"), 0);
+      else if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: opts.trusted ?? true, standalone: opts.standalone ?? false } }, "*"), 0);
       else if (m.id) reply(null);
     },
   });
@@ -150,6 +150,23 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(sent.find((m) => m.type === "mergeBuild")).toMatchObject({ dir: "/p/shop-checkout", branch: "bp/checkout" });
     expect(sent.find((m) => m.type === "removeBuild")).toMatchObject({ dir: "/p/shop-empty" });
     expect(sent.some((m) => m.type === "reviewBuild")).toBe(true);
+  });
+
+  it("standalone window (no VS Code): project switcher; Find it for waiting builds, Resume for idle ones, nothing for running", async () => {
+    const p = full({ builds: [session({ id: "w1", needsYou: true, status: "blocked" }), session({ id: "r1", folder: "run" }), session({ id: "abcd1234-idle", folder: "old", status: "idle" })] });
+    const { doc, sent, tick, click } = mount(p, { standalone: true });
+    await tick();
+    await tick();
+    expect(doc.querySelector(".proj")).not.toBeNull();
+    const labels = [...doc.querySelectorAll(".builds li")].slice(0, 3).map((li) => li.querySelector("button")?.textContent ?? "");
+    expect(labels).toEqual(["Find it", "", "Resume"]);
+    await click('[data-act="resumeBuild"]');
+    expect(sent.find((m) => m.type === "resumeBuild")).toMatchObject({ id: "abcd1234-idle", cwd: "/p/shop" });
+    const vs = mount(p);
+    await vs.tick();
+    await vs.tick();
+    expect(vs.doc.querySelector(".proj")).toBeNull();
+    expect(vs.doc.querySelector('[data-act="openBuild"]')?.textContent).toBe("Review in terminal");
   });
 
   it("tips have one clear action", async () => {

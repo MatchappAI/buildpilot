@@ -89,6 +89,16 @@ function readSettings(file: string): { data: Json; error: string | null } {
   }
 }
 
+/** True when the BuildPilot Claude Code plugin is enabled (its own hooks feed the spool; no settings hooks needed). */
+export function pluginConnected(settingsFile = claudeSettingsPath("user")): boolean {
+  try {
+    const s = JSON.parse(fs.readFileSync(settingsFile, "utf8")) as { enabledPlugins?: Record<string, boolean> };
+    return Object.entries(s.enabledPlugins ?? {}).some(([k, v]) => k.startsWith("buildpilot@") && v === true);
+  } catch {
+    return false;
+  }
+}
+
 /** Exactly what Connect adds to Claude Code's settings (shown before the user agrees). */
 export function connectPreview(home = buildpilotHome()): string {
   const hooks: Record<string, unknown> = {};

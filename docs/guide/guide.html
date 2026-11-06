@@ -78,16 +78,15 @@
 <div class="page">
   <div class="eyebrow">Your setup today</div>
   <h2>It's installed and connected on this Mac</h2>
-  <div class="callout ok"><b>Ready to use</b>BuildPilot 0.5.0 is installed in VS Code and connected to Claude Code, with your owner license (Pro, no limits).</div>
+  <div class="callout ok"><b>Ready to use</b>BuildPilot 0.5.0 is connected to Claude Code on this Mac, with your owner license (Pro, no limits). Double-click <b>BuildPilot</b> on your Desktop.</div>
   <ol class="steps">
-    <li>In VS Code press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>, type <b>Reload Window</b>, Enter. Only needed once.</li>
-    <li><b>Double-click BuildPilot on your Desktop.</b> It opens VS Code on the project you were last building, with the BuildPilot page beside it. Opening a terminal in VS Code also brings the page up, and so does <b>BuildPilot</b> in the bottom status bar.</li>
+    <li><b>Double-click BuildPilot on your Desktop.</b> BuildPilot opens in its own window for the project you were last building. You don't need VS Code. You can also type <code>bp ui</code> in a terminal, or <code>/bp-ui</code> in Claude Code.</li>
     <li>Type <code>claude</code> in the terminal. Your build appears on the page as soon as Claude does something.</li>
   </ol>
   <h3>On another computer</h3>
   <ol class="steps">
-    <li>VS Code, Cursor or Windsurf: search the Extensions view for <b>BuildPilot for Claude Code</b>, or double-click <b>2 - Install BuildPilot.command</b> in this folder.</li>
-    <li>Open a terminal. On the page, click <b>Connect</b>. Want to check first? <b>See exactly what changes</b> shows the exact lines it adds.</li>
+    <li>In Claude Code, install the plugin (the two lines below), then type <code>/bp-ui</code>.</li>
+    <li>On the page, click <b>Connect</b>. Want to check first? <b>See exactly what changes</b> shows the exact lines it adds.</li>
   </ol>
   <h3>Inside Claude Code (any editor, or none)</h3>
   <pre>/plugin marketplace add MatchappAI/buildpilot
@@ -192,7 +191,7 @@ bp statusline install      exact chat % and limits (keeps your own status line)<
   <div class="eyebrow" style="margin-top:12pt">If something looks off</div>
   <table>
     <tr><th>Problem</th><th>Fix</th></tr>
-    <tr><td>No page beside the terminal</td><td>Click <b>BuildPilot</b> in the bottom status bar, or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd> → <b>BuildPilot: Open</b>.</td></tr>
+    <tr><td>Window doesn't open</td><td>Type <code>bp ui</code> in a terminal. It needs Node.js and the Claude Code plugin.</td></tr>
     <tr><td>A build doesn't appear</td><td>It appears on Claude's next action. Still nothing? Check you clicked <b>Connect</b>, then restart that Claude chat.</td></tr>
     <tr><td>Plan limits say "Shows up after your next message"</td><td>Send Claude a message. Limits come from Claude Code's status line.</td></tr>
     <tr><td>Want it dark</td><td>Click <b>Match my theme</b> at the bottom of the page.</td></tr>

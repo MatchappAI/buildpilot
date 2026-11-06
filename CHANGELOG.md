@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.5.0
+- **Its own window, no VS Code needed:** `bp ui`, `/bp-ui`, or the Desktop app opens BuildPilot privately on this computer (token-protected local server). Start Claude, fresh chats and new builds in Terminal. **Resume** an idle build (`claude --resume`). **Find it** for a waiting one. Switch project from the header.
 - **One white page instead of a sidebar:** your builds (what needs you first), how full each chat is, plan limits with reset times, tips for right now, and a prompt box. It opens beside your terminal. Use "Match my theme" for dark.
 - **Limits:** 5-hour and weekly use with reset times. Pro adds when you'll run out at your pace (and how long until it's back) and which build is using your limit. API-key users see spend per build.
 - **Tips with one-click fixes:** Start fresh chat, Turn on undo, pause the biggest build, plan first when stuck, New build when two builds share a folder.

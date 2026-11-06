@@ -1,5 +1,7 @@
 # Publishing BuildPilot
 
+**BuildPilot is a Claude Code helper.** The main way people get it is the Claude Code plugin (this public repo), plus `bp ui` and the Desktop app. The VS Code Marketplace and Open VSX sections below are **optional**, only for people who want the page inside an editor.
+
 Store name: **BuildPilot for Claude Code**. "BuildPilot" alone is taken on the VS Code Marketplace by `mr-srs.buildpilot`, an unrelated Jenkins tool. Display names must be unique there. Checked 2026-11-06: "BuildPilot for Claude Code" was free on both stores.
 
 The package is ready: `npm run package` builds `dist/buildpilot.vsix` with the Marketplace README (`docs/marketplace/README.md`), `CHANGELOG.md`, the icon and the macOS menu-bar widget. Nothing has been published.

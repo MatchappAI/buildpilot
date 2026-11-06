@@ -1,6 +1,6 @@
 # BuildPilot for Claude Code
 
-**One calm page beside your terminal: every Claude build, what needs you, how full each chat is, your plan limits (and when you'll run out), and tips for right now.**
+**A helper for Claude Code, in its own calm window: every Claude build, what needs you, how full each chat is, your plan limits (and when you'll run out), and tips for right now.**
 
 Made for people who build with Claude Code and don't want to babysit it, including people who aren't engineers.
 
@@ -14,20 +14,23 @@ Everything stays on your computer. [How it compares](docs/COMPARISON.md) · [Pri
 
 ## Install
 
-**VS Code, Cursor or Windsurf:** search the Extensions view for **BuildPilot for Claude Code** (VS Code Marketplace or Open VSX). Open a terminal and the page opens beside it. Click **Connect**.
+BuildPilot is a helper for **Claude Code**. You don't need VS Code or any other editor.
 
-**Inside Claude Code (any editor, or none):**
+**1. Inside Claude Code** (one time):
 
 ```
 /plugin marketplace add MatchappAI/buildpilot
 /plugin install buildpilot@buildpilot
 ```
 
-Then use `/bp` (builds, limits, tips), `/bp-connect` (exact chat % and limits), `/bp-new <name>`, `/bp-merge <name>`, `/bp-prompt <idea>` and `/bp-license <key>`.
+**2. Open it:**
+- `/bp-ui` in Claude Code, or `bp ui` in a terminal, opens BuildPilot in its own window.
+- On a Mac, the **BuildPilot** app on your Desktop does the same: double-click.
+- In Claude Code, `/bp` shows your builds, limits and tips. Also `/bp-new <name>`, `/bp-merge <name>`, `/bp-prompt <idea>`, `/bp-connect` (exact chat % and limits) and `/bp-license <key>`.
 
-**Terminal:** `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
+**Terminal:** `bp ui` · `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
 
-From source: `npm install && npm run package && code --install-extension dist/buildpilot.vsix`
+*Optional:* if you also work in VS Code or Cursor, the same page can sit beside your terminal there (`dist/buildpilot.vsix`).
 
 ## Free and Pro
 

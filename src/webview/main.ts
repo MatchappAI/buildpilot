@@ -15,6 +15,7 @@ let S: UiState | null = null;
 let P: PageData | null = null;
 let trusted = true;
 let theme: "white" | "match" = "white";
+let standalone = false;
 const FREE = 20;
 let promptText = "";
 let built: BuiltPrompt | null = null;
@@ -32,7 +33,7 @@ function call<T = unknown>(type: string, data: Record<string, unknown> = {}): Pr
   });
 }
 window.addEventListener("message", (e: MessageEvent) => {
-  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean; theme?: string } };
+  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean; theme?: string; standalone?: boolean } };
   if (m.type === "reply" && m.id) {
     waiting.get(m.id)?.(m.result);
     waiting.delete(m.id);
@@ -41,6 +42,7 @@ window.addEventListener("message", (e: MessageEvent) => {
     P = m.page ?? null;
     trusted = m.settings?.trusted ?? true;
     theme = m.settings?.theme === "match" ? "match" : "white";
+    standalone = !!m.settings?.standalone;
     // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
     const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted, theme });
     if (key === lastKey) return;
@@ -93,6 +95,7 @@ function render(): void {
     <header class="head">
       <h1>BuildPilot</h1>
       ${planPill()}
+      ${standalone ? `<button class="link proj" data-act="selectProject" title="Prompts, tips and new builds use this project">${esc(S.facts?.name ?? S.project?.name ?? "Choose project")} ▾</button>` : ""}
     </header>
     ${trialNotice()}
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
@@ -151,7 +154,7 @@ function buildsSection(): string {
         <span class="dot dot-${x.status}" aria-hidden="true"></span>
         <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${x.needsYou ? `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.reason, 70) || STATUS_WORD[x.status])}` : `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`}</div></div>
         <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude usage today (Claude Code's own estimate)">${x.share}% of your usage today</span>` : ""}</div>
-        <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>
+        ${buildButton(x)}
       </li>`)
       .join("")}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
     ${sideSection()}
@@ -167,6 +170,13 @@ function sideSection(): string {
       ${s.changed ? `<button class="link" data-act="reviewBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="See each changed file, before and after">Review</button><button class="secondary small-btn" data-act="mergeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="Bring this build's work into your main project">Merge</button>` : `<button class="link" data-act="removeBuild" data-dir="${esc(s.dir)}" title="Remove this folder (its branch is kept)">Remove</button>`}
     </li>`)
     .join("")}</ul></div>`;
+}
+
+function buildButton(x: PageData["builds"][number]): string {
+  if (!standalone) return `<button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>`;
+  if (x.needsYou) return `<button class="primary" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Switches to it if you use tmux; otherwise tells you where it's running. Nothing is approved until you approve it there.">Find it</button>`;
+  if (x.status === "running") return "";
+  return `<button class="link" data-act="resumeBuild" data-id="${esc(x.id)}" data-cwd="${esc(x.cwd)}" title="Reopens this Claude conversation in Terminal">Resume</button>`;
 }
 
 function bar(label: string, pct: number | null, right: string): string {
@@ -271,6 +281,7 @@ async function act(el: HTMLElement): Promise<void> {
     case "useInOpen": void call("promptUsed"); await call("useInOpen", { text: promptText }); return flash("Copied. Paste it into Claude (Cmd/Ctrl+V)");
     case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
     case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd });
+    case "resumeBuild": return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
     case "reviewBuild": case "mergeBuild": case "removeBuild": return void call(a, { dir: el.dataset.dir, branch: el.dataset.branch });
     case "tip": {
       const t = el.dataset.tip;

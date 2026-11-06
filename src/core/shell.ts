@@ -53,6 +53,12 @@ export function installCliCopy(fromDir: string, home = buildpilotHome()): void {
     const src = path.join(fromDir, f);
     if (fs.existsSync(src)) fs.copyFileSync(src, path.join(bin, f));
   }
+  // The page files, so `bp ui` (BuildPilot in its own window) works from this copy too.
+  // Next to bin/ (as ../media), the same layout as the extension and the plugin.
+  const media = path.join(fromDir, "..", "media");
+  const dest = path.join(home, "media");
+  fs.mkdirSync(path.join(dest, "widget"), { recursive: true });
+  for (const f of ["webview.js", "webview.css", "icon.png", "widget/BuildPilot-Bar.zip"]) if (fs.existsSync(path.join(media, f))) fs.copyFileSync(path.join(media, f), path.join(dest, f));
 }
 
 export function shellStatus(files = rcFiles()): { installed: boolean; files: string[] } {

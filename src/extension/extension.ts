@@ -9,7 +9,7 @@ import { installCliCopy, installShell, shellStatus, uninstallShell } from "../co
 import { installWidget, pickRuntime, setStartAtLogin, uninstallWidget, widgetStatus } from "../core/widget";
 import { Alert, Engine, UiState } from "../core/engine";
 import { restoreFiles, diffSinceCheckpoint, run as runCmd, worktrees } from "../core/git";
-import { claudeSettingsPath, connectPreview, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
+import { claudeSettingsPath, connectPreview, installHooks, installStatusline, pluginConnected, uninstallHooks, uninstallStatusline } from "../core/hooks";
 import { isLocalUrl } from "../core/checks";
 import { GOALS } from "../core/prompts";
 import { gate, gateParallel, plan, recordUse, saveLicense } from "../core/license";
@@ -333,7 +333,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         );
         if (!ok) return;
         try {
-          installHooks(file, eng.home);
+          if (!pluginConnected(file)) installHooks(file, eng.home); // the plugin already brings its own hooks
           installStatusline(file, eng.home);
           eng.setClaudeSettingsFile(file);
           void count(eng.home, "connected");
@@ -387,6 +387,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
           return nt.show();
         }
         if (fs.existsSync(cwd)) await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(cwd), { forceNewWindow: true });
+        return;
+      }
+      case "resumeBuild": {
+        const id = String(m.id ?? "");
+        const cwd = String(m.cwd ?? "");
+        if (!/^[A-Za-z0-9-]{8,64}$/.test(id) || !fs.existsSync(cwd)) return;
+        const t = vscode.window.createTerminal({ name: `Resume · ${path.basename(cwd)}`, cwd });
+        t.show();
+        t.sendText(`claude --resume ${id}`);
         return;
       }
       case "copyHandoff":

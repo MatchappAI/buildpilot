@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Engine, realpath } from "./engine";
@@ -81,9 +82,18 @@ function projectNext(engine: Engine, cwd: string): string | null {
 }
 
 /** A readable name for where a build runs. Chats started in the home folder aren't a project. */
+const rootCache = new Map<string, string | null>();
 export function folderLabel(cwd: string, home = os.homedir()): string {
-  if (path.resolve(cwd) === path.resolve(home)) return "Home folder";
-  return path.basename(cwd) || cwd;
+  const abs = path.resolve(cwd);
+  if (abs === path.resolve(home)) return "Home folder";
+  // Inside a project's subfolder (e.g. src/): name the project, not the subfolder.
+  if (!rootCache.has(abs)) {
+    let root: string | null = null;
+    for (let d = abs; d !== path.dirname(d) && d !== path.resolve(home); d = path.dirname(d)) if (fs.existsSync(path.join(d, ".git"))) { root = d; break; }
+    rootCache.set(abs, root);
+  }
+  const root = rootCache.get(abs);
+  return root ? path.basename(root) : path.basename(abs) || abs;
 }
 
 /** One readable line from a task/prompt: first line, collapsed spaces, clipped. */
