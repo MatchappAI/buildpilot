@@ -1,3 +1,4 @@
+import * as os from "os";
 import * as path from "path";
 import { Engine, realpath } from "./engine";
 import { readLiveStatus } from "./hooks";
@@ -79,6 +80,20 @@ function projectNext(engine: Engine, cwd: string): string | null {
   }
 }
 
+/** A readable name for where a build runs. Chats started in the home folder aren't a project. */
+export function folderLabel(cwd: string, home = os.homedir()): string {
+  if (path.resolve(cwd) === path.resolve(home)) return "Home folder";
+  return path.basename(cwd) || cwd;
+}
+
+/** One readable line from a task/prompt: first line, collapsed spaces, clipped. */
+export function oneLine(text: string | null, max = 90): string | null {
+  if (!text) return null;
+  const t = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  const c = t.replace(/\s+/g, " ");
+  return c.length > max ? `${c.slice(0, max - 1).trimEnd()}…` : c;
+}
+
 export function widgetData(engine: Engine, now = Date.now()): WidgetData {
   const { items, needs, isNeed } = glanceItems(engine, now);
   const pick = (k: "fiveHourPct" | "sevenDayPct") => {
@@ -90,7 +105,7 @@ export function widgetData(engine: Engine, now = Date.now()): WidgetData {
     generatedAt: now,
     sessions: items.map((x) => ({
       id: x.s.id,
-      folder: path.basename(x.s.cwd) || x.s.cwd,
+      folder: folderLabel(x.s.cwd),
       cwd: x.s.cwd,
       status: x.status,
       word: WORD[x.status],

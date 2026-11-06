@@ -18,3 +18,9 @@ for (const [src, dest] of [["Install BuildPilot.command", "2 - Install BuildPilo
 }
 fs.copyFileSync(path.join(root, "dist/buildpilot.vsix"), path.join(out, `BuildPilot ${pkg.version}.vsix`));
 console.log(`Desktop folder ready: ${out} (${extId} ${pkg.version})`);
+
+// macOS: a double-click launcher (opens BuildPilot in VS Code for your most recent project).
+if (process.platform === "darwin") {
+  const { execFileSync } = await import("child_process");
+  execFileSync(process.execPath, [path.join(root, "scripts/make-launcher.mjs"), out], { stdio: "inherit" });
+}

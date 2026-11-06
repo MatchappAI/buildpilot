@@ -12,3 +12,5 @@ test/ui/fixture.json
 build/
 media/widget/
 test/ui/shots/
+test/ui/fixture-real.json
+test/ui/real.cjs

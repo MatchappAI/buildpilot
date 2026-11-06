@@ -18,7 +18,7 @@ import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
 import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
-import { glance, widgetData } from "./core/glance";
+import { glance, oneLine, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
 import { gateParallel, paywallText, readLicense, saveLicense } from "./core/license";
@@ -71,6 +71,29 @@ async function main(): Promise<void> {
       const st = widgetStatus();
       console.log(json ? JSON.stringify(st) : !st.supported ? "The menu-bar widget is macOS only." : st.installed ? `Installed (${st.appPath}), ${st.running ? "running" : "not running"}${st.startAtLogin ? ", starts at login" : ""}.` : "Not installed. Install: VS Code → BuildPilot → Connect → Menu-bar widget.");
     } else return usage(`Unknown option "${sub}". Use: bp bar status | install | uninstall`);
+    return;
+  }
+  if (cmd === "recent") {
+    // The project you were most recently building in (for the Desktop launcher). Prints a folder or nothing.
+    const engine = new Engine({ light: true });
+    await engine.start();
+    const w = widgetData(engine);
+    const gitRoot = (dir: string): string | null => {
+      for (let d = path.resolve(dir); d !== path.dirname(d); d = path.dirname(d)) if (fs.existsSync(path.join(d, ".git"))) return d;
+      return null;
+    };
+    let pick: string | null = null;
+    for (const s of [...w.sessions].sort((a, b) => b.lastEventAt - a.lastEventAt)) {
+      if (path.resolve(s.cwd) === os.homedir()) continue;
+      pick = gitRoot(s.cwd) ?? (fs.existsSync(s.cwd) ? s.cwd : null);
+      if (pick) break;
+    }
+    if (!pick) {
+      const row = engine.store.get<{ root: string }>("SELECT root FROM projects ORDER BY COALESCE(last_analyzed_at, created_at) DESC LIMIT 1");
+      if (row?.root && fs.existsSync(row.root)) pick = row.root;
+    }
+    engine.stop();
+    if (pick) console.log(pick);
     return;
   }
   if (cmd === "open") {
@@ -386,7 +409,7 @@ function limitsText(p: PageData): string {
   const lines: string[] = [];
   if (p.plan.sellable && !p.plan.licensed) lines.push(p.plan.trialDaysLeft != null ? `Pro trial: ${p.plan.trialDaysLeft} day${p.plan.trialDaysLeft === 1 ? "" : "s"} left (after it: 2 builds at once, 20 prompts; limits and forecast stay free)` : `Free plan. Unlimited parallel builds + tests before merge + per-build usage: Pro (${p.plan.price}) · bp license <key>`);
   lines.push(p.builds.length ? `${p.builds.length} build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
-  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? b.reason || b.word : b.word}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.costUsd != null ? ` · ~$${b.costUsd.toFixed(2)} today` : b.share != null ? ` · ${b.share}% of your usage today` : ""}`);
+  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? oneLine(b.reason, 60) || b.word : b.word}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.costUsd != null ? ` · ~$${b.costUsd.toFixed(2)} today` : b.share != null ? ` · ${b.share}% of your usage today` : ""}`);
   const L = p.limits;
   if (p.billing === "api") lines.push("", `Spend today   ${p.costTodayUsd != null ? `~$${p.costTodayUsd.toFixed(2)}` : "unknown"}`);
   else if (L.fiveHourPct != null || L.sevenDayPct != null) {

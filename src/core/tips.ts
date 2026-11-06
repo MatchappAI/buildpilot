@@ -1,3 +1,5 @@
+import * as os from "os";
+import * as path from "path";
 import type { WidgetSession } from "./glance";
 
 /**
@@ -35,7 +37,8 @@ export function tips(i: TipInput, max = 3): Tip[] {
   }
   if ((i.limits.sevenDayPct ?? 0) >= 85) out.push({ key: "week", text: `You've used ${Math.round(i.limits.sevenDayPct!)}% of this week. Save it for the important work; use a lighter model (/model) for small tasks.`, why: "Weekly limits take days to reset.", action: null });
   const byFolder = new Map<string, number>();
-  for (const b of i.builds) if (b.status === "running" || b.status === "awaiting_approval" || b.status === "blocked") byFolder.set(b.cwd, (byFolder.get(b.cwd) ?? 0) + 1);
+  // Chats in the home folder usually aren't editing one project, so they don't count as overlapping.
+  for (const b of i.builds) if ((b.status === "running" || b.status === "awaiting_approval" || b.status === "blocked") && path.resolve(b.cwd) !== path.resolve(os.homedir())) byFolder.set(b.cwd, (byFolder.get(b.cwd) ?? 0) + 1);
   const crowded = [...byFolder.entries()].find(([, n]) => n >= 2);
   if (crowded) out.push({ key: "overlap", text: `${crowded[1]} builds are changing the same folder and can undo each other's work. Move one to its own copy.`, why: crowded[0], action: "newBuild", actionLabel: "New build" });
   if (i.isGit === false) out.push({ key: "nogit", text: "This project has no undo yet. If Claude breaks something, you can't go back.", why: "Without Git you can't roll back a bad AI change.", action: "setupUndo", actionLabel: "Turn on undo" });

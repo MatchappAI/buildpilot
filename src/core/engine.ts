@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { EventEmitter } from "events";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { analyzeRepo, listFiles, RepoFacts, scanSecrets, SecretFinding } from "./analyzer";
 import { Store } from "./db";
@@ -682,7 +683,7 @@ export class Engine extends EventEmitter {
       .map(rowToSession)
       .map((s) => {
         const d = deriveDisplayStatus(s, now);
-        return { id: s.id, folder: path.basename(s.cwd) || s.cwd, cwd: s.cwd, status: d.status, reason: d.reason, task: s.currentTask, lastEventAt: s.lastEventAt, contextPct: readLiveStatus(s.id, this.home)?.contextPct ?? null };
+        return { id: s.id, folder: path.resolve(s.cwd) === path.resolve(os.homedir()) ? "Home folder" : path.basename(s.cwd) || s.cwd, cwd: s.cwd, status: d.status, reason: d.reason, task: s.currentTask, lastEventAt: s.lastEventAt, contextPct: readLiveStatus(s.id, this.home)?.contextPct ?? null };
       });
     const otherProjectSessions = Number(this.store?.scalar("SELECT COUNT(*) FROM sessions WHERE (project_id IS NULL OR project_id != ?) AND ended_at IS NULL AND last_event_at > ?", [p?.id ?? "", now - 3600_000]) ?? 0);
     return {

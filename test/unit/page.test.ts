@@ -111,3 +111,16 @@ describe("forecast accuracy", () => {
     expect(f.history?.[0]).toMatchObject({ hit: false, falseAlarm: true });
   });
 });
+
+describe("real-data polish", () => {
+  it("home-folder chats are labelled and never count as overlapping builds", async () => {
+    const os = await import("os");
+    const { folderLabel, oneLine } = await import("../../src/core/glance");
+    expect(folderLabel(os.homedir())).toBe("Home folder");
+    expect(folderLabel("/p/shop")).toBe("shop");
+    expect(oneLine("\n  first   line here\nsecond", 12)).toBe("first line…");
+    const home = os.homedir();
+    const b = (id: string) => ({ id, folder: "Home folder", cwd: home, status: "running" as const, word: "working", reason: "", task: null, contextPct: 10, lastEventAt: Date.now(), needsYou: false, next: null });
+    expect(tips({ now: Date.now(), builds: [b("a"), b("b")], limits: { fiveHourPct: 10, sevenDayPct: 10, fullAt: null, fiveHourResetsAt: null }, isGit: true, unsaved: 0, stuck: [] })).toEqual([]);
+  });
+});

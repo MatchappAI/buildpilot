@@ -60,6 +60,12 @@ function ago(ts: number): string {
   if (s < 3600) return `${Math.round(s / 60)} min ago`;
   return `${Math.round(s / 3600)} h ago`;
 }
+/** First line of a task or prompt, clipped, so rows stay one tidy line. */
+function clip(text: string | null | undefined, max = 90): string {
+  if (!text) return "";
+  const t = (text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "").replace(/\s+/g, " ");
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
 const tone = (pct: number | null) => (pct == null ? "none" : pct >= 85 ? "bad" : pct >= 65 ? "warn" : "ok");
 
 let flashTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,7 +149,7 @@ function buildsSection(): string {
     ${b.length ? `<ul class="builds">${b
       .map((x) => `<li class="${x.needsYou ? "needs" : ""}">
         <span class="dot dot-${x.status}" aria-hidden="true"></span>
-        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub" title="${esc(x.cwd)}">${x.needsYou ? `Waiting ${ago(x.lastEventAt).replace(" ago", "")} · ${esc(x.reason || STATUS_WORD[x.status])}` : `${esc(x.task || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`}</div></div>
+        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${x.needsYou ? `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.reason, 70) || STATUS_WORD[x.status])}` : `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`}</div></div>
         <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude usage today (Claude Code's own estimate)">${x.share}% of your usage today</span>` : ""}</div>
         <button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>
       </li>`)

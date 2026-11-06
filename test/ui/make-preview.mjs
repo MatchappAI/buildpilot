@@ -9,7 +9,7 @@ const root = path.resolve(dir, "../..");
 const out = path.resolve(process.argv[2] ?? path.join(dir, "shots"));
 fs.mkdirSync(out, { recursive: true });
 for (const f of fs.readdirSync(dir)) if (/^preview-.*\.html$/.test(f)) fs.rmSync(path.join(dir, f));
-const fx = JSON.parse(fs.readFileSync(path.join(dir, "fixture.json"), "utf8"));
+const fx = JSON.parse(fs.readFileSync(path.join(dir, process.env.BP_FIXTURE ?? "fixture.json"), "utf8"));
 const chrome = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"].find((c) => fs.existsSync(c));
 for (const [name, sc] of Object.entries(fx.scenarios)) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="file://${root}/media/webview.css"></head><body><div id="app"></div>
