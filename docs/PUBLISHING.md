@@ -41,7 +41,7 @@ The plugin lives in `plugin/`, and the marketplace file is `.claude-plugin/marke
 
 ## Payments (Stripe → license key)
 Pro isn't on sale until you do this. Until then BuildPilot never blocks anything; everyone just has the full product.
-1. **Stripe:** create a product "BuildPilot Pro" at $9/month. Recommended: also offer $79/year. Create a **Payment Link**. Under *After payment*, set the confirmation page to `https://<your-worker>/success?session_id={CHECKOUT_SESSION_ID}`. Paste the `https://buy.stripe.com/...` link into `CHECKOUT_URL` in `src/core/license.ts`.
+1. **Stripe:** create a product "BuildPilot Pro" at $5/month. Recommended: also offer $39/year. Create a **Payment Link**. Under *After payment*, set the confirmation page to `https://<your-worker>/success?session_id={CHECKOUT_SESSION_ID}`. Paste the `https://buy.stripe.com/...` link into `CHECKOUT_URL` in `src/core/license.ts`.
 2. **Worker:**
    ```bash
    cd ~/buildpilot/server

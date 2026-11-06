@@ -8,6 +8,7 @@ import { JSDOM } from "jsdom";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Engine, UiState } from "../../src/core/engine";
 import { pageData, PageData } from "../../src/core/page";
+import { PRICE, PRO_POINTS } from "../../src/core/license";
 import { makeRepo, tmpDir } from "./helpers";
 
 const bundle = path.join(__dirname, "../../media/webview.js");
@@ -19,7 +20,7 @@ let built: unknown;
 
 const now = Date.now();
 const session = (o: Partial<PageData["builds"][number]>): PageData["builds"][number] => ({ id: "s1", folder: "shop", cwd: "/p/shop", status: "running", word: "working", reason: "", task: "Adding checkout", contextPct: 34, lastEventAt: now - 60_000, needsYou: false, next: null, share: null, ...o });
-const freePlan = { pro: false, licensed: false, trialDaysLeft: null, sellable: true, freeLeft: 3, price: "$9/mo", points: ["See when you'll run out, and what's using your limit", "Unlimited builds side by side", "Unlimited prompts"] };
+const freePlan = { pro: false, licensed: false, trialDaysLeft: null, sellable: true, freeLeft: 3, price: PRICE, points: PRO_POINTS };
 const full = (o: Partial<PageData> = {}): PageData => ({
   ...page,
   connected: true,
@@ -198,7 +199,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     expect(doc.getElementById("ptext")).toBeNull();
     expect(doc.body.textContent).toMatch(/You've used your 20 free prompts\./);
-    expect(doc.querySelector(".paywall")?.textContent).toMatch(/Unlimited builds side by side/);
+    expect(doc.querySelector(".paywall")?.textContent).toMatch(/Your tests run automatically before every merge/);
     expect(doc.querySelector(".paywall")?.textContent).toMatch(/Cancel anytime/);
     expect((doc.getElementById("req") as HTMLTextAreaElement).value).toBe("Add a footer"); // typed text kept
     await click('[data-act="upgrade"]');
@@ -211,7 +212,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     await tick();
     expect(doc.body.textContent).toMatch(/17 of 20 free prompts left/);
-    expect(doc.querySelector(".locked")?.textContent).toMatch(/At this pace you'll run out around .* Unlock with Pro/);
+    expect(doc.querySelector(".locked")).toBeNull(); // the forecast is free now
     const t = mount(full({ plan: { ...freePlan, pro: true, trialDaysLeft: 9, freeLeft: null } }));
     await t.tick();
     await t.tick();

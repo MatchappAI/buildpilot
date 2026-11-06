@@ -112,7 +112,7 @@ function planPill(): string {
   const p = P!.plan;
   if (p.licensed) return `<span class="pill">Pro</span>`;
   if (!p.sellable) return "";
-  if (p.trialDaysLeft != null) return `<span class="pill soft" title="Every Pro feature is on during your trial. After it, watching builds, limits, tips, 20 prompts and 2 builds at once stay free; the run-out forecast and per-build usage need Pro.">Pro trial · ${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? "" : "s"} left</span>`;
+  if (p.trialDaysLeft != null) return `<span class="pill soft" title="Every Pro feature is on during your trial. After it, builds, limits, the forecast, tips, 20 prompts and 2 builds at once stay free.">Pro trial · ${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? "" : "s"} left</span>`;
   return "";
 }
 
@@ -120,7 +120,7 @@ function trialNotice(): string {
   const p = P!.plan;
   if (!p.sellable || p.licensed || p.trialDaysLeft == null || p.trialDaysLeft > 3) return "";
   const day = p.trialEndsAt ? new Date(p.trialEndsAt).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }) : "soon";
-  return `<p class="note">Your Pro trial ends ${esc(day)}. After that the run-out forecast and per-build usage turn off, and you can run 2 builds at once. Everything else stays free. No card is on file and nothing is charged unless you choose Pro. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
+  return `<p class="note">Your Pro trial ends ${esc(day)}. After that you can run 2 builds at once, merges no longer run your tests first, and per-build usage turns off. Limits, the forecast and tips stay free. No card is on file and nothing is charged unless you choose Pro. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
 }
 
 function connectCard(): string {
@@ -189,8 +189,6 @@ function limitsSection(): string {
     const gap = L.fiveHourResetsAt && L.fiveHourResetsAt > L.fullAt ? Math.round((L.fiveHourResetsAt - L.fullAt) / 60_000) : 0;
     const urgent = L.fullAt - Date.now() < 3600_000;
     forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}. <span class="muted small">Estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}.${L.accuracy ? ` ${esc(L.accuracy)}` : ""}</span></p>`;
-  } else if (L.forecastLocked && P!.plan.sellable) {
-    forecast = `<p class="locked">At this pace you'll run out around <span class="blur" aria-hidden="true">0:00 PM</span> <a href="#" data-act="upgrade" class="lock-link">Unlock with Pro</a></p>`;
   }
   return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
 }

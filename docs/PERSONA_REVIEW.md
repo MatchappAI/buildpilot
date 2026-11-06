@@ -72,4 +72,15 @@ Caveat: some round-3 reviewers saw screenshots built from stale fixture text (ol
 | Dark by default | Staff engineer, Designer | Deliberately white by default (owner's call). One click: "Match my theme". |
 | `bp go <name>` to jump to the waiting tmux pane | Terminal user | **Built** |
 
+## Round 4: fresh reviewers after review/merge and forecast accuracy
+8 new reviewers, with no memory of earlier rounds, on the same tasks. Averages: time to first value 4.0 · words 4.0 · clutter 4.4 · trust 4.0 · next step 3.9 · would install 3.75 · **would pay $9: 2.0**. All verdicts: "maybe: keep it free".
+Their consensus, which we acted on:
+- Locking the forecast behind a blur felt like a dark pattern. **It's free now.**
+- Pay for orchestration instead: unlimited side builds and **tests before every merge**.
+- Add **limit alerts at 80%** (free).
+- Lower the price, to **$5/mo**.
+- Terminal users wanted `bp review` / `bp merge` (**added**, with `/bp-merge`).
+
+Still asked for and not done: a team/seat plan with per-repo export, a line-level conflict editor, a plain-English summary of what a build changed, and dark mode by default (the owner chose white). The repackaged offer hasn't been re-scored yet.
+
 **Bottom line:** the free product is easy, clear and trusted by all 8 user types. Pro doesn't yet have a feature people would pay $9/mo for. The diff/merge review and a provably accurate forecast are the best bets.

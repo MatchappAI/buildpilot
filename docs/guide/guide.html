@@ -126,7 +126,7 @@
     <div><img class="shot" src="img/v05-4-near-limit.png" alt="Plan limits near the 5-hour limit"><div class="cap">Close to the 5-hour limit</div></div>
     <div>
       <h3>Plan limits</h3>
-      <p><b>Next 5 hours</b> and <b>This week</b> come straight from Claude Code, with the time each goes back to 0%. On Pro you also see <i>"At this pace you'll run out around 5:52 PM, then wait 1 h 37 min."</i> This is an estimate from your recent usage. If you pay per use with an API key, you see today's spend instead.</p>
+      <p><b>Next 5 hours</b> and <b>This week</b> come straight from Claude Code, with the time each goes back to 0%. You also see <i>"At this pace you'll run out around 5:52 PM, then wait 1 h 37 min,"</i> and you get a heads-up at 80%. This is an estimate from your recent usage. If you pay per use with an API key, you see today's spend instead.</p>
       <h3>Tips for right now</h3>
       <p>Tips only appear when they apply, and each has one button:</p>
       <ul>
@@ -163,8 +163,8 @@
   <div class="eyebrow">Free &amp; Pro</div>
   <h2>Free forever, Pro when it pays for itself</h2>
   <table>
-    <tr><th>Free</th><th>Pro · $9/month · cancel anytime</th></tr>
-    <tr><td style="font-weight:400; white-space:normal">Builds and what needs you · chat % full · plan limits and reset times · tips with one-click fixes · Start fresh chat · Turn on undo · terminal, plugin and menu bar · 20 prompts · 2 builds at once</td><td>When you'll run out, and which build is using your limit · as many builds at once as you like · unlimited prompts</td></tr>
+    <tr><th>Free</th><th>Pro · $5/month · cancel anytime</th></tr>
+    <tr><td style="font-weight:400; white-space:normal">Builds and what needs you · chat % full · plan limits, reset times and when you'll run out · 80% alerts · tips with one-click fixes · Start fresh chat · Turn on undo · terminal, plugin and menu bar · 20 prompts · 2 builds at once with Review &amp; Merge</td><td>As many builds at once as you like · your tests run before every merge · which build is using your limit · unlimited prompts</td></tr>
   </table>
   <p>Everyone starts with a <b>14-day Pro trial</b>, and no card is needed. In the last 3 days the page tells you exactly what changes. Pro is separate from your Claude plan. After checkout, the thank-you page shows your key: run <b>BuildPilot: Enter License Key</b> or <code>bp license &lt;key&gt;</code>.</p>
   <div class="eyebrow" style="margin-top:14pt">Privacy</div>
@@ -182,6 +182,7 @@
   <h2>The same in your terminal</h2>
   <pre>bp limits                  builds, chat % full, plan limits + forecast, tips
 bp new "checkout"          another build in its own copy (opens a tmux window in tmux)
+bp review · bp merge NAME  see what a side build changed · bring it in
 bp go [NAME]               jump to the build that needs you (tmux)
 bp builds · bp done NAME   list extra builds · remove a finished one (branch kept)
 bp prompt auto "..."       expert prompt from plain words

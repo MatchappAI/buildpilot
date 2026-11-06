@@ -4,7 +4,8 @@ import * as path from "path";
 
 /**
  * BuildPilot plans. Watching builds, plan limits, tips, terminal/plugin/menu bar: free forever.
- * Pro ($9/mo): limit forecast + what's using your limit, unlimited parallel builds, unlimited prompts.
+ * Pro ($5/mo): the parallel-build workflow (unlimited side builds, tests before every merge), which build is
+ * using your limit, unlimited prompts. The run-out forecast and limit alerts are free.
  * - Everyone gets a 14-day trial of Pro from first run (a "reverse trial": feel it, then decide).
  * - Nothing is ever blocked while Pro isn't on sale (no real checkout link configured).
  * - Usage: <home>/usage.json (prompts used, first run, random install id).
@@ -17,8 +18,8 @@ export const FREE_PROMPTS = 20;
 /** Free users can run one extra build side by side (two at once); more needs Pro. */
 export const FREE_EXTRA_BUILDS = 1;
 export const TRIAL_DAYS = 14;
-export const PRICE = "$9/mo";
-export const PRO_POINTS = ["See when you'll run out, and which build is using your limit", "Run as many builds at once as you like (free: 2)", "Unlimited prompts (free: 20)"];
+export const PRICE = "$5/mo";
+export const PRO_POINTS = ["Run as many builds at once as you like, each reviewed and merged from the page (free: 2)", "Your tests run automatically before every merge", "See which build is using your limit", "Unlimited prompts (free: 20)"];
 /** Stripe Payment Link. Replace with the real buy.stripe.com link; BUILDPILOT_CHECKOUT_URL overrides. */
 export const CHECKOUT_URL = "https://buy.stripe.com/REPLACE_WITH_PAYMENT_LINK";
 

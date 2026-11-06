@@ -5,13 +5,13 @@
 ## What you get
 
 - **Builds.** Every Claude Code chat across your projects, the one that needs you first, with **Review in terminal**. It never approves anything for you.
-- **Plan limits.** 5-hour and weekly usage and when each resets. Pro adds *"At this pace you'll run out around 5:47 PM, then wait 1 h 37 min"* and which build is using your limit. API-key users see spend per build.
+- **Plan limits.** 5-hour and weekly usage and when each resets. Plus *"At this pace you'll run out around 5:47 PM, then wait 1 h 37 min"*, and an alert at 80%. API-key users see spend per build.
 - **Tips for right now.** Only when they apply, each with one button: Start fresh chat, Turn on undo, pause the biggest build, plan first when a build is stuck.
 - **+ New build.** Another Claude in its own copy of the project, so builds can't undo each other's work. It copies `.env` files and installs packages.
 - **Prompt box.** Plain words in, an expert prompt out, with your project's setup, guardrails, checks and "settle these first" questions.
 - **Everywhere:** Claude Code plugin (`/bp`), terminal (`bp limits`, `bp new`, `bp tmux`), and a Mac menu-bar widget.
 
-**Free forever:** builds, chat %, limits, tips, 20 prompts, 2 builds at once. **Pro, $9/mo:** run-out forecast and per-build usage, unlimited builds and prompts. Everyone gets a 14-day Pro trial with no card needed.
+**Free forever:** builds, chat %, limits, the run-out forecast and 80% alerts, tips, 20 prompts, and 2 builds at once with Review & Merge. **Pro, $5/mo:** unlimited parallel builds, tests before every merge, per-build usage, unlimited prompts. Everyone gets a 14-day Pro trial, no card needed.
 
 ## Honest by design
 

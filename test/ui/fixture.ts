@@ -5,7 +5,7 @@ import * as path from "path";
 import { execFileSync } from "child_process";
 import { Engine } from "../../src/core/engine";
 import { pageData, PageData } from "../../src/core/page";
-import { PRO_POINTS } from "../../src/core/license";
+import { PRICE, PRO_POINTS } from "../../src/core/license";
 
 (async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "bp-ui-home-"));
@@ -27,7 +27,7 @@ import { PRO_POINTS } from "../../src/core/license";
 
   const b = (o: Partial<PageData["builds"][number]>): PageData["builds"][number] => ({ share: null, id: "s", folder: "invoice-app", cwd: repo, status: "running", word: "working", reason: "", task: "Adding the invoice PDF export", contextPct: 31, lastEventAt: now - 90_000, needsYou: false, next: null, ...o });
   const plan = (five: number, week: number, fullAt: number | null) => ({ fiveHourPct: five, fiveHourResetsAt: now + 2.2 * 3600_000, sevenDayPct: week, sevenDayResetsAt: now + 3.5 * 86400_000, fullAt, forecastLocked: false });
-  const free = { pro: false, licensed: false, trialDaysLeft: null, sellable: true, freeLeft: 20, price: "$9/mo", points: PRO_POINTS };
+  const free = { pro: false, licensed: false, trialDaysLeft: null, sellable: true, freeLeft: 20, price: PRICE, points: PRO_POINTS };
   const S = (o: Partial<PageData>): PageData => ({ ...base, connected: true, billing: "plan", limits: plan(22, 14, null), tips: [], plan: { ...free, pro: true, trialDaysLeft: 11, freeLeft: null }, ...o });
 
   const scenarios: Record<string, { page: PageData; paywall?: boolean; request?: string; buildFirst?: boolean }> = {
@@ -50,8 +50,8 @@ import { PRO_POINTS } from "../../src/core/license";
     "4-near-limit": {
       page: S({ builds: [b({ share: 64 }), b({ id: "q", folder: "landing-page", task: "Writing the pricing section", share: 36 })], working: 2, limits: plan(88, 61, now + 35 * 60_000), tips: [{ key: "limit", text: "You\'ve used 88% of your 5-hour limit (back at " + new Date(now + 2.2 * 3600_000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + "). invoice-app is using 64% of your usage today; pause it if it can wait (press Esc in its terminal; your files are kept).", why: "", action: "pause", actionLabel: "Open invoice-app", cwd: repo }] }),
     },
-    "5-prompt-written": { page: S({ builds: [b({})], working: 1, plan: { ...free, freeLeft: 14 }, limits: { ...plan(22, 14, null), forecastLocked: true } }), request: "Add a contact form that emails me", buildFirst: true },
-    "6-paywalled": { page: S({ builds: [b({})], working: 1, plan: { ...free, freeLeft: 0 }, limits: { ...plan(22, 14, null), forecastLocked: true } }), request: "Add dark mode", buildFirst: true, paywall: true },
+    "5-prompt-written": { page: S({ builds: [b({})], working: 1, plan: { ...free, freeLeft: 14 }, limits: plan(22, 14, null) }), request: "Add a contact form that emails me", buildFirst: true },
+    "6-paywalled": { page: S({ builds: [b({})], working: 1, plan: { ...free, freeLeft: 0 }, limits: plan(22, 14, null) }), request: "Add dark mode", buildFirst: true, paywall: true },
     "7-api-billing": { page: S({ builds: [b({ costUsd: 4.12 }), b({ id: "k", folder: "landing-page", task: "Writing the pricing section", costUsd: 2.72 })], working: 2, billing: "api", costTodayUsd: 6.84, limits: { fiveHourPct: null, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null, fullAt: null, forecastLocked: false } }) },
     "8-pro": { page: S({ builds: [b({}), b({ id: "z", folder: "invoice-app-dark-mode", task: "Theme tokens" })], working: 2, plan: { ...free, pro: true, licensed: true, freeLeft: null } }) },
   };

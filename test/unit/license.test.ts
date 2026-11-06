@@ -26,7 +26,7 @@ describe("license gate", () => {
     expect(g.allowed).toBe(false);
     if (g.allowed) return;
     const id = JSON.parse(fs.readFileSync(path.join(home, "usage.json"), "utf8")).installId;
-    expect(g.paywall.message).toMatch(/^You've used your 20 free prompts\. Go unlimited for \$9\/mo: https:\/\//);
+    expect(g.paywall.message).toMatch(/^You've used your 20 free prompts\. Go unlimited for \$5\/mo: https:\/\//);
     expect(g.paywall.url).toContain(`client_reference_id=${id}`);
     expect(paywallText(g.paywall)).toContain("bp license");
   });

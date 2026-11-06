@@ -173,7 +173,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
   const p = planOf(engine.home, env, now);
   const forecast = forecastFullAt(samples, now);
   recordForecast(engine.home, samples, forecast, now);
-  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: p.pro ? forecast : null, forecastLocked: !p.pro && five.pct != null, accuracy: accuracyText(samples.history), basisMin: samples.samples.length >= 2 ? Math.round((samples.samples[samples.samples.length - 1]![0] - samples.samples[0]![0]) / 60_000) : null };
+  const limits: Limits = { fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: forecast, forecastLocked: false, accuracy: accuracyText(samples.history), basisMin: samples.samples.length >= 2 ? Math.round((samples.samples[samples.samples.length - 1]![0] - samples.samples[0]![0]) / 60_000) : null };
   const midnight = new Date(now).setHours(0, 0, 0, 0);
   const today = statuses.filter((s) => s.updatedAt >= midnight && s.costUsd != null);
   const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd!, 0) : null;

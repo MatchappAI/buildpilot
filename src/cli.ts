@@ -147,6 +147,7 @@ async function main(): Promise<void> {
 Everyday
   bp limits                 your builds, chat % full, plan limits + forecast, tips
   bp new "<name>"           start another build in its own copy of this project (--no-env: don't copy .env files)
+  bp review · bp merge <name>  see what a side build changed · bring it into your project
   bp builds · bp done <name>  list extra builds · remove a finished one (branch kept)
   bp go [name]              jump to the build that needs you (its tmux pane, or prints cd)
   bp prompt auto "<what>"   turn plain words into an expert prompt (prints it; run: claude "$(bp prompt auto '...')")
@@ -198,6 +199,34 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
       }
     }
     console.log(`${target.folder}${target.needsYou ? ` is waiting: ${target.reason || target.word}` : ""}\n  cd "${target.cwd}"`);
+    return;
+  }
+  if (cmd === "review" || cmd === "merge") {
+    const folder = path.resolve(process.cwd());
+    const engine = new Engine();
+    await engine.start();
+    await engine.openProject(folder);
+    const builds = await engine.extraBuilds();
+    const b = builds.find((x) => path.basename(x.dir) === rest[0] || x.branch === rest[0] || x.branch === `bp/${rest[0]}` || path.basename(x.dir).endsWith(`-${rest[0]}`)) ?? (builds.length === 1 && !rest[0] ? builds[0] : undefined);
+    if (!b) {
+      console.log(`Which build? ${builds.map((x) => path.basename(x.dir)).join(", ") || "(none; start one with bp new)"}`);
+      engine.stop();
+      process.exitCode = 1;
+      return;
+    }
+    const ch = await engine.buildChanges(b.dir, b.branch);
+    if (cmd === "review") {
+      console.log(ch.files.length ? `${path.basename(b.dir)} (${b.branch}): ${ch.files.length} file${ch.files.length === 1 ? "" : "s"}${ch.unsaved ? `, ${ch.unsaved} not saved yet` : ""}\n${ch.files.map((f) => `  ${f.status} ${f.path}`).join("\n")}\nSee the full diff:  git -C "${b.dir}" diff ${ch.base ?? "HEAD"}` : `${path.basename(b.dir)} hasn't changed anything yet.`);
+    } else {
+      if (!ch.files.length) console.log("Nothing to merge yet.");
+      else {
+        if (ch.unsaved) await engine.saveBuild(b.dir, `Work from ${path.basename(b.dir)} (saved by BuildPilot before merging)`);
+        const r = await engine.mergeBuild(b.branch);
+        console.log(r.merged ? `${r.message} Remove its folder: bp done ${path.basename(b.dir)}` : `${r.message}${r.conflicts.length ? `\n  ${r.conflicts.join("\n  ")}\nAsk the Claude in that build: "git merge <your main branch>, resolve the conflicts, run tests, commit", then bp merge again.` : ""}`);
+        if (!r.merged) process.exitCode = 1;
+      }
+    }
+    engine.stop();
     return;
   }
   if (cmd === "builds" || cmd === "done") {
@@ -355,7 +384,7 @@ main().catch((e) => {
 function limitsText(p: PageData): string {
   const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const lines: string[] = [];
-  if (p.plan.sellable && !p.plan.licensed) lines.push(p.plan.trialDaysLeft != null ? `Pro trial: ${p.plan.trialDaysLeft} day${p.plan.trialDaysLeft === 1 ? "" : "s"} left (after it, the forecast and per-build usage need Pro; the rest stays free)` : "Free plan. Forecast and per-build usage: Pro ($9/mo) · bp license <key>");
+  if (p.plan.sellable && !p.plan.licensed) lines.push(p.plan.trialDaysLeft != null ? `Pro trial: ${p.plan.trialDaysLeft} day${p.plan.trialDaysLeft === 1 ? "" : "s"} left (after it: 2 builds at once, 20 prompts; limits and forecast stay free)` : `Free plan. Unlimited parallel builds + tests before merge + per-build usage: Pro (${p.plan.price}) · bp license <key>`);
   lines.push(p.builds.length ? `${p.builds.length} build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
   for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? b.reason || b.word : b.word}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.costUsd != null ? ` · ~$${b.costUsd.toFixed(2)} today` : b.share != null ? ` · ${b.share}% of your usage today` : ""}`);
   const L = p.limits;

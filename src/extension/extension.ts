@@ -12,7 +12,7 @@ import { restoreFiles, diffSinceCheckpoint, run as runCmd, worktrees } from "../
 import { claudeSettingsPath, connectPreview, installHooks, installStatusline, uninstallHooks, uninstallStatusline } from "../core/hooks";
 import { isLocalUrl } from "../core/checks";
 import { GOALS } from "../core/prompts";
-import { gate, gateParallel, recordUse, saveLicense } from "../core/license";
+import { gate, gateParallel, plan, recordUse, saveLicense } from "../core/license";
 import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
 import { BuildPilotPanel, WebviewMessage } from "./sidebar";
@@ -50,11 +50,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       pending = null;
       const st = state();
       if (st) {
-        sidebar.post({ type: "state", state: st, settings: uiSettings(), page: { ...pageData(eng, st), side } });
+        const pd = pageData(eng, st);
+        sidebar.post({ type: "state", state: st, settings: uiSettings(), page: { ...pd, side } });
+        limitAlert(pd);
         updateStatus(st);
         if (Date.now() - sideAt > 5000) void refreshSide();
       }
     }, 150);
+  };
+  // Free: one heads-up per 5-hour window at 80%, and again if the forecast says < 30 min.
+  const limitAlert = (pd: ReturnType<typeof pageData>) => {
+    const L = pd.limits;
+    if (L.fiveHourPct == null || cfg().get<string>("notifications", "important") === "off") return;
+    const win = String(L.fiveHourResetsAt ?? "x");
+    const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const key = (k: string) => `buildpilot.limitAlert.${k}`;
+    if (L.fiveHourPct >= 80 && context.globalState.get(key("80")) !== win) {
+      void context.globalState.update(key("80"), win);
+      void vscode.window.showWarningMessage(`You've used ${Math.round(L.fiveHourPct)}% of your 5-hour Claude limit${L.fullAt ? `; at this pace it runs out around ${clock(L.fullAt)}` : ""}.${L.fiveHourResetsAt ? ` It's back at ${clock(L.fiveHourResetsAt)}.` : ""}`, "Open BuildPilot").then((c) => c && sidebar.show());
+    } else if (L.fullAt && L.fullAt - Date.now() < 30 * 60_000 && context.globalState.get(key("30")) !== win) {
+      void context.globalState.update(key("30"), win);
+      void vscode.window.showWarningMessage(`About 30 minutes of Claude left in this 5-hour window (runs out around ${clock(L.fullAt)}).`, "Open BuildPilot").then((c) => c && sidebar.show());
+    }
   };
   // Side builds (BuildPilot worktrees) with what each changed; refreshed at most every 5 s.
   let side: { name: string; dir: string; branch: string; changed: number; unsaved: number; commits: number }[] = [];
@@ -412,7 +429,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const ch = await eng.buildChanges(dir, branch);
         if (!ch.files.length) return void vscode.window.showInformationMessage(`${path.basename(dir)} has nothing to merge yet.`);
         const list = ch.files.slice(0, 12).map((f) => `• ${f.path}`).join("\n") + (ch.files.length > 12 ? `\n…and ${ch.files.length - 12} more` : "");
-        if (!(await confirm(`Bring ${path.basename(dir)}'s work into your main project?`, `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} will change in your main project:\n${list}\n\n${ch.unsaved ? "Its unsaved work is saved first. " : ""}If both builds changed the same lines, nothing is changed and BuildPilot tells you which files. You can undo a merge with a save point.`, "Merge"))) return;
+        let testLine = "";
+        const pkgFile = path.join(dir, "package.json");
+        let hasTest = false;
+        try { hasTest = !!JSON.parse(fs.readFileSync(pkgFile, "utf8")).scripts?.test; } catch { /* no package.json */ }
+        if (hasTest && plan(eng.home).pro) {
+          const pm = cached?.facts?.packageManager;
+          const cmd = pm === "pnpm" ? "pnpm" : pm === "yarn" ? "yarn" : pm === "bun" ? "bun" : "npm";
+          const t = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `BuildPilot: running ${path.basename(dir)}'s tests before merging…` }, () => runCmd(cmd, ["test"], dir, { timeoutMs: 10 * 60_000 }));
+          testLine = t.code === 0 ? "✓ Its tests pass.\n\n" : `✗ Its tests FAIL (${cmd} test exited ${t.code}). Merging now would bring broken code in; consider asking its Claude to fix them first.\n\n`;
+        } else if (hasTest) testLine = "Pro runs this build's tests before merging.\n\n";
+        if (!(await confirm(`Bring ${path.basename(dir)}'s work into your main project?`, `${testLine}${ch.files.length} file${ch.files.length === 1 ? "" : "s"} will change in your main project:\n${list}\n\n${ch.unsaved ? "Its unsaved work is saved first. " : ""}If both builds changed the same lines, nothing is changed and BuildPilot tells you which files. You can undo a merge with a save point.`, "Merge"))) return;
         try {
           if (ch.unsaved) await eng.saveBuild(dir, `Work from ${path.basename(dir)} (saved by BuildPilot before merging)`);
           const r = await eng.mergeBuild(branch);

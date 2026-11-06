@@ -9,7 +9,7 @@
 - **Forecast grades itself:** after each 5-hour window, "past forecasts were off by about N min".
 - `bp go [name]` jumps to the waiting build's tmux pane.
 - **Prompts:** titled from your words, with "settle these first" questions. Start Claude with it, or use it in your open Claude. Prompts count only when used.
-- **Free and Pro ($9/mo):** a 14-day Pro trial for everyone; nothing is blocked before Pro is on sale. Signed license keys, a Stripe → key license Worker (`server/`), `bp license`.
+- **Free and Pro ($5/mo):** the forecast and 80%/30-minute limit alerts are free. Pro is the parallel-build workflow (unlimited side builds, tests before every merge), per-build usage and unlimited prompts. A 14-day trial for everyone; nothing is blocked before Pro is on sale. `bp review`, `bp merge`, `/bp-merge`. Signed license keys, a Stripe → key license Worker (`server/`), `bp license`.
 - **Claude Code plugin:** `/plugin install buildpilot@buildpilot` adds `/bp`, `/bp-prompt`, `/bp-new`, `/bp-connect` and `/bp-license`. Also `bp limits` and `bp tmux`.
 - **Trust:** "See exactly what changes" before Connect, Disconnect on the page, a hook safety stop, optional anonymous counts (off by default, their own random id).
 
