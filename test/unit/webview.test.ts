@@ -220,6 +220,26 @@ describe("one-page UI (real bundle in jsdom)", () => {
     void w;
   });
 
+  it("keyboard focus survives a live update (buttons without ids)", async () => {
+    const { doc, w, tick } = mount(full());
+    await tick();
+    await tick();
+    const btn = doc.querySelector('.builds [data-act="toggleBuild"]') as HTMLButtonElement;
+    btn.focus();
+    w.postMessage({ type: "state", state, page: full({ working: 3 }), settings: { trusted: true } }, "*");
+    await tick();
+    expect(doc.activeElement?.getAttribute("data-act")).toBe("toggleBuild");
+    expect(doc.activeElement?.getAttribute("data-id")).toBe(btn.getAttribute("data-id"));
+  });
+
+  it("footer actions are real buttons", async () => {
+    const { doc, tick } = mount(full());
+    await tick();
+    await tick();
+    expect(doc.querySelector('.foot a[data-act]')).toBeNull();
+    expect(doc.querySelector('.foot button[data-act="toggleTheme"]')).not.toBeNull();
+  });
+
   it("tips have one clear action", async () => {
     const { doc, sent, tick, click } = mount(full());
     await tick();

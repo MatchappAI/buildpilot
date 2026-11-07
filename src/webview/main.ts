@@ -100,7 +100,11 @@ function headsUp(): string {
   const need = P.builds.find((b) => b.needsYou);
   if (need) items.push(`<div class="hu hu-need"><span><b>${esc(need.name ?? need.folder)}</b> needs your OK${need.waitingFor ? `: <code>${esc(clip(need.waitingFor, 60))}</code>` : ""}</span><button class="primary small-btn" data-act="openBuild" data-cwd="${esc(need.cwd)}">${standalone ? "Find it" : "Review"}</button></div>`);
   const L = P.limits;
-  if ((L.fiveHourPct ?? 0) >= 80) items.push(`<div class="hu hu-limit"><span><b>${Math.round(L.fiveHourPct!)}%</b> of your 5-hour limit used${L.fullAt ? ` · runs out around <b>${clock(L.fullAt)}</b>` : ""}${L.fiveHourResetsAt ? ` · back at ${clock(L.fiveHourResetsAt)}` : ""}</span></div>`);
+  if ((L.fiveHourPct ?? 0) >= 80) {
+    const hog = [...P.builds].filter((b) => b.share != null && b.agent !== "codex").sort((a, b) => b.share! - a.share!)[0];
+    const act = hog && P.builds.length > 1 && (hog.share ?? 0) >= 30 ? `<button class="secondary small-btn" data-act="tip" data-tip="pause" data-cwd="${esc(hog.cwd)}" title="Opens its terminal so you can press Esc to pause it. Your files are kept.">Pause ${esc(hog.name ?? hog.folder)} (${hog.share}%)</button>` : "";
+    items.push(`<div class="hu hu-limit"><span><b>${Math.round(L.fiveHourPct!)}%</b> of your 5-hour limit used${L.fullAt ? ` · runs out around <b>${clock(L.fullAt)}</b>` : ""}${L.fiveHourResetsAt ? ` · back at ${clock(L.fiveHourResetsAt)}` : ""}</span>${act}</div>`);
+  }
   const stopped = P.builds.find((b) => b.stopped);
   if (stopped && items.length < 2) items.push(`<div class="hu hu-stop"><span><b>${esc(stopped.name ?? stopped.folder)}</b> stopped mid-task</span><button class="secondary small-btn" data-act="resumeBuild" data-id="${esc(stopped.id)}" data-cwd="${esc(stopped.cwd)}">Resume</button></div>`);
   const err = P.builds.find((b) => (b.errors1h ?? 0) >= 3);
@@ -109,6 +113,14 @@ function headsUp(): string {
 }
 
 // ---------- render ----------
+/** Stable identity for a control without an id, so keyboard focus survives a re-render. */
+const FOCUS_ATTRS = ["data-act", "data-id", "data-cwd", "data-dir", "data-tip", "data-path", "data-branch"];
+function focusKey(el: Element | null): string | null {
+  if (!el || el === document.body || el.id) return null;
+  const parts = FOCUS_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => `[${a}="${CSS.escape(el.getAttribute(a)!)}"]`).join("");
+  return parts ? `${el.tagName.toLowerCase()}${parts}` : null;
+}
+
 let lastSpoken = "";
 /** Tell screen-reader users about new things that need them (polite, once per change). */
 function announce(): void {
@@ -125,6 +137,7 @@ function announce(): void {
 function render(): void {
   const app = document.getElementById("app")!;
   const focusedId = (document.activeElement as HTMLElement | null)?.id;
+  const fKey = focusKey(document.activeElement);
   const sel = (document.activeElement as HTMLTextAreaElement | null)?.selectionStart ?? null;
   if (!S || !P) {
     app.innerHTML = `<div class="loading">Starting BuildPilot…</div>`;
@@ -143,7 +156,7 @@ function render(): void {
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
     <footer class="foot">
-      <a href="#" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</a> · <a href="#" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</a>${standalone ? ` · <a href="#" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</a>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><a href="#" class="danger" data-act="disconnect">Disconnect</a>` : ""}
+      <button type="button" class="linkbtn" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</button> · <button type="button" class="linkbtn" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</button>${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
     </footer>
   </main>
   <div id="flash" class="flash" aria-hidden="true"></div>`;
@@ -153,8 +166,9 @@ function render(): void {
   if (out) out.value = promptText;
   bind();
   announce();
-  if (focusedId) {
-    const el = document.getElementById(focusedId) as HTMLTextAreaElement | null;
+  if (focusedId || fKey) {
+    let el = (focusedId ? document.getElementById(focusedId) : null) as HTMLTextAreaElement | null;
+    if (!el && fKey) try { el = document.querySelector(fKey) as HTMLTextAreaElement | null; } catch { /* bad selector */ }
     el?.focus({ preventScroll: true });
     if (el && sel != null && "setSelectionRange" in el) try { el.setSelectionRange(sel, sel); } catch { /* not text */ }
   }
@@ -164,6 +178,7 @@ function planPill(): string {
   const p = P!.plan;
   if (p.licensed) return `<span class="pill">Pro</span>`;
   if (!p.sellable) return "";
+  if (p.trialDaysLeft != null && p.trialDaysLeft <= 3) return "";
   if (p.trialDaysLeft != null) return `<span class="pill soft" title="Every Pro feature is on during your trial. After it, builds, limits, the forecast, tips, 20 prompts and 2 builds at once stay free.">Pro trial · ${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? "" : "s"} left</span>`;
   return "";
 }
@@ -172,7 +187,7 @@ function trialNotice(): string {
   const p = P!.plan;
   if (!p.sellable || p.licensed || p.trialDaysLeft == null || p.trialDaysLeft > 3) return "";
   const day = p.trialEndsAt ? new Date(p.trialEndsAt).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }) : "soon";
-  return `<p class="note" title="After the trial: 2 builds at once, no tests-before-merge, no per-build usage. Limits, forecast and tips stay free. Nothing is charged unless you choose Pro.">Pro trial ends ${esc(day)}. No card on file. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
+  return `<p class="note" title="After the trial: 2 builds at once, no tests-before-merge, no per-build usage. Limits, forecast and tips stay free. Nothing is charged unless you choose Pro.">Pro trial ends ${esc(day)}. No card on file. <a href="#" data-act="upgrade">Keep Pro · ${esc(p.price)}</a></p>`;
 }
 
 function connectCard(): string {
@@ -214,7 +229,7 @@ function buildSub(x: Build): string {
   if (x.agent === "codex") return x.now ? `<b class="nowtxt">${esc(x.now)}</b>${dur(x.nowSince)}` : `${esc(clip(x.task, 70) || x.word)} · ${ago(x.lastEventAt)}`;
   if (x.needsYou) return `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.waitingFor ?? x.reason, 80) || STATUS_WORD[x.status])}`;
   if (x.stopped) return `<span class="warn-text">Stopped mid-task</span> · ${esc(clip(x.task, 60))}`;
-  if (x.maybeStuck) return `<span class="warn-text">No activity for ${Math.round((Date.now() - x.lastEventAt) / 60_000)} min · may be stuck</span> · ${esc(x.now ?? "")}`;
+  if (x.maybeStuck) return `<span class="warn-text">Quiet for ${Math.round((Date.now() - x.lastEventAt) / 60_000)} min, may be stuck</span>`;
   if (x.now) return `<b class="nowtxt" title="${esc(x.nowFull ?? x.now)}">${esc(x.now)}</b>${dur(x.nowSince)}`;
   if (x.finishedAt && x.turnMs && Date.now() - x.finishedAt < 15 * 60_000) return `<span class="ok-text">Finished · your turn</span> · ${esc(clip(x.task, 50))}`;
   return `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
@@ -237,7 +252,7 @@ function buildRow(x: Build): string {
       ${expanded.has(x.id) ? buildDetails(x) : ""}
     </div>
     <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}%</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude Code usage today, from Claude Code's own cost estimate">${x.share}% of today's use</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
-    <div class="b-act">${x.agent === "codex" ? "" : buildButton(x)}</div>
+    <div class="b-act">${x.agent === "codex" ? `<span class="muted small" title="Codex has no hooks, so BuildPilot can only read its logs">read-only</span>` : buildButton(x)}</div>
   </li>`;
 }
 
@@ -246,7 +261,7 @@ function buildDetails(x: Build): string {
   const tok = t
     ? `<div class="tokens"><div class="d-head">Where the tokens went</div>
         <p class="small">${t.baseline != null ? `Started at <b>${kTok(t.baseline)}</b> before your first message` : "Start size unknown"} · chat now ${t.context != null ? `<b>${kTok(t.context)}</b>` : "unknown"} · ${t.inputTotal ? `sent ≈${kTok(t.inputTotal)} in total · ` : ""}Claude wrote ${kTok(t.output)} · ${t.turns} repl${t.turns === 1 ? "y" : "ies"}${t.models.length ? ` · ${t.models.map(([m, n]) => `${esc(shortModel(m))}${t.models.length > 1 ? ` ×${n}` : ""}`).join(", ")}` : ""}${t.subagents ? ` · ${t.subagents} subagent${t.subagents === 1 ? "" : "s"}` : ""}${t.compactions ? ` · compacted ${t.compactions}×` : ""}</p>
-        ${t.top ? (t.top.length ? `<ul class="toklist">${t.top.map((i) => `<li><span>${esc(i.label)}</span><span class="muted">≈${kTok(i.tokens)}</span></li>`).join("")}</ul><p class="muted tiny">Biggest things pulled into the chat (≈ estimated from size). They're re-sent with every message until a fresh chat.</p>` : `<p class="muted tiny">No large tool output yet.</p>`) : P!.plan.sellable ? `<p class="small"><a href="#" data-act="upgrade">See exactly what used them — Pro</a></p>` : ""}
+        ${t.top ? (t.top.length ? `<ul class="toklist">${t.top.map((i) => `<li><span>${esc(i.label)}</span><span class="muted">≈${kTok(i.tokens)}</span></li>`).join("")}</ul><p class="muted tiny">Biggest things pulled into the chat (≈ estimated from size). They're re-sent with every message until a fresh chat.</p>` : `<p class="muted tiny">No large tool output yet.</p>`) : P!.plan.sellable ? `<p class="small"><a href="#" data-act="upgrade">See exactly what used them · Pro</a></p>` : ""}
       </div>`
     : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this build has a transcript BuildPilot can read.</p>`;
   const tl = (x.timeline ?? []).length
@@ -293,7 +308,7 @@ function buildsSection(): string {
 function sideSection(): string {
   const side = P!.side ?? [];
   if (!side.length) return "";
-  return `<div class="side"><h3>Side builds</h3><ul class="builds">${side
+  return `<div class="side"><ul class="builds"><li class="group"><h3 class="group-h">Side builds</h3><span class="count">review &amp; merge</span></li>${side
     .map((s) => `<li>
       <div class="b-main"><div class="b-name">${esc(s.name)}</div><div class="b-sub">${s.changed ? `${s.changed} file${s.changed === 1 ? "" : "s"} changed${s.unsaved ? " · not saved yet" : ""}` : "No changes yet"}</div></div>
       ${s.changed ? `<button class="secondary small-btn" data-act="reviewBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="See each changed file, before and after">Review</button><button class="secondary small-btn" data-act="mergeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="Bring this build's work into your main project">Merge</button>` : `<button class="link" data-act="removeBuild" data-dir="${esc(s.dir)}" title="Remove this folder (its branch is kept)">Remove</button>`}
@@ -331,10 +346,10 @@ function limitsSection(): string {
   const fiveRight = L.fiveHourPct == null ? "unknown" : `${Math.round(L.fiveHourPct)}% used${L.fiveHourResetsAt ? ` · back to 0% at ${clock(L.fiveHourResetsAt)}` : ""}`;
   const weekRight = L.sevenDayPct == null ? "unknown" : `${Math.round(L.sevenDayPct)}% used${L.sevenDayResetsAt ? ` · resets ${weekday(L.sevenDayResetsAt)}` : ""}`;
   let forecast = "";
-  if (L.fullAt) {
+  if (L.fullAt && (L.fiveHourPct ?? 0) < 80) {
     const gap = L.fiveHourResetsAt && L.fiveHourResetsAt > L.fullAt ? Math.round((L.fiveHourResetsAt - L.fullAt) / 60_000) : 0;
     const urgent = L.fullAt - Date.now() < 3600_000;
-    forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}. <span class="muted small">Estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}.${L.accuracy ? ` ${esc(L.accuracy)}` : ""}</span></p>`;
+    forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""} <span class="muted small">(estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}).${L.accuracy ? ` ${esc(L.accuracy)}` : ""}</span></p>`;
   }
   return `<section class="block" aria-label="Plan limits"><h2 class="label">Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}${(L.week ?? []).length > 1 ? `<p class="small weekline">This week: ${(L.week ?? []).map((d) => `${esc(d.day)} ${Math.round(d.pct)}%`).join(" → ")}</p>` : ""}${L.weekFullAt ? `<p class="small warn-text">At this pace your week runs out ${weekday(L.weekFullAt)}.</p>` : ""}${L.codex && (L.codex.primaryPct != null || L.codex.secondaryPct != null) ? `<p class="small">Codex: ${L.codex.primaryPct != null ? `${Math.round(L.codex.primaryPct)}% of its short limit` : ""}${L.codex.secondaryPct != null ? ` · ${Math.round(L.codex.secondaryPct)}% weekly` : ""}</p>` : ""}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
 }
@@ -353,7 +368,7 @@ function paywallCard(): string {
   return `<div class="paywall" role="status">
     <b>You've used your ${FREE} free prompts.</b>
     <ul>${p.points.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-    <div class="actions"><button class="primary" data-act="upgrade">Get Pro — ${esc(p.price)}</button><button class="link" data-act="enterLicense">I have a license key</button></div>
+    <div class="actions"><button class="primary" data-act="upgrade">Get Pro · ${esc(p.price)}</button><button class="link" data-act="enterLicense">I have a license key</button></div>
     <p class="muted tiny">Separate from your Claude plan. Cancel anytime. Watching builds, limits and tips stays free. The checkout link includes a random id only so your payment can be matched to your key.</p>
   </div>`;
 }

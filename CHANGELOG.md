@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0: polish from the all-round review
+- **Keyboard focus survives live updates:** buttons keep focus when new state arrives, tested.
+- **Accessible dialogs:** the project picker uses real buttons with arrow and Tab access, and every dialog announces its question. Footer actions are real buttons, and the rename pencil is visible.
+- **Status you can trust:**
+  - Shell control words are skipped ("until curl …" → "curl …").
+  - "Quiet for 17 min, may be stuck" replaces the contradictory "may be stuck · Thinking", and it never shows during a long command.
+  - Long commands stay on one line (full text on hover).
+- **Near-limit has an action:** the heads-up offers "Pause <build using most> (64%)". There's no duplicate forecast line while it shows.
+- **Consistency:**
+  - One action slot per row, and Codex rows marked "read-only".
+  - Side builds use the group style.
+  - No trial chip while the trial banner is up.
+  - Middle dots instead of em dashes.
+  - Prompts no longer repeat the title or ask for a plan twice.
+- **Website:** a top-aligned hero, a real-size product close-up, and an honest proof line (open source, tests, WCAG audited).
+
 ## 0.8.0: accessibility, a sharper brand, and a website
 - **New mark:** a terminal prompt (>_) inside an instrument gauge, "a cockpit for Claude Code", echoing the chat ring. Legible down to 16 px. One script (`scripts/make-brand.mjs`) regenerates every size.
 - **Accessibility:**

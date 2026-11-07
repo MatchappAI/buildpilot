@@ -1,7 +1,7 @@
 {
   "name": "buildpilot",
   "description": "See every Claude Code build, memory %, plan limits with a forecast, and tips for right now. Local-only.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "author": {
     "name": "BuildPilot"
   },

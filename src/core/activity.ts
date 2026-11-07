@@ -64,7 +64,8 @@ export function shortCommand(cmd: string): string {
   if (port) return `freeing port ${port[1]}`;
   if (/^(sleep|wait)\b/.test(c)) return "waiting";
   for (let i = 0; i < 3; i++) c = c.replace(/^cd\s+("[^"]*"|'[^']*'|\S+)\s*(&&|;)\s*/, "").replace(/^([A-Z_][A-Z0-9_]*=("[^"]*"|'[^']*'|\S+)\s+)+/, "");
-  const parts = c.split(/\s*(?:\|\||&&|;)\s*/).map((x) => (x.split(/\s*\|\s*/)[0] ?? x).trim()).filter(Boolean);
+  // Shell control words aren't commands: "until curl …" → "curl …".
+  const parts = c.split(/\s*(?:\|\||&&|;)\s*/).map((x) => (x.split(/\s*\|\s*/)[0] ?? x).trim().replace(/^(until|while|for|if|then|else|elif|do|done|fi|time|nohup|exec|!)\s+/, "").trim()).filter((x) => x && !/^(do|done|fi|then|else|true|false)$/.test(x));
   // Prefer the command that matters (build/test/run) over setup like mkdir/cd/export/echo.
   const meaningful = parts.find((x) => /^(npx|npm|pnpm|yarn|bun|node|deno|python3?|pytest|uv|pip3?|cargo|go|make|tsc|vitest|jest|playwright|git|docker|gh|swift|xcodebuild|ruby|rails|bundle|php|mvn|gradle|dotnet|bash|sh|\.\/)/.test(x));
   const skip = /^(mkdir|cd|export|echo|printf|set|true|sleep|clear|source|\.)\b/;

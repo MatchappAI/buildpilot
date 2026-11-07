@@ -261,9 +261,12 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
   lines.push(`# ${title.charAt(0).toUpperCase()}${title.slice(1)}`);
   lines.push(`Type: ${g.label}`);
   lines.push("");
-  lines.push("## What I want");
-  lines.push(request || (g.id === "handoff" ? "(continue from the handoff below)" : "[Describe what you want here before sending]"));
-  lines.push("");
+  // The title already is the request when it's short; only repeat it when there's more to say.
+  if (!request || request.replace(/\s+/g, " ").trim().replace(/[.!]+$/, "").length > 80 || g.id === "handoff") {
+    lines.push("## What I want");
+    lines.push(request || (g.id === "handoff" ? "(continue from the handoff below)" : "[Describe what you want here before sending]"));
+    lines.push("");
+  }
   const qs = settleFirst(request);
   if (qs.length) {
     lines.push("## Settle these first");
@@ -321,7 +324,8 @@ export function buildPrompt(opts: PromptOptions, ctx: PromptContext): BuiltPromp
   lines.push("## How to work");
   const plan = opts.planFirst ?? g.planFirst;
   if (plan) lines.push("1. First, inspect the code and reply with a short plan (files, approach, risks, open questions). Then proceed unless something is genuinely ambiguous or risky.");
-  g.practices.forEach((p, idx) => lines.push(`${idx + (plan ? 2 : 1)}. ${p}`));
+  const practices = plan ? g.practices.filter((p) => !/\bplan\b/i.test(p)) : g.practices;
+  practices.forEach((p, idx) => lines.push(`${idx + (plan ? 2 : 1)}. ${p}`));
   lines.push("");
 
   lines.push("## Guardrails");

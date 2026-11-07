@@ -220,3 +220,13 @@ describe("v0.7 polish", () => {
     expect(codexAction({ name: "apply_patch", arguments: "{}" })).toBe("Editing files");
   });
 });
+
+describe("v0.9 parsing", () => {
+  it("skips shell control words and never says stuck while busy", async () => {
+    const { shortCommand } = await import("../../src/core/activity");
+    expect(shortCommand("until curl -s localhost:3000; do sleep 1; done")).toBe("curl -s localhost:3000");
+    expect(shortCommand("kill $(lsof -ti :8765)")).toBe("freeing port 8765");
+    const busy = activityFor(sess({ lastEventAt: NOW - 20 * 60_000 }), [ev("PreToolUse", "Run: npm test", NOW - 20 * 60_000, { toolUseId: "z" })], NOW);
+    expect(busy.maybeStuck).toBe(false); // a long npm test is fine
+  });
+});
