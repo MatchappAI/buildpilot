@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0: works for more Claude Code users
+- **No more crash on older Node:** the plugin now ships the database fallback (`sql-wasm.wasm`), so Node 18–22.4 works. If Node is missing, every slash command says so in one plain line instead of a stack trace (`plugin/bin/bp.sh`).
+- **Spool can't grow forever:** the first event starts the 2-day safety clock (before, a plugin that was never opened kept writing), unread events are capped at 2000, and spool files are owner-only.
+- **`/bp-terminal`:** adds the `bp` command to your terminal for plugin-only users.
+- **Windows and Linux:** Resume / New build / Start fresh open Windows Terminal (or cmd) and the common Linux terminals (GNOME, Konsole, Xfce, kitty, Alacritty, xterm). On Windows, "Start Claude with this prompt" copies the prompt and opens Claude.
+- **Dark page:** the standalone window follows your system's light/dark setting until you choose, with AA-contrast colors. The smallest text is now 12px.
+- **Connected twice?** A tip appears when both the plugin and the older settings hooks are on (every step counted twice), with one click to remove the older hooks.
+- Tests: 156 (plugin package, both spool scripts, dark contrast, minimum text size).
+
 ## 0.10.0: a clearer, calmer window
 - **Plain words, not shell:** what each build is doing reads like "Running tests", "Installing packages", "Pushing to GitHub", or "Looking through files", never raw text like "Running -d)". The full command is still there on hover. Codex builds get the same treatment.
 - **Readable history:** "Recent steps" is in plain past tense ("Ran tests", "Edited cart.ts", "Asked you before pushing to GitHub"). It shows the last 10 steps on one line each, with times that no longer wrap.

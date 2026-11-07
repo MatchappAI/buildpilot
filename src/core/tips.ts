@@ -6,7 +6,7 @@ import type { WidgetSession } from "./glance";
  * "Tips for right now": current Claude Code best practices, shown only when the data says they apply.
  * Deterministic. Each tip carries the observation that triggered it (never a generic lecture).
  */
-export type TipAction = "startFresh" | "checkpoint" | "newBuild" | "planMode" | "setupUndo" | "pause" | "resumeBuild" | null;
+export type TipAction = "startFresh" | "checkpoint" | "newBuild" | "planMode" | "setupUndo" | "pause" | "resumeBuild" | "fixDoubleHooks" | null;
 export interface Tip { key: string; text: string; why: string; action: TipAction; actionLabel?: string; cwd?: string; id?: string }
 
 export interface TipInput {
@@ -22,6 +22,8 @@ export interface TipInput {
   weekFullAt?: number | null;
   /** Approximate tokens in the project's CLAUDE.md files. */
   claudeMdTokens?: number | null;
+  /** The plugin AND the older settings.json hooks are both on, so every event is recorded twice. */
+  doubleHooks?: boolean;
 }
 
 type TokenBuild = WidgetSession & { tokens?: { baseline: number | null; models: [string, number][]; subagents: number; top: { label: string; tokens: number }[] | null; turns: number } | null };
@@ -31,6 +33,7 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric
 
 export function tips(i: TipInput, max = 3): Tip[] {
   const out: Tip[] = [];
+  if (i.doubleHooks) out.push({ key: "doublehooks", text: "BuildPilot is connected twice (the plugin and the older settings hooks), so every step is counted twice. Remove the older hooks; the plugin keeps working.", why: "Both ~/.claude/settings.json and the BuildPilot plugin send the same events.", action: "fixDoubleHooks", actionLabel: "Remove older hooks" });
   const full = i.builds.filter((b) => (b.contextPct ?? 0) >= 80).sort((a, b) => (b.contextPct ?? 0) - (a.contextPct ?? 0))[0];
   if (full) out.push({ key: "memory", text: `${full.folder}'s chat is ${Math.round(full.contextPct!)}% full, so Claude will start forgetting details. Start a fresh chat that picks up where it left off.`, why: "Near full, Claude summarizes and loses details. A fresh chat with a summary keeps it sharp and uses less of your limit per message.", action: "startFresh", actionLabel: "Start fresh chat", cwd: full.cwd });
   if (i.stuck.length) out.push({ key: "stuck", text: "A build keeps repeating a fix that fails. Stop it and ask Claude for a plan first.", why: i.stuck[0]!, action: "planMode", actionLabel: "Write a plan prompt" });

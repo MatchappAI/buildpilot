@@ -32,7 +32,11 @@ BuildPilot is a helper for **Claude Code**. You don't need VS Code or any other 
 - On a Mac, the **BuildPilot** app on your Desktop does the same: double-click.
 - In Claude Code, `/bp` shows your builds, limits and tips. Also `/bp-new <name>`, `/bp-merge <name>`, `/bp-prompt <idea>`, `/bp-connect` (exact chat % and limits) and `/bp-license <key>`.
 
-**Terminal:** `bp ui` · `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp who <file>` · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
+**Needs:** Node.js 18+ on your PATH (22.5+ recommended). Claude Code's own installer doesn't include Node; get it from [nodejs.org](https://nodejs.org). Without it, BuildPilot tells you in one line.
+
+**Works best on a Mac.** Windows and Linux are a preview: builds, limits, tips, prompts and Review/Merge work, and Resume/New build open Windows Terminal (or a cmd window) or your Linux terminal. "Find it" (jump to a tab), notifications and the menu-bar widget are Mac only.
+
+**Terminal:** run `/bp-terminal` once in Claude Code to add the `bp` command to your terminal (zsh/bash). Then: `bp ui` · `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp who <file>` · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
 
 *Optional:* if you also work in VS Code or Cursor, the same page can sit beside your terminal there (`dist/buildpilot.vsix`).
 

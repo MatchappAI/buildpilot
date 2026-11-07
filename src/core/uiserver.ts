@@ -26,16 +26,41 @@ export interface UiServerOptions { port?: number; token?: string; media: string;
 
 const MIME: Record<string, string> = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".ttf": "font/ttf" };
 
-/** Open a terminal window in `dir` and run a fixed command there. macOS: Terminal.app; Linux: x-terminal-emulator. */
+/** Open a terminal window in `dir` and run a fixed command there.
+ * macOS: Terminal.app · Windows: Windows Terminal, else a cmd window · Linux: the first terminal found. */
 export function openTerminal(dir: string, command: string | null): Promise<void> {
   const line = `cd ${shellQuote(dir)}${command ? ` && ${command}` : ""}`;
-  return new Promise((resolve, reject) => {
-    if (process.platform === "darwin") {
-      execFile("osascript", ["-e", "on run argv", "-e", 'tell application "Terminal" to do script (item 1 of argv)', "-e", 'tell application "Terminal" to activate', "-e", "end run", line], { timeout: 15000 }, (e) => (e ? reject(e) : resolve()));
-    } else if (process.platform === "linux") {
-      execFile("x-terminal-emulator", ["-e", "sh", "-c", `${line}; exec $SHELL`], { timeout: 15000 }, (e) => (e ? reject(e) : resolve()));
-    } else reject(new Error(`Open a terminal in ${dir} and run: ${command ?? "claude"}`));
-  });
+  const manual = () => new Error(`Open a terminal in ${dir} and run: ${command ?? "claude"}`);
+  const tryEach = (cands: [string, string[]][], i = 0): Promise<void> =>
+    i >= cands.length
+      ? Promise.reject(manual())
+      : new Promise((resolve, reject) => {
+          const [bin, args] = cands[i]!;
+          execFile(bin, args, { timeout: 15000, windowsHide: false }, (e) => (e && (e as NodeJS.ErrnoException).code === "ENOENT" ? tryEach(cands, i + 1).then(resolve, reject) : e ? reject(e) : resolve()));
+        });
+  if (process.platform === "darwin") {
+    return new Promise((resolve, reject) =>
+      execFile("osascript", ["-e", "on run argv", "-e", 'tell application "Terminal" to do script (item 1 of argv)', "-e", 'tell application "Terminal" to activate', "-e", "end run", line], { timeout: 15000 }, (e) => (e ? reject(e) : resolve())),
+    );
+  }
+  if (process.platform === "win32") {
+    // Commands come from BuildPilot itself (claude …), never from untrusted input; the folder is passed as its own argument.
+    const cmd = command ?? "claude";
+    return tryEach([
+      ["wt.exe", ["-d", dir, "cmd", "/k", cmd]],
+      ["cmd.exe", ["/c", "start", "", "/d", dir, "cmd", "/k", cmd]],
+    ]);
+  }
+  const sh = `${line}; exec "\${SHELL:-sh}"`;
+  return tryEach([
+    ["x-terminal-emulator", ["-e", "sh", "-c", sh]],
+    ["gnome-terminal", ["--", "sh", "-c", sh]],
+    ["konsole", ["-e", "sh", "-c", sh]],
+    ["xfce4-terminal", ["-x", "sh", "-c", sh]],
+    ["kitty", ["sh", "-c", sh]],
+    ["alacritty", ["-e", "sh", "-c", sh]],
+    ["xterm", ["-e", "sh", "-c", sh]],
+  ]);
 }
 
 export function copyText(text: string): Promise<void> {
@@ -131,7 +156,8 @@ export class UiServer {
   }
 
   private theme(): string {
-    return this.uiPrefs().theme === "match" ? "match" : "white";
+    const t = this.uiPrefs().theme;
+    return t === "match" || t === "white" ? t : "auto"; // no saved choice: the page follows the system light/dark setting
   }
 
   private send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8"): void {
@@ -182,6 +208,12 @@ export class UiServer {
         fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
         const file = path.join(dir, `prompt-${Date.now()}.md`);
         fs.writeFileSync(file, str("text"), { mode: 0o600 });
+        if (process.platform === "win32") {
+          // cmd has no safe "$(cat file)": copy the prompt and start Claude; the user pastes it.
+          await copyText(str("text"));
+          await openTerminal(root, "claude");
+          return { flash: "Claude is starting. Your prompt is copied: paste it (Ctrl+V)" };
+        }
         await openTerminal(root, `claude "$(cat ${shellQuote(file)})"`);
         return { flash: "Claude is starting in Terminal" };
       }
@@ -237,6 +269,12 @@ export class UiServer {
         if (root) { const pf = claudeSettingsPath("project", root); if (fs.existsSync(pf)) uninstallHooks(pf, eng.home); }
         uninstallStatusline(claudeSettingsPath("user"), eng.home);
         return { flash: "Disconnected. Your Claude Code settings are back to how they were" };
+      }
+      case "fixDoubleHooks": {
+        const file = claudeSettingsPath("user");
+        if (!pluginConnected(file)) return { flash: "The plugin isn't on, so the hooks were kept" };
+        uninstallHooks(file); // only BuildPilot's own hook lines; the status line and everything else stay
+        return { flash: "Done. BuildPilot now counts each step once" };
       }
       case "setupUndo": {
         if (!root) return null;
@@ -298,7 +336,7 @@ export class UiServer {
       }
       case "upgrade": { const g = gate(eng.home); openUrl(g.allowed ? checkoutUrl(readUsage(eng.home).installId) : g.paywall.url); return null; }
       case "enterLicense": { const v = saveLicense(eng.home, str("key")); return { flash: v.valid ? "BuildPilot Pro unlocked" : `That key didn't work (${v.reason})` }; }
-      case "toggleTheme": { this.savePrefs({ theme: this.theme() === "match" ? "white" : "match" }); return null; }
+      case "toggleTheme": { this.savePrefs({ theme: str("to") === "white" ? "white" : str("to") === "match" ? "match" : this.theme() === "match" ? "white" : "match" }); return null; }
       case "projects": {
         const rows = eng.store.all<{ root: string; name: string }>("SELECT root, name FROM projects ORDER BY COALESCE(last_analyzed_at, created_at) DESC LIMIT 15").filter((r) => fs.existsSync(r.root));
         return rows.map((r) => ({ root: r.root, name: path.basename(r.root) }));
@@ -329,6 +367,7 @@ export class UiServer {
     disconnect: ["Disconnect BuildPilot from Claude Code?", "Removes exactly the lines BuildPilot added and restores your own status line."],
     sendToClaude: ["Start Claude with this prompt?", "Opens Terminal in your project and starts Claude with it. Claude still asks before risky actions."],
     startFresh: ["Start a fresh chat?", "Your files are kept. BuildPilot copies a summary of the work so far and opens Claude in a new Terminal window. Paste the summary as your first message."],
+    fixDoubleHooks: ["Remove BuildPilot's older hooks?", "Removes only BuildPilot's hook lines from ~/.claude/settings.json (backed up first). The plugin keeps BuildPilot connected, and your status line stays."],
     setupUndo: ["Turn on undo for this project?", "Sets up Git here and saves everything as a first save point. Nothing is uploaded."],
     checkpoint: ["Make a save point?", "Saves a snapshot of every file as a private Git ref. Your files and branch don't change."],
     mergeBuild: ["Bring this build's work into your main project?", "Its unsaved work is saved first. If both builds changed the same lines, nothing changes and you get a fix prompt."],

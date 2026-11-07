@@ -29,10 +29,10 @@ beforeAll(async () => {
 
 const b = (o: Partial<PageData["builds"][number]>): PageData["builds"][number] => ({ id: "s1", folder: "shop", cwd: "/p/shop", status: "running", word: "working", reason: "", task: "Add checkout", contextPct: 40, lastEventAt: now - 60_000, needsYou: false, next: null, share: 20, ...o });
 
-async function audit(p: PageData, opts: { standalone?: boolean; expand?: boolean } = {}) {
+async function audit(p: PageData, opts: { standalone?: boolean; expand?: boolean; theme?: string } = {}) {
   const dom = new JSDOM(`<!doctype html><html lang="en"><head><title>BuildPilot</title><style>${css}</style></head><body><div id="app"></div></body></html>`, { runScripts: "outside-only", url: "https://webview.local/" });
   const w = dom.window as unknown as Window & typeof globalThis & { acquireVsCodeApi: unknown; eval(s: string): unknown; axe: { run(ctx: unknown, o: unknown): Promise<{ violations: { id: string; impact: string; help: string; nodes: { html: string }[] }[] }> } };
-  w.acquireVsCodeApi = () => ({ getState: () => ({}), setState: () => {}, postMessage: (m: Record<string, unknown>) => { if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: true, standalone: !!opts.standalone } }, "*"), 0); else if (m.id) setTimeout(() => w.postMessage({ type: "reply", id: m.id, result: null }, "*"), 0); } });
+  w.acquireVsCodeApi = () => ({ getState: () => ({}), setState: () => {}, postMessage: (m: Record<string, unknown>) => { if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: true, standalone: !!opts.standalone, theme: opts.theme } }, "*"), 0); else if (m.id) setTimeout(() => w.postMessage({ type: "reply", id: m.id, result: null }, "*"), 0); } });
   w.eval(bundle);
   await new Promise((r) => setTimeout(r, 60));
   if (opts.expand) { (w.document.querySelector('[data-act="toggleBuild"]') as HTMLElement | null)?.click(); await new Promise((r) => setTimeout(r, 30)); }
@@ -53,6 +53,7 @@ describe("accessibility (axe, WCAG 2.1 AA)", () => {
       tips: [{ key: "memory", text: "x's chat is 85% full.", why: "y", action: "startFresh", actionLabel: "Start fresh chat", cwd: "/p" }] };
     expect(await audit(p)).toEqual([]);
     expect(await audit(p, { standalone: true, expand: true })).toEqual([]);
+    expect(await audit(p, { standalone: true, expand: true, theme: "match" })).toEqual([]);
   });
 });
 
@@ -66,5 +67,17 @@ describe("color contrast (WCAG AA 4.5:1 for text)", () => {
       expect(ratio(token(t), token("bg")), `${t} on bg`).toBeGreaterThanOrEqual(4.5);
     }
     expect(ratio("#ffffff", token("accent")), "button text").toBeGreaterThanOrEqual(4.5);
+  });
+  it("the dark page (standalone window) passes too", () => {
+    const rule = css.match(/body\.match\.sa \{([^}]*)\}/)![1]!;
+    const dark = (n: string) => rule.match(new RegExp(`--${n}:\\s*(#[0-9a-fA-F]{6})`))![1]!;
+    for (const t of ["ink", "muted", "accent", "ok", "warn", "bad"]) {
+      expect(ratio(dark(t), dark("bg")), `${t} on dark bg`).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(dark(t), dark("card")), `${t} on dark card`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(ratio(dark("accent-ink"), dark("accent")), "dark button text").toBeGreaterThanOrEqual(4.5);
+  });
+  it("no text smaller than 12px", () => {
+    for (const m of css.matchAll(/font-size:\s*(\d+)px/g)) expect(Number(m[1]), m[0]).toBeGreaterThanOrEqual(12);
   });
 });

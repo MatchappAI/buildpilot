@@ -2,7 +2,7 @@
   "name": "buildpilot",
   "displayName": "BuildPilot for Claude Code",
   "description": "Mission control for Claude Code: see every session, what needs you, context and plan limits, what's broken and the next best step. Local-first, menu-bar widget on Mac.",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "buildpilot-local",
   "license": "UNLICENSED",
   "private": true,
@@ -48,7 +48,8 @@
     "test": "vitest run",
     "test:smoke": "node scripts/build.mjs && node test/smoke/run.mjs",
     "package": "node scripts/build.mjs && ([ \"$(uname)\" != Darwin ] || bash scripts/build-widget.sh) && vsce package --no-dependencies --readme-path docs/marketplace/README.md --no-rewrite-relative-links --out dist/buildpilot.vsix",
-    "ci": "npm run typecheck && npm run lint && npm test && npm run test:smoke",
+    "ci": "npm run typecheck && npm run lint && npm test",
+    "ci:full": "npm run ci && npm run test:smoke",
     "guide": "P=$(mktemp -d) && \"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --user-data-dir=\"$P\" --no-first-run --allow-file-access-from-files --no-pdf-header-footer --print-to-pdf=dist/START-HERE.pdf \"file://$PWD/docs/guide/guide.html\" 2>/dev/null; rm -rf \"$P\"",
     "desktop": "npm run package && npm run guide && node scripts/desktop.mjs",
     "build:widget": "bash scripts/build-widget.sh",
@@ -152,7 +153,7 @@
       },
       {
         "command": "buildpilot.setWebhook",
-        "title": "Set Notification URL (phone, glasses, Slack\u2026)",
+        "title": "Set Notification URL (phone, glasses, Slack…)",
         "category": "BuildPilot"
       },
       {

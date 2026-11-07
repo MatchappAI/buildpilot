@@ -45,7 +45,7 @@ function locateWasm(): string {
     path.join(process.cwd(), "node_modules", "sql.js", "dist", "sql-wasm.wasm"),
   ];
   for (const c of candidates) if (fs.existsSync(c)) return c;
-  throw new Error("BuildPilot could not find sql-wasm.wasm. Reinstall the extension.");
+  throw new Error("BuildPilot is missing a file (sql-wasm.wasm). Reinstall BuildPilot, or update Node.js to version 22.5 or newer.");
 }
 
 interface Backend {

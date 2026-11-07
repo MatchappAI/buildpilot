@@ -251,6 +251,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     stuck: (st?.out.issues ?? []).filter((i) => i.key.startsWith("loop:")).map((i) => i.title),
     weekFullAt: wk.weekFullAt,
     claudeMdTokens: claudeMdTokens(st?.project?.root ?? null),
+    doubleHooks: !!st?.hooks.installed && pluginConnected(),
   });
   return {
     connected: !!st?.hooks.installed || pluginConnected(),

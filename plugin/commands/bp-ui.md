@@ -1,8 +1,8 @@
 ---
 description: Open BuildPilot in its own window (builds, limits, tips, prompts, review & merge)
-allowed-tools: Bash(node:*)
+allowed-tools: Bash(sh:*)
 ---
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/cli.js" ui`
+!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" ui`
 
 Tell the user in one short sentence that BuildPilot is open in its own window.

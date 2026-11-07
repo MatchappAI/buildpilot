@@ -1,6 +1,13 @@
-# Progress (2026-11-06)
+# Progress (2026-11-07)
 
-## v0.10.0: clearer, calmer window (current)
+## v0.11.0: works for more Claude Code users (current, not yet committed/pushed)
+- From the expert review (7/10): plugin ships `sql-wasm.wasm` (Node 18–22.4 no longer crash), `plugin/bin/bp.sh` gives one plain line when Node is missing, spool clock starts on first event + 2000-event cap + owner-only files, `/bp-terminal` for plugin-only users, Windows (wt/cmd) and more Linux terminals, standalone dark page that follows the system (AA contrast, tested), min text 12px, double-hooks tip with one-click fix, action column no longer overlaps chat % in the VS Code layout.
+- Website no longer says "Open source" (LICENSE is proprietary); it says "Source on GitHub" and lists Node 18+ / Mac-first.
+- `npm run ci` no longer runs the smoke test (it opens a visible VS Code window); use `ci:full` only when the owner agrees.
+- 155 tests pass. Verified in sandbox homes: older-Node path, no-Node message, spool cap, stale clock, `/bp-terminal`. Dark/light/VS Code layouts checked with headless screenshots.
+- Not done: the owner's installed `~/.buildpilot/hook.sh` + `bin/` still run 0.10 (refresh: `node plugin/bin/cli.js hooks install && node plugin/bin/cli.js shell install`). Windows/Linux terminal launching untested on real machines. License terms (proprietary vs source-available) are the owner's call.
+
+## v0.10.0: clearer, calmer window
 - Tested as a user against live sessions: opened the window, expanded a build, searched for a file, wrote a prompt, opened Advanced tools. No JS errors.
 - Plain-English activity and steps, full-width details, file finder behind a link, aligned columns. 143 tests plus smoke pass.
 - Installed: `~/.buildpilot/bin` + media, VS Code 0.10.0, Desktop folder + `~/Desktop/BuildPilot.app`. The public plugin installs as 0.10.0 from GitHub (checked in a scratch config).

@@ -10,8 +10,8 @@
     {
       "name": "buildpilot",
       "source": "./plugin",
-      "description": "See every Claude Code build, how full each one's memory is, your 5-hour and weekly limits (with a forecast), and tips for right now. Local-only: nothing leaves your computer.",
-      "version": "0.10.0",
+      "description": "See every Claude Code build, how full each one's memory is, your 5-hour and weekly limits (with a forecast), and tips for right now. Local-only: nothing leaves your computer. Needs Node.js 18+; best on macOS (Windows/Linux preview).",
+      "version": "0.11.0",
       "author": {
         "name": "BuildPilot"
       },

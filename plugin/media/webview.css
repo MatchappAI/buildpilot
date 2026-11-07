@@ -28,7 +28,7 @@ html, body {
 .head { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
 h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
 h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
-.pill { font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 10px; }
+.pill { font-size: 13px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 10px; }
 
 .block, .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
 .card.connect { border-color: var(--accent); }
@@ -116,6 +116,16 @@ code { font: 13px ui-monospace, Menlo, monospace; background: #f1f1f1; padding: 
 body.match { --bg: var(--vscode-editor-background, #1f1f1f); --card: var(--vscode-editorWidget-background, #252526); --ink: var(--vscode-foreground, #ccc); --muted: var(--vscode-descriptionForeground, #9d9d9d); --line: var(--vscode-widget-border, #3c3c3c); --accent: var(--vscode-button-background, #0078d4); }
 body.match textarea, body.match button.secondary { background: var(--vscode-input-background, #313131); color: var(--ink); border-color: var(--line); }
 body.match .track { background: var(--line); }
+/* Dark page in the standalone window (no VS Code theme): status colors re-tuned for WCAG AA on dark. */
+body.match.sa { --bg: #17181c; --card: #212329; --ink: #e8e9ec; --muted: #a4a7b0; --line: #34373f; --accent: #7d96ff; --accent-2: #9aaeff; --accent-soft: #262c45; --accent-ink: #0d0f17; --ok: #4fc584; --warn: #e3a64a; --bad: #ff8a73; color-scheme: dark; }
+html:has(body.match.sa) { background: #17181c; }
+body.match.sa { min-height: 100vh; }
+body.match.sa .note { background: #2b2516; border-color: #5a4a22; color: var(--ink); }
+body.match.sa .flash { background: #e8e9ec; color: #111; }
+body.match.sa .chip.err, body.match.sa .errpanel, body.match.sa .hu-stop, body.match.sa .hu-err { background: #2e1d1a; border-color: #6b3328; }
+body.match.sa .chip.warn, body.match.sa .hu-limit, body.match.sa .hu-need { background: #2b2516; border-color: #5a4a22; }
+body.match.sa .chip.codex { background: var(--card); color: var(--muted); }
+body.match.sa textarea, body.match.sa button.secondary, body.match.sa input { background: #1c1e23; color: var(--ink); border-color: var(--line); }
 body.match .summary, body.match .paywall, body.match code { background: var(--card); }
 .locked { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
 .blur { filter: blur(4px); user-select: none; color: var(--ink); }
@@ -123,8 +133,8 @@ body.match .summary, body.match .paywall, body.match code { background: var(--ca
 .side { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .side h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
 .proj { margin-left: auto; font-size: 14px; }
-.chip { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-left: 6px; border: 1px solid var(--line); background: #fff; color: var(--muted); vertical-align: 1px; }
-.chip.err { color: var(--bad); border-color: #f2c4bc; background: #fff6f4; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; }
+.chip { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-left: 6px; border: 1px solid var(--line); background: #fff; color: var(--muted); vertical-align: 1px; }
+.chip.err { color: var(--bad); border-color: #f2c4bc; background: #fff6f4; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
 .chip.warn { color: var(--warn); border-color: #f0d79a; background: #fff8e6; }
 .chip.codex { color: #444; background: #f3f3f3; }
 .name-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
@@ -132,7 +142,7 @@ body.match .summary, body.match .paywall, body.match code { background: var(--ca
 .pencil { background: none; border: 0; padding: 0 4px; color: var(--muted); cursor: pointer; font-size: 12px; opacity: .45; }
 .builds li:hover .pencil, .pencil:focus-visible { opacity: 1; }
 .nowtxt { font-weight: 500; color: var(--ink); }
-.group { font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 0 0 !important; border-top: 0 !important; }
+.group { font-size: 13px; font-weight: 600; color: var(--muted); padding: 10px 0 0 !important; border-top: 0 !important; }
 .quiet { font-size: 13px; color: var(--muted); }
 .errpanel { margin: 8px 0 2px; padding: 8px 10px; background: #fff6f4; border: 1px solid #f2c4bc; border-radius: 8px; }
 .errpanel ul { margin: 0 0 4px; padding-left: 16px; }
@@ -241,7 +251,7 @@ html, body { overflow-x: hidden; }
 .finder-link { margin: 12px 0 0; font-size: 13px; }
 /* Steady columns: chat % and actions line up row to row. */
 .b-meta { width: 96px; min-width: 96px; align-items: flex-start !important; }
-.b-act { width: 88px; }
+.b-act { width: auto; min-width: 88px; flex: none; } /* grows for longer labels ("Review in terminal") instead of overlapping the chat column */
 @media (max-width: 520px) { .b-meta { width: 100%; min-width: 0; } .b-act { width: auto; } }
 /* Expanded build: details span the full row. */
 .builds li.open { flex-wrap: wrap; }

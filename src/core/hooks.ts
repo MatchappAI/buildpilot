@@ -27,12 +27,16 @@ export const HOOK_EVENTS = [
 ] as const;
 
 export const HOOK_SCRIPT = `#!/bin/sh
-# BuildPilot hook (installed by the BuildPilot VS Code extension).
+# BuildPilot hook (installed by BuildPilot).
 # Copies the event JSON that Claude Code sends on stdin into a private local spool.
 # It never blocks Claude Code, never prints anything, and does nothing if BuildPilot was removed.
 d="\${BUILDPILOT_HOME:-$HOME/.buildpilot}/spool"
+umask 077
 [ -d "$d/tmp" ] || exit 0
+[ -e "$d/.alive" ] || : > "$d/.alive"
 [ -n "$(find "$d/.alive" -mmin +2880 2>/dev/null)" ] && exit 0
+set -- "$d"/*.json
+[ $# -gt 2000 ] && exit 0
 t=$(mktemp "$d/tmp/evt.XXXXXX" 2>/dev/null) || exit 0
 head -c 1048576 > "$t"
 mv "$t" "$d/$(basename "$t").json" 2>/dev/null || rm -f "$t"

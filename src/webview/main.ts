@@ -15,6 +15,14 @@ let S: UiState | null = null;
 let P: PageData | null = null;
 let trusted = true;
 let theme: "white" | "match" = "white";
+/** Standalone window with no saved choice: follow the system light/dark setting. */
+let themePref = "white";
+const systemDark = () => typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+if (typeof matchMedia === "function") matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+  if (themePref !== "auto") return;
+  theme = systemDark() ? "match" : "white";
+  render();
+});
 let standalone = false;
 let alertsOn = true;
 const FREE = 20;
@@ -42,7 +50,8 @@ window.addEventListener("message", (e: MessageEvent) => {
     S = m.state ?? null;
     P = m.page ?? null;
     trusted = m.settings?.trusted ?? true;
-    theme = m.settings?.theme === "match" ? "match" : "white";
+    themePref = m.settings?.theme ?? "white";
+    theme = themePref === "match" || (themePref === "auto" && systemDark()) ? "match" : "white";
     standalone = !!m.settings?.standalone;
     alertsOn = m.settings?.alerts !== false;
     // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
@@ -144,6 +153,7 @@ function render(): void {
     return;
   }
   document.body.classList.toggle("match", theme === "match");
+  document.body.classList.toggle("sa", standalone); // own window: no VS Code theme variables, so dark colors come from style.css
   app.innerHTML = `
   <main class="page">
     <header class="head">
@@ -156,7 +166,7 @@ function render(): void {
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
     <footer class="foot">
-      <button type="button" class="linkbtn" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</button> · <button type="button" class="linkbtn" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</button>${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
+      <button type="button" class="linkbtn" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</button> · <button type="button" class="linkbtn" data-act="toggleTheme" data-to="${theme === "match" ? "white" : "match"}">${theme === "match" ? "White page" : standalone ? "Dark page" : "Match my theme"}</button>${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
     </footer>
   </main>
   <div id="flash" class="flash" aria-hidden="true"></div>`;
@@ -427,6 +437,7 @@ async function act(el: HTMLElement): Promise<void> {
   const a = el.dataset.act!;
   switch (a) {
     case "build": return buildNow();
+    case "toggleTheme": return void call("toggleTheme", { to: el.dataset.to });
     case "copyPrompt": await call("copy", { text: promptText }); void call("promptUsed"); return flash("Copied");
     case "useInOpen": void call("promptUsed"); await call("useInOpen", { text: promptText }); return flash("Copied. Paste it into Claude (Cmd/Ctrl+V)");
     case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
@@ -456,6 +467,7 @@ async function act(el: HTMLElement): Promise<void> {
       const t = el.dataset.tip;
       if (t === "startFresh") return void call("startFresh", { cwd: el.dataset.cwd });
       if (t === "setupUndo") return void call("setupUndo");
+      if (t === "fixDoubleHooks") return void call("fixDoubleHooks");
       if (t === "resumeBuild") return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
       if (t === "pause") { await call("openBuild", { cwd: el.dataset.cwd }); return flash("Press Esc in that terminal to pause Claude"); }
       if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }

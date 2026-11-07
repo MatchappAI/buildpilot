@@ -30,7 +30,8 @@ The secret scan uses high-confidence patterns and is not a security audit. Readi
 
 ## Hooks, spool and retention (v0.5)
 - **Connect** adds 13 async command hooks and a status-line reporter to `~/.claude/settings.json`. "See exactly what changes" shows the exact JSON first. Your settings are backed up, and Disconnect removes exactly these lines. If you already have a status line, it keeps working (BuildPilot chains it).
-- The hooks copy each event Claude Code sends (up to 1 MB) into `~/.buildpilot/spool`. They never block Claude, never print, and stop writing if more than 5000 events are waiting unread.
+- The hooks copy each event Claude Code sends (up to 1 MB) into `~/.buildpilot/spool`. They never block Claude and never print. They stop writing if more than 2000 events are waiting unread, or if nothing has read the spool for 2 days (the clock starts with the first event, so a plugin that's installed but never opened stops on its own).
+- **Until BuildPilot reads them, spool files are raw:** they can include what Claude wrote or ran, including anything secret in it. The folder and files are owner-only (`umask 077`), never leave the computer, and are redacted and deleted on read.
 - BuildPilot reads each spool file, validates it, redacts secrets, stores a short log (tool names, commands, file names, errors; no file contents) in `buildpilot.db`, and **deletes the spool file**. The log is pruned at 30 days or 2000 events per session.
 
 ## Licenses and payments

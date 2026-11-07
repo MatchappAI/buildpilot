@@ -1,9 +1,9 @@
 ---
 description: Unlock BuildPilot Pro with your license key, or show your plan
 argument-hint: your key (optional)
-allowed-tools: Bash(node:*)
+allowed-tools: Bash(sh:*)
 ---
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/cli.js" license $ARGUMENTS`
+!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" license $ARGUMENTS`
 
 Repeat the output above to the user in one sentence.

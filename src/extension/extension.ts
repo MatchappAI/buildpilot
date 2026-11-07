@@ -556,6 +556,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         push();
         return;
       }
+      case "fixDoubleHooks": {
+        const file = claudeSettingsPath("user");
+        if (!pluginConnected(file)) return void vscode.window.showInformationMessage("The BuildPilot plugin isn't on, so the hooks were kept.");
+        if (!(await confirm("Remove BuildPilot's older hooks?", "Removes only BuildPilot's hook lines from ~/.claude/settings.json (backed up first). The plugin keeps BuildPilot connected, and your status line stays.", "Remove older hooks"))) return;
+        uninstallHooks(file);
+        push();
+        return;
+      }
       case "setupUndo": {
         const root = eng.currentProject?.root;
         if (!root) return;
