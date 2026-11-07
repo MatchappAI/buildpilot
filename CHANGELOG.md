@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.0: accessibility, a sharper brand, and a website
+- **New mark:** a terminal prompt (>_) inside an instrument gauge, "a cockpit for Claude Code", echoing the chat ring. Legible down to 16 px. One script (`scripts/make-brand.mjs`) regenerates every size.
+- **Accessibility:**
+  - WCAG 2.1 AA automated audit (axe-core) in the test suite for every main state.
+  - Text colors fixed to 4.5:1 or better.
+  - Screen readers hear who needs you and when you're near your limit.
+  - Proper headings in the build list, expand buttons wired to their panels, and accessible dialogs (focus trap, Escape, focus restored).
+  - A visible focus ring, Windows high-contrast support, reduced motion, and layouts that reflow down to 380 px without sideways scrolling.
+- **Design:**
+  - Labelled numbers ("chat 46%" / "22% of today's use", now over the whole day).
+  - The chat ring stays neutral until 70%, so green only means healthy.
+  - Actions always visible, and one primary button per thing.
+  - One card-header style, with Disconnect set apart.
+  - A short trial note, and a "What you'll see" preview on first run.
+- **Clearer status:** "Freeing port 8765" instead of raw shell, the full command on hover, branch names to tell builds apart, and "may be stuck" only when nothing is running.
+- **Thank-you page:** a spinner, numbered next steps, and a fallback message if the key takes longer than 20 seconds.
+- **Website:** https://matchappai.github.io/buildpilot/ (`docs/index.html`): hero, install, features, pricing, privacy.
+
 ## 0.7.0: new look, fewer false alarms
 - **New brand:** a blue paper-plane-prompt mark and a BuildPilot wordmark, used across the app, Desktop app, extension, thank-you page, README and guide.
 - **Heads-up strip:** one calm line at the top when something needs you (approval, 80% limit, stopped build, error burst), with the button to act.

@@ -29,6 +29,8 @@ export interface Activity {
   turnMs: number | null;
   /** No new activity for 10+ minutes while working. */
   maybeStuck: boolean;
+  /** Full text of the current action (for tooltips). */
+  nowFull: string | null;
 }
 
 /** Normal trial-and-error, not a real problem: searches with no matches, edits whose text didn't match, grep/test exit 1. */
@@ -42,7 +44,7 @@ export function isRetry(e: HookEvent): boolean {
 }
 
 const ACT: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
-  [/^Run: (.+)$/, (m) => `Running ${shortCommand(m[1]!)}`],
+  [/^Run: (.+)$/, (m) => { const sc = shortCommand(m[1]!); return /^(freeing|waiting)/.test(sc) ? sc.charAt(0).toUpperCase() + sc.slice(1) : `Running ${sc}`; }],
   [/^Edit (.+)$/, (m) => `Editing ${m[1]}`],
   [/^Write (.+)$/, (m) => `Writing ${m[1]}`],
   [/^Read (.+)$/, (m) => `Reading ${m[1]}`],
@@ -57,6 +59,10 @@ const ACT: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
 /** Shell commands are noisy: drop a leading `cd <dir> &&`, env assignments and pipes after the first command. */
 export function shortCommand(cmd: string): string {
   let c = cmd.trim();
+  // Plain English for common housekeeping commands.
+  const port = c.match(/kill(?:\s+-9)?\s+\$\(lsof\s+-ti\s*:?(\d+)\)/);
+  if (port) return `freeing port ${port[1]}`;
+  if (/^(sleep|wait)\b/.test(c)) return "waiting";
   for (let i = 0; i < 3; i++) c = c.replace(/^cd\s+("[^"]*"|'[^']*'|\S+)\s*(&&|;)\s*/, "").replace(/^([A-Z_][A-Z0-9_]*=("[^"]*"|'[^']*'|\S+)\s+)+/, "");
   const parts = c.split(/\s*(?:\|\||&&|;)\s*/).map((x) => (x.split(/\s*\|\s*/)[0] ?? x).trim()).filter(Boolean);
   // Prefer the command that matters (build/test/run) over setup like mkdir/cd/export/echo.
@@ -87,12 +93,14 @@ export function activityFor(s: Session, events: HookEvent[], now: number): Activ
   const lastErrors = errs.slice(-3).reverse().map((e) => clip((e.errorText || e.summary).replace(/\s+/g, " ").trim(), 160));
   // Current action: an unfinished PreToolUse wins; otherwise "Thinking" right after a prompt or a finished tool.
   let nowText: string | null = null;
+  let pendingFull: string | null = null;
   let since: number | null = null;
   if (last && !s.endedAt && s.status !== "idle" && s.status !== "completed") {
     const finished = new Set(ev.filter((e) => e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure").map((e) => e.toolUseId).filter(Boolean));
     const pending = [...ev].reverse().find((e) => e.hookEvent === "PreToolUse" && (!e.toolUseId || !finished.has(e.toolUseId)) && e.ts >= (ev.filter((x) => x.hookEvent === "Stop").pop()?.ts ?? 0));
     if (pending && (!last || pending.ts >= last.ts - 1 || last.hookEvent === "PreToolUse" || last.hookEvent === "PermissionRequest" || last.hookEvent === "Notification")) {
       nowText = presentTense(pending.summary);
+      pendingFull = pending.summary.replace(/^[✓✗] /, "").slice(0, 400);
       since = pending.ts;
     } else if (last.hookEvent === "UserPromptSubmit" || last.hookEvent === "PostToolUse" || last.hookEvent === "PostToolUseFailure" || last.hookEvent === "SubagentStop") {
       nowText = "Thinking";
@@ -134,6 +142,8 @@ export function activityFor(s: Session, events: HookEvent[], now: number): Activ
     retries1h,
     finishedAt: finish?.ts ?? null,
     turnMs: finish && turnStart ? finish.ts - turnStart.ts : null,
-    maybeStuck: !!nowText && since != null && now - s.lastEventAt > 10 * 60_000 && s.status === "running",
+    // "May be stuck" only when Claude is thinking with nothing running for 10+ minutes (a long npm test is fine).
+    maybeStuck: nowText === "Thinking" && now - s.lastEventAt > 10 * 60_000 && s.status === "running",
+    nowFull: pendingFull,
   };
 }

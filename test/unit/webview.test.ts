@@ -112,7 +112,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelector(".status")?.textContent).toMatch(/1 needs you/);
     expect(doc.body.innerHTML).toContain("&lt;img src=x");
     expect(w.__xss).toBeUndefined();
-    expect(doc.querySelector(".mem")?.textContent).toBe("34%");
+    expect(doc.querySelector(".mem")?.textContent).toBe("chat 34%");
     expect(doc.querySelector(".mem svg.ring")).not.toBeNull();
     expect(doc.querySelector('.builds [data-act="openBuild"]')?.textContent).toBe("Review in terminal");
     await click('[data-act="openBuild"]');

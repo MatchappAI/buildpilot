@@ -222,7 +222,8 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
   const cxLim = cx.find((c) => c.limits)?.limits ?? null;
   const limits: Limits = { week: wk.week, weekFullAt: wk.weekFullAt, codex: cxLim, fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: forecast, forecastLocked: false, accuracy: accuracyText(samples.history), basisMin: samples.samples.length >= 2 ? Math.round((samples.samples[samples.samples.length - 1]![0] - samples.samples[0]![0]) / 60_000) : null };
   const midnight = new Date(now).setHours(0, 0, 0, 0);
-  const today = statuses.filter((s) => s.updatedAt >= midnight && s.costUsd != null);
+  // Every build that ran today (not just the last few hours), so shares add up to the whole day.
+  const today = recentStatuses(engine.home, now, Math.max(1, now - midnight)).filter((s) => s.costUsd != null);
   const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd!, 0) : null;
   // Share of today's usage per build, from Claude Code's own per-session estimate (a proxy for limit use).
   const costById = new Map(today.map((s) => [s.sessionId, s.costUsd!]));

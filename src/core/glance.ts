@@ -60,6 +60,7 @@ export interface WidgetSession {
   finishedAt?: number | null;
   turnMs?: number | null;
   maybeStuck?: boolean;
+  nowFull?: string | null;
   /** Extra words to tell apart builds that would otherwise have the same name. */
   hint?: string | null;
   /** "claude" (default) or "codex" (read-only, from ~/.codex logs). */
@@ -135,7 +136,12 @@ export function oneLine(text: string | null, max = 90): string | null {
 }
 
 /** A few words that tell two same-named builds apart: what you asked it to do, or its id. */
-function disambiguate(b: { task: string | null; id: string }): string {
+function disambiguate(b: { task: string | null; id: string; cwd?: string }): string {
+  try {
+    const head = fs.readFileSync(path.join(b.cwd ?? "", ".git", "HEAD"), "utf8").trim();
+    const br = head.startsWith("ref: refs/heads/") ? head.slice(16) : null;
+    if (br && br !== "main" && br !== "master") return br.replace(/^bp\//, "");
+  } catch { /* not a repo root or a worktree (.git file): fall back to the prompt */ }
   const words = (b.task ?? "").replace(/[^\p{L}\p{N}\s-]/gu, " ").split(/\s+/).filter((w) => w.length > 2).slice(0, 4).join(" ");
   return words || b.id.slice(0, 6);
 }
@@ -187,6 +193,7 @@ export function widgetData(engine: Engine, now = Date.now()): WidgetData {
       finishedAt: x.act.finishedAt,
       turnMs: x.act.turnMs,
       maybeStuck: x.act.maybeStuck,
+      nowFull: x.act.nowFull,
       agent: "claude" as const,
     })).map((b, _i, all) => ({ ...b, hint: all.filter((o) => (o.name ?? o.folder) === (b.name ?? b.folder)).length > 1 ? disambiguate(b) : null })),
     needs: needs.length,

@@ -1,6 +1,7 @@
 <p align="center"><img src="docs/assets/logo.png" width="96" alt="BuildPilot"></p>
 <h1 align="center">BuildPilot for Claude Code</h1>
 <p align="center"><b>Every Claude build, what needs you, your limits and where your tokens go, in one calm window.</b><br>Local-only · works with Claude Code (and reads Codex) · no editor needed</p>
+<p align="center"><a href="https://matchappai.github.io/buildpilot/">Website</a> · <a href="#install">Install</a> · <a href="docs/COMPARISON.md">How it compares</a></p>
 <p align="center"><img src="docs/assets/hero.png" width="560" alt="BuildPilot showing four builds, one waiting for approval, plan limits and tips"></p>
 
 Made for people who build with Claude Code and don't want to babysit it, including people who aren't engineers.

@@ -83,14 +83,14 @@ function flash(text: string): void {
 }
 
 /** The BuildPilot mark (inline so it works in VS Code and the standalone window without loading files). */
-const MARK = `<svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="bpg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4C78FF"/><stop offset="1" stop-color="#2242D8"/></linearGradient></defs><rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bpg)"/><path d="M132 148 L392 252 L132 356 L176 252 Z" fill="#fff"/><path d="M176 252 L392 252 L132 356 Z" fill="#DCE5FF"/><rect x="300" y="334" width="84" height="24" rx="12" fill="#fff" opacity=".92"/></svg>`;
+const MARK = `<svg class="mark" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><defs><linearGradient id="bpg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4C78FF"/><stop offset="1" stop-color="#1F3BC9"/></linearGradient></defs><rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bpg)"/><circle cx="256" cy="256" r="158" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="30"/><circle cx="256" cy="256" r="158" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round" stroke-dasharray="700 993" transform="rotate(135 256 256)"/><path d="M176 200 L236 252 L176 304" fill="none" stroke="#FFFFFF" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/><rect x="262" y="286" width="82" height="34" rx="17" fill="#FFFFFF"/></svg>`;
 
 /** Small ring that fills as the chat fills up. */
 function ring(pct: number): string {
   const r = 7;
   const c = 2 * Math.PI * r;
   const v = Math.min(100, Math.max(0, pct));
-  return `<svg class="ring tone-${tone(pct)}" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="${r}" class="ring-bg"/><circle cx="9" cy="9" r="${r}" class="ring-fg" stroke-dasharray="${((v / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 9 9)"/></svg>`;
+  return `<svg class="ring tone-${pct < 70 ? "calm" : tone(pct)}" viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="9" cy="9" r="${r}" class="ring-bg"/><circle cx="9" cy="9" r="${r}" class="ring-fg" stroke-dasharray="${((v / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 9 9)"/></svg>`;
 }
 
 /** One calm line at the top when something needs attention (most urgent first, max 2). */
@@ -109,6 +109,19 @@ function headsUp(): string {
 }
 
 // ---------- render ----------
+let lastSpoken = "";
+/** Tell screen-reader users about new things that need them (polite, once per change). */
+function announce(): void {
+  if (!P) return;
+  const parts: string[] = [];
+  const needs = P.builds.filter((b) => b.needsYou);
+  if (needs.length) parts.push(`${needs.map((b) => b.name ?? b.folder).join(", ")} ${needs.length === 1 ? "needs" : "need"} you`);
+  if ((P.limits.fiveHourPct ?? 0) >= 80) parts.push(`${Math.round(P.limits.fiveHourPct!)} percent of your 5-hour limit used`);
+  const msg = parts.join(". ");
+  if (msg && msg !== lastSpoken) { const el = document.getElementById("live"); if (el) el.textContent = msg; }
+  lastSpoken = msg;
+}
+
 function render(): void {
   const app = document.getElementById("app")!;
   const focusedId = (document.activeElement as HTMLElement | null)?.id;
@@ -130,7 +143,7 @@ function render(): void {
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
     <footer class="foot">
-      <a href="#" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</a> · <a href="#" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</a>${standalone ? ` · <a href="#" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</a>` : ""}${P.connected ? ` · <a href="#" data-act="disconnect">Disconnect</a>` : ""}
+      <a href="#" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</a> · <a href="#" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</a>${standalone ? ` · <a href="#" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</a>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><a href="#" class="danger" data-act="disconnect">Disconnect</a>` : ""}
     </footer>
   </main>
   <div id="flash" class="flash" aria-hidden="true"></div>`;
@@ -139,6 +152,7 @@ function render(): void {
   const out = document.getElementById("ptext") as HTMLTextAreaElement | null;
   if (out) out.value = promptText;
   bind();
+  announce();
   if (focusedId) {
     const el = document.getElementById(focusedId) as HTMLTextAreaElement | null;
     el?.focus({ preventScroll: true });
@@ -158,7 +172,7 @@ function trialNotice(): string {
   const p = P!.plan;
   if (!p.sellable || p.licensed || p.trialDaysLeft == null || p.trialDaysLeft > 3) return "";
   const day = p.trialEndsAt ? new Date(p.trialEndsAt).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }) : "soon";
-  return `<p class="note">Your Pro trial ends ${esc(day)}. After that you can run 2 builds at once, merges no longer run your tests first, and per-build usage turns off. Limits, the forecast and tips stay free. No card is on file and nothing is charged unless you choose Pro. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
+  return `<p class="note" title="After the trial: 2 builds at once, no tests-before-merge, no per-build usage. Limits, forecast and tips stay free. Nothing is charged unless you choose Pro.">Pro trial ends ${esc(day)}. No card on file. <a href="#" data-act="upgrade">Keep Pro — ${esc(p.price)}</a></p>`;
 }
 
 function connectCard(): string {
@@ -166,6 +180,15 @@ function connectCard(): string {
     <div class="hero">${MARK}<div><h2>Connect Claude Code</h2><p class="muted small">Every build, what needs you, your limits and where your tokens go, in one calm window.</p></div></div>
     <p>BuildPilot adds a few lines to your Claude Code settings so it can see your builds, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and you can disconnect anytime.</p>
     <div class="actions"><button class="primary" data-act="connectAll">Connect</button><button class="link" data-act="showConnectChanges">See exactly what changes</button></div>
+  </section>
+  <section class="preview" aria-label="What you'll see">
+    <h2 class="label">What you'll see</h2>
+    <ul class="feat">
+      <li><b>Every build, live.</b> What each Claude chat is doing right now, which one needs you, and errors as they happen.</li>
+      <li><b>Your limits, ahead of time.</b> 5-hour and weekly use, when it resets, and when you'll run out at your pace.</li>
+      <li><b>Where your tokens go.</b> The biggest things eating each chat, with tips to cut them.</li>
+      <li><b>Safe parallel builds.</b> Start a second Claude in its own copy, then review and merge.</li>
+    </ul>
   </section>`;
 }
 
@@ -192,7 +215,7 @@ function buildSub(x: Build): string {
   if (x.needsYou) return `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.waitingFor ?? x.reason, 80) || STATUS_WORD[x.status])}`;
   if (x.stopped) return `<span class="warn-text">Stopped mid-task</span> · ${esc(clip(x.task, 60))}`;
   if (x.maybeStuck) return `<span class="warn-text">No activity for ${Math.round((Date.now() - x.lastEventAt) / 60_000)} min · may be stuck</span> · ${esc(x.now ?? "")}`;
-  if (x.now) return `<b class="nowtxt">${esc(x.now)}</b>${dur(x.nowSince)}`;
+  if (x.now) return `<b class="nowtxt" title="${esc(x.nowFull ?? x.now)}">${esc(x.now)}</b>${dur(x.nowSince)}`;
   if (x.finishedAt && x.turnMs && Date.now() - x.finishedAt < 15 * 60_000) return `<span class="ok-text">Finished · your turn</span> · ${esc(clip(x.task, 50))}`;
   return `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
 }
@@ -208,12 +231,12 @@ function buildRow(x: Build): string {
   return `<li class="${x.needsYou ? "needs" : ""}${expanded.has(x.id) ? " open" : ""}">
     <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span>
     <div class="b-main">
-      <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" title="Show what it did and where the tokens went">${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this build" aria-label="Name this build">✎</button>` : ""}${chips}</div>
+      <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" aria-controls="d-${esc(x.id)}" title="Show what it did and where the tokens went">${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this build" aria-label="Name this build">✎</button>` : ""}${chips}</div>
       <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
       ${errPanel}
       ${expanded.has(x.id) ? buildDetails(x) : ""}
     </div>
-    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">${ring(x.contextPct)}${Math.round(x.contextPct)}%</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null ? `<span class="share" title="This build's share of today's usage across your running builds (from Claude Code's own cost estimate)">${x.share}% of today</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
+    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}%</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude Code usage today, from Claude Code's own cost estimate">${x.share}% of today's use</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
     <div class="b-act">${x.agent === "codex" ? "" : buildButton(x)}</div>
   </li>`;
 }
@@ -229,7 +252,7 @@ function buildDetails(x: Build): string {
   const tl = (x.timeline ?? []).length
     ? `<div class="d-head">Recent steps</div><ol class="timeline">${(x.timeline ?? []).map((e) => `<li class="${e.error ? "bad" : ""}"><span class="muted">${new Date(e.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span> ${esc(e.text)}</li>`).join("")}</ol>`
     : "";
-  return `<div class="details">${tok}${tl}</div>`;
+  return `<div class="details" id="d-${esc(x.id)}">${tok}${tl}</div>`;
 }
 
 function fileFinder(): string {
@@ -255,7 +278,7 @@ function buildsSection(): string {
   // Once any project has 2+ builds, label every project so rows never look like they belong to the group above.
   const multi = ordered.filter(([, xs]) => xs.length > 1);
   const singles = ordered.filter(([, xs]) => xs.length === 1).flatMap(([, xs]) => xs);
-  const head = (label: string, count?: number) => `<li class="group"><span>${esc(label)}</span>${count ? `<span class="count">${count} builds</span>` : ""}</li>`;
+  const head = (label: string, count?: number) => `<li class="group"><h3 class="group-h">${esc(label)}</h3>${count ? `<span class="count">${count} builds</span>` : ""}</li>`;
   const list = multi.length
     ? multi.map(([name, xs]) => head(name, xs.length) + xs.map(buildRow).join("")).join("") + (singles.length ? head("Other builds") + singles.map(buildRow).join("") : "")
     : ordered.flatMap(([, xs]) => xs).map(buildRow).join("");
@@ -273,14 +296,15 @@ function sideSection(): string {
   return `<div class="side"><h3>Side builds</h3><ul class="builds">${side
     .map((s) => `<li>
       <div class="b-main"><div class="b-name">${esc(s.name)}</div><div class="b-sub">${s.changed ? `${s.changed} file${s.changed === 1 ? "" : "s"} changed${s.unsaved ? " · not saved yet" : ""}` : "No changes yet"}</div></div>
-      ${s.changed ? `<button class="link" data-act="reviewBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="See each changed file, before and after">Review</button><button class="secondary small-btn" data-act="mergeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="Bring this build's work into your main project">Merge</button>` : `<button class="link" data-act="removeBuild" data-dir="${esc(s.dir)}" title="Remove this folder (its branch is kept)">Remove</button>`}
+      ${s.changed ? `<button class="secondary small-btn" data-act="reviewBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="See each changed file, before and after">Review</button><button class="secondary small-btn" data-act="mergeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="Bring this build's work into your main project">Merge</button>` : `<button class="link" data-act="removeBuild" data-dir="${esc(s.dir)}" title="Remove this folder (its branch is kept)">Remove</button>`}
     </li>`)
     .join("")}</ul></div>`;
 }
 
 function buildButton(x: PageData["builds"][number]): string {
-  if (!standalone) return `<button class="${x.needsYou ? "primary" : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>`;
-  if (x.needsYou) return `<button class="primary" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Switches to it if you use tmux; otherwise tells you where it's running. Nothing is approved until you approve it there.">Find it</button>`;
+  const featured = x.needsYou && P!.builds.find((b) => b.needsYou)?.id === x.id;
+  if (!standalone) return `<button class="${x.needsYou ? (featured ? "secondary small-btn" : "primary") : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>`;
+  if (x.needsYou) return `<button class="${featured ? "secondary small-btn" : "primary"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Switches to it if you use tmux; otherwise tells you where it's running. Nothing is approved until you approve it there.">Find it</button>`;
   if (x.status === "running") return "";
   return `<button class="link" data-act="resumeBuild" data-id="${esc(x.id)}" data-cwd="${esc(x.cwd)}" title="Reopens this Claude conversation in Terminal">Resume</button>`;
 }
@@ -299,10 +323,10 @@ function weekday(t: number): string {
 function limitsSection(): string {
   const L = P!.limits;
   if (P!.billing === "api") {
-    return `<section class="block" aria-label="Spend"><h2>Spend today</h2><p class="big">${P!.costTodayUsd != null ? `~$${P!.costTodayUsd.toFixed(2)}` : "—"}</p><p class="muted small">Claude Code's own estimate for your API key, across all builds today.</p></section>`;
+    return `<section class="block" aria-label="Spend"><h2 class="label">Spend today</h2><p class="big">${P!.costTodayUsd != null ? `~$${P!.costTodayUsd.toFixed(2)}` : "—"}</p><p class="muted small">Claude Code's own estimate for your API key, across all builds today.</p></section>`;
   }
   if (P!.billing === "unknown" || (L.fiveHourPct == null && L.sevenDayPct == null)) {
-    return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2><p class="muted">Shows up after your next message to Claude.</p></section>`;
+    return `<section class="block" aria-label="Plan limits"><h2 class="label">Plan limits</h2><p class="muted">Shows up after your next message to Claude.</p></section>`;
   }
   const fiveRight = L.fiveHourPct == null ? "unknown" : `${Math.round(L.fiveHourPct)}% used${L.fiveHourResetsAt ? ` · back to 0% at ${clock(L.fiveHourResetsAt)}` : ""}`;
   const weekRight = L.sevenDayPct == null ? "unknown" : `${Math.round(L.sevenDayPct)}% used${L.sevenDayResetsAt ? ` · resets ${weekday(L.sevenDayResetsAt)}` : ""}`;
@@ -316,8 +340,10 @@ function limitsSection(): string {
 }
 
 function tipsSection(): string {
-  if (!P!.tips.length) return "";
-  return `<section class="block" aria-label="Tips"><h2 class="label">Tips for right now</h2><ul class="tips">${P!.tips
+  // One fact, one place: the heads-up strip already shows a hot limit.
+  const shown = P!.tips.filter((t) => !(t.key === "limit" && (P!.limits.fiveHourPct ?? 0) >= 80));
+  if (!shown.length) return "";
+  return `<section class="block" aria-label="Tips"><h2 class="label">Tips for right now</h2><ul class="tips">${shown
     .map((t) => `<li><span>${esc(t.text)}</span>${t.action ? `<button class="secondary small-btn" data-act="tip" data-tip="${t.action}" ${t.cwd ? `data-cwd="${esc(t.cwd)}"` : ""} ${t.id ? `data-id="${esc(t.id)}"` : ""} title="${esc(t.why)}">${esc(t.actionLabel ?? "Do it")}</button>` : ""}</li>`)
     .join("")}</ul></section>`;
 }
@@ -337,7 +363,8 @@ function promptSection(): string {
   const counter = !p.pro && p.freeLeft != null && !paywalled ? `<span class="muted small" title="A prompt only counts when you start or copy it">${p.freeLeft} of ${FREE} free prompts left</span>` : "";
   const folder = S?.facts?.name ?? S?.project?.name ?? "this project";
   return `<section class="block" aria-label="Prompt">
-    <h2><label for="req">What do you want to build next?</label></h2>
+    <h2 class="label">Next prompt</h2>
+    <label class="q" for="req">What do you want to build next?</label>
     <textarea id="req" rows="3" placeholder="e.g. Add a contact form that emails me"></textarea>
     <div class="actions center"><button class="primary" data-act="build">Write my prompt</button>${counter}</div>
     ${paywalled ? paywallCard() : ""}

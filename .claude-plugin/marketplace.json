@@ -11,7 +11,7 @@
       "name": "buildpilot",
       "source": "./plugin",
       "description": "See every Claude Code build, how full each one's memory is, your 5-hour and weekly limits (with a forecast), and tips for right now. Local-only: nothing leaves your computer.",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "author": {
         "name": "BuildPilot"
       },
@@ -24,7 +24,7 @@
         "prompts",
         "beginner"
       ],
-      "homepage": "https://github.com/MatchappAI/buildpilot"
+      "homepage": "https://matchappai.github.io/buildpilot/"
     }
   ]
 }

@@ -316,7 +316,7 @@ export class UiServer {
   private html(): string {
     const t = this.token;
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BuildPilot</title><link rel="icon" href="/media/icon.png"><link rel="stylesheet" href="/media/webview.css">
+<title>BuildPilot</title><link rel="icon" href="/media/icon.png"><meta name="color-scheme" content="light"><link rel="stylesheet" href="/media/webview.css">
 <style>.bp-modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9}.bp-box{background:#fff;color:#111;max-width:560px;width:calc(100% - 32px);border-radius:14px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.2);font:14px/1.5 -apple-system,BlinkMacSystemFont,sans-serif}.bp-box pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;background:#f6f6f6;border-radius:8px;padding:10px;max-height:50vh;overflow:auto}.bp-box .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}.bp-box button{font:inherit;border-radius:10px;padding:8px 16px;border:1px solid #d6d6d6;background:#fff;cursor:pointer}.bp-box button.ok{background:#2f5bea;color:#fff;border-color:#2f5bea;font-weight:600}.bp-box input{width:100%;font:inherit;padding:8px;border:1px solid #d6d6d6;border-radius:8px}.bp-box li{padding:6px 0;cursor:pointer;color:#2f5bea}</style>
 </head><body><div id="app"><div class="loading">Starting BuildPilot…</div></div>
 <script>
@@ -338,9 +338,13 @@ export class UiServer {
     removeBuild: ["Remove this build's folder?", "Its branch is kept, so nothing is lost. Folders with unsaved changes are never removed."],
   };
   const modal = (html, onReady) => new Promise((resolve) => {
-    const m = document.createElement("div"); m.className = "bp-modal"; m.innerHTML = '<div class="bp-box">' + html + "</div>";
+    const prev = document.activeElement;
+    const m = document.createElement("div"); m.className = "bp-modal"; m.innerHTML = '<div class="bp-box" role="dialog" aria-modal="true" aria-label="BuildPilot">' + html + "</div>";
     document.body.appendChild(m);
-    const done = (v) => { m.remove(); resolve(v); };
+    const app = document.getElementById("app"); if (app) app.setAttribute("aria-hidden", "true");
+    const done = (v) => { m.remove(); if (app) app.removeAttribute("aria-hidden"); if (prev && prev.focus) prev.focus(); resolve(v); };
+    // keep Tab inside the dialog
+    m.addEventListener("keydown", (e) => { if (e.key !== "Tab") return; const f = [...m.querySelectorAll("button, input, [href]")]; if (!f.length) return; const first = f[0], last = f[f.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } });
     m.addEventListener("click", (e) => { if (e.target === m) done(null); });
     document.addEventListener("keydown", function k(e) { if (e.key === "Escape") { document.removeEventListener("keydown", k); done(null); } });
     onReady(m.querySelector(".bp-box"), done);

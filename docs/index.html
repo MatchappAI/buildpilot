@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BuildPilot — a calm cockpit for Claude Code</title>
+<meta name="description" content="See every Claude Code build, what needs you, your plan limits and when you'll run out, and where your tokens go. Local-only. Free to start.">
+<meta property="og:title" content="BuildPilot — a calm cockpit for Claude Code">
+<meta property="og:description" content="Every Claude build, what needs you, your limits and where your tokens go, in one calm window.">
+<meta property="og:image" content="https://matchappai.github.io/buildpilot/assets/hero.png">
+<link rel="icon" href="assets/logo.png">
+<style>
+  :root { --bg: #fafafa; --card: #fff; --ink: #111; --muted: #5f6368; --line: #e8e8e8; --accent: #3352e8; --accent-2: #2242d8; --soft: #eef2ff; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 19px; color: var(--ink); text-decoration: none; }
+  .brand b { color: var(--accent); }
+  .brand img { width: 32px; height: 32px; border-radius: 8px; }
+  nav .links a { color: var(--muted); text-decoration: none; margin-left: 22px; font-size: 15px; }
+  nav .links a:hover { color: var(--ink); }
+  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 48px 0 64px; }
+  h1 { font-size: 52px; line-height: 1.05; letter-spacing: -0.03em; margin: 0 0 18px; }
+  h1 span { color: var(--accent); }
+  .lede { font-size: 20px; color: var(--muted); margin: 0 0 28px; max-width: 30em; }
+  .install { background: #0f1322; color: #e8ecff; border-radius: 14px; padding: 16px 18px; font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; position: relative; }
+  .install .c { color: #8ea2ff; }
+  .install button { position: absolute; top: 10px; right: 10px; background: #26305a; color: #fff; border: 0; border-radius: 8px; padding: 6px 12px; font: 600 13px -apple-system, sans-serif; cursor: pointer; }
+  .install button:focus-visible, .cta:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .sub { font-size: 14px; color: var(--muted); margin-top: 12px; }
+  .shot { width: 100%; border-radius: 18px; border: 1px solid var(--line); box-shadow: 0 30px 60px -20px rgba(34,66,216,.25), 0 2px 6px rgba(16,24,40,.06); background: #fff; }
+  section { padding: 56px 0; }
+  h2 { font-size: 34px; letter-spacing: -0.02em; margin: 0 0 10px; }
+  .kicker { text-transform: uppercase; letter-spacing: .08em; font-size: 13px; font-weight: 650; color: var(--accent); margin: 0 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 28px; }
+  .f { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  .f h3 { margin: 0 0 6px; font-size: 18px; }
+  .f p { margin: 0; color: var(--muted); font-size: 15px; }
+  .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; }
+  .plan { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 26px; }
+  .plan.pro { border-color: var(--accent); box-shadow: 0 10px 30px -15px rgba(34,66,216,.35); }
+  .plan .price { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; }
+  .plan .price small { font-size: 16px; color: var(--muted); font-weight: 500; }
+  .plan ul { padding-left: 20px; color: var(--muted); }
+  .cta { display: inline-block; background: linear-gradient(180deg, var(--accent), var(--accent-2)); color: #fff; text-decoration: none; font-weight: 650; padding: 12px 20px; border-radius: 12px; box-shadow: 0 1px 2px rgba(34,66,216,.3); }
+  .privacy { background: var(--soft); border-radius: 18px; padding: 30px; }
+  footer { color: var(--muted); font-size: 14px; padding: 40px 0 60px; border-top: 1px solid var(--line); margin-top: 30px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  @media (max-width: 860px) { .hero { grid-template-columns: 1fr; padding-top: 20px; } h1 { font-size: 40px; } .grid { grid-template-columns: 1fr; } .pricing { grid-template-columns: 1fr; } nav .links a:not(:last-child) { display: none; } }
+  @media (prefers-reduced-motion: no-preference) { .shot { transition: transform .4s; } .shot:hover { transform: translateY(-4px); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav aria-label="Main">
+    <a class="brand" href="#"><img src="assets/logo.png" alt=""><span>Build<b>Pilot</b></span></a>
+    <div class="links"><a href="#features">Features</a><a href="#pricing">Pricing</a><a href="https://github.com/MatchappAI/buildpilot">GitHub</a></div>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <div>
+        <h1>A calm cockpit for <span>Claude&nbsp;Code</span>.</h1>
+        <p class="lede">See every build, what needs you, when you'll hit your limit, and where your tokens go. Stop babysitting terminals.</p>
+        <div class="install" role="group" aria-label="Install in Claude Code">
+          <button type="button" id="copy" aria-label="Copy install commands">Copy</button>
+          <div><span class="c">#</span> inside Claude Code</div>
+          <div id="cmd">/plugin marketplace add MatchappAI/buildpilot<br>/plugin install buildpilot@buildpilot</div>
+        </div>
+        <p class="sub">Then type <b>/bp-ui</b>. Free to start · everything stays on your computer · works on any editor (or none).</p>
+      </div>
+      <img class="shot" src="assets/hero.png" alt="The BuildPilot window: four builds, one waiting for approval, live actions, plan limits and a tip">
+    </div>
+
+    <section id="features" aria-labelledby="fh">
+      <p class="kicker">What you get</p>
+      <h2 id="fh">Everything you wish Claude Code told you</h2>
+      <div class="grid">
+        <div class="f"><h3>Who needs you, right now</h3><p>Every Claude build across your projects. The one waiting for approval comes first, with the exact command and a button that jumps to its terminal tab.</p></div>
+        <div class="f"><h3>Live, plain-English status</h3><p>"Running npm test · 4 min", "Editing pricing.tsx", "may be stuck". Errors appear as they happen, with one click to copy them for Claude.</p></div>
+        <div class="f"><h3>Never hit a limit by surprise</h3><p>Your 5-hour and weekly use, when each resets, and when you'll run out at your pace. A heads-up at 80%, before it's too late.</p></div>
+        <div class="f"><h3>Where your tokens go</h3><p>See what's eating each chat: the starting load from tools and MCP, giant file reads, subagents. Get tips that actually cut usage.</p></div>
+        <div class="f"><h3>Safe parallel builds</h3><p>Start another Claude in its own copy of the project. Review each change and merge. On a conflict, nothing breaks and you get a fix prompt.</p></div>
+        <div class="f"><h3>Who changed this file?</h3><p>See which build touched a file and when, with one-click undo (a safety save point comes first). Codex sessions show up too.</p></div>
+      </div>
+    </section>
+
+    <section id="pricing" aria-labelledby="ph">
+      <p class="kicker">Pricing</p>
+      <h2 id="ph">Free for the essentials. Pro when you run many builds.</h2>
+      <div class="pricing">
+        <div class="plan">
+          <h3>Free</h3>
+          <div class="price">$0</div>
+          <ul><li>Builds, live status, errors and alerts</li><li>Plan limits, reset times and run-out forecast</li><li>Tips, Start fresh chat, Turn on undo</li><li>2 builds at once with review and merge</li><li>20 expert prompts</li></ul>
+        </div>
+        <div class="plan pro">
+          <h3>Pro</h3>
+          <div class="price">$5 <small>/ month</small></div>
+          <ul><li>Run as many builds at once as you like</li><li>Your tests run before every merge</li><li>Which build is using your limit, item by item</li><li>Unlimited prompts</li><li>14-day free trial, no card needed</li></ul>
+          <a class="cta" href="https://github.com/MatchappAI/buildpilot#install">Get started free</a>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="pv">
+      <div class="privacy">
+        <p class="kicker">Private by design</p>
+        <h2 id="pv">Nothing leaves your computer.</h2>
+        <p>BuildPilot reads Claude Code's own events and logs on your Mac. Secrets are redacted, there are no file contents, and nothing is uploaded. Before connecting, you see exactly what changes, and one click undoes it. <a href="https://github.com/MatchappAI/buildpilot/blob/main/docs/SECURITY.md">Read the details</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>© 2026 BuildPilot · Not affiliated with Anthropic.</span>
+    <span><a href="https://github.com/MatchappAI/buildpilot">GitHub</a> · <a href="https://github.com/MatchappAI/buildpilot/blob/main/docs/COMPARISON.md">How it compares</a></span>
+  </footer>
+</div>
+<script>
+  document.getElementById("copy").addEventListener("click", function () {
+    var t = "/plugin marketplace add MatchappAI/buildpilot\n/plugin install buildpilot@buildpilot";
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => { this.textContent = "Copied ✓"; });
+  });
+</script>
+</body>
+</html>
