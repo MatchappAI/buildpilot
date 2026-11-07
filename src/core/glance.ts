@@ -56,6 +56,12 @@ export interface WidgetSession {
   autoApprove?: boolean;
   compactedAt?: number | null;
   timeline?: TimelineItem[];
+  retries1h?: number;
+  finishedAt?: number | null;
+  turnMs?: number | null;
+  maybeStuck?: boolean;
+  /** Extra words to tell apart builds that would otherwise have the same name. */
+  hint?: string | null;
   /** "claude" (default) or "codex" (read-only, from ~/.codex logs). */
   agent?: "claude" | "codex";
 }
@@ -128,6 +134,12 @@ export function oneLine(text: string | null, max = 90): string | null {
   return c.length > max ? `${c.slice(0, max - 1).trimEnd()}…` : c;
 }
 
+/** A few words that tell two same-named builds apart: what you asked it to do, or its id. */
+function disambiguate(b: { task: string | null; id: string }): string {
+  const words = (b.task ?? "").replace(/[^\p{L}\p{N}\s-]/gu, " ").split(/\s+/).filter((w) => w.length > 2).slice(0, 4).join(" ");
+  return words || b.id.slice(0, 6);
+}
+
 /** Names you give builds live in notes under a global key (not tied to one project). */
 export const NAMES_SCOPE = "__names";
 export function buildName(engine: Engine, sessionId: string): string | null {
@@ -171,8 +183,12 @@ export function widgetData(engine: Engine, now = Date.now()): WidgetData {
       autoApprove: x.act.autoApprove,
       compactedAt: x.act.compactedAt,
       timeline: x.act.timeline,
+      retries1h: x.act.retries1h,
+      finishedAt: x.act.finishedAt,
+      turnMs: x.act.turnMs,
+      maybeStuck: x.act.maybeStuck,
       agent: "claude" as const,
-    })),
+    })).map((b, _i, all) => ({ ...b, hint: all.filter((o) => (o.name ?? o.folder) === (b.name ?? b.folder)).length > 1 ? disambiguate(b) : null })),
     needs: needs.length,
     working: items.filter((x) => x.status === "running").length,
     fiveHourPct: pick("fiveHourPct"),

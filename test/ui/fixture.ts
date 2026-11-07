@@ -36,9 +36,10 @@ import { PRICE, PRO_POINTS } from "../../src/core/license";
     "3-parallel-needs-you": {
       page: S({
         builds: [
-          b({ id: "a", folder: "invoice-app-checkout", status: "awaiting_approval", word: "needs approval", reason: "Wants to run: npm install stripe", needsYou: true, contextPct: 46, share: 22 }),
-          b({ id: "b", folder: "invoice-app", share: 17 }),
-          b({ id: "c", folder: "landing-page", task: "Writing the pricing section", contextPct: 84, share: 61 }),
+          b({ id: "a", folder: "invoice-app", name: "checkout", status: "awaiting_approval", word: "needs approval", reason: "Wants to run: npm install stripe", waitingFor: "Run: npm install stripe", needsYou: true, contextPct: 46, share: 22 }),
+          b({ id: "b", folder: "invoice-app", name: "pdf export", now: "Running npm test", nowSince: now - 4 * 60_000, share: 17, errors1h: 2, lastErrors: ["Error: cannot find module './pdf'"] }),
+          b({ id: "c", folder: "landing-page", now: "Editing pricing.tsx", nowSince: now - 60_000, contextPct: 84, share: 61 }),
+          b({ id: "d", folder: "api", agent: "codex", task: "add rate limiting", now: "Running pytest -q", nowSince: now - 2 * 60_000 }),
         ],
         needs: 1,
         working: 2,

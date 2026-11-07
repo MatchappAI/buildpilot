@@ -112,8 +112,9 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelector(".status")?.textContent).toMatch(/1 needs you/);
     expect(doc.body.innerHTML).toContain("&lt;img src=x");
     expect(w.__xss).toBeUndefined();
-    expect(doc.querySelector(".mem")?.textContent).toBe("chat 34% full");
-    expect(doc.querySelector('[data-act="openBuild"]')?.textContent).toBe("Review in terminal");
+    expect(doc.querySelector(".mem")?.textContent).toBe("34%");
+    expect(doc.querySelector(".mem svg.ring")).not.toBeNull();
+    expect(doc.querySelector('.builds [data-act="openBuild"]')?.textContent).toBe("Review in terminal");
     await click('[data-act="openBuild"]');
     expect(sent.find((m) => m.type === "openBuild")?.cwd).toBe("/p/shop");
   });
@@ -158,7 +159,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     await tick();
     expect(doc.querySelector(".proj")).not.toBeNull();
-    const labels = [...doc.querySelectorAll(".builds > li:not(.group):not(.quiet)")].slice(0, 3).map((li) => li.querySelector(":scope > button")?.textContent ?? "");
+    const labels = [...doc.querySelectorAll(".builds > li:not(.group):not(.quiet)")].slice(0, 3).map((li) => li.querySelector(".b-act > button")?.textContent ?? "");
     expect(labels).toEqual(["Find it", "", "Resume"]);
     await click('[data-act="resumeBuild"]');
     expect(sent.find((m) => m.type === "resumeBuild")).toMatchObject({ id: "abcd1234-idle", cwd: "/p/shop" });
@@ -166,7 +167,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await vs.tick();
     await vs.tick();
     expect(vs.doc.querySelector(".proj")).toBeNull();
-    expect(vs.doc.querySelector('[data-act="openBuild"]')?.textContent).toBe("Review in terminal");
+    expect(vs.doc.querySelector('.builds [data-act="openBuild"]')?.textContent).toBe("Review in terminal");
   });
 
   it("power-user rows: live action, error chip with copy, details with tokens + timeline, groups, quiet builds, rename, Codex tag", async () => {
@@ -184,7 +185,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     expect(doc.querySelector(".nowtxt")?.textContent).toBe("Running npm test");
     expect(doc.body.textContent).toMatch(/Running npm test · 4 min/);
-    expect(doc.querySelector(".group")?.textContent).toMatch(/shop · 2 builds/);
+    expect(doc.querySelector(".group")?.textContent).toMatch(/shop\s*2 builds/);
     expect(doc.body.textContent).toMatch(/checkout/);
     expect(doc.querySelector(".chip.warn")?.textContent).toBe("auto-approve on");
     expect(doc.querySelector(".chip.codex")?.textContent).toBe("Codex");

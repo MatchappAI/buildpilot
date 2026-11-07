@@ -38,6 +38,18 @@ function head(file: string, bytes: number): string {
   }
 }
 
+/** Plain description of a Codex tool call, e.g. "Running npm test", "Using web". */
+export function codexAction(p: Record<string, unknown>): string {
+  const name = String(p.name ?? p.type ?? "tool");
+  let args: Record<string, unknown> = {};
+  try { args = typeof p.arguments === "string" ? JSON.parse(p.arguments) : (p.arguments as Record<string, unknown>) ?? {}; } catch { /* not JSON */ }
+  const cmd = Array.isArray(args.command) ? (args.command as string[]).join(" ") : typeof args.cmd === "string" ? args.cmd : typeof args.command === "string" ? args.command : null;
+  if (cmd) return `Running ${cmd.replace(/^bash -lc /, "").replace(/\s+/g, " ").slice(0, 60)}`;
+  if (name === "apply_patch" || /patch/.test(name)) return "Editing files";
+  if (typeof p.input === "string" && name === "exec") return "Running a script";
+  return `Using ${p.namespace ? `${String(p.namespace)} ` : ""}${name}`.slice(0, 60);
+}
+
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 export function parseRollout(head: string, body: string, mtime: number, now: number): CodexSession | null {
@@ -53,10 +65,24 @@ export function parseRollout(head: string, body: string, mtime: number, now: num
   let limits: CodexLimits | null = null;
   let error: string | null = null;
   let lastTs = mtime;
+  const calls = new Map<string, { ts: number; text: string }>();
+  const done = new Set<string>();
+  const timeline: { ts: number; text: string; error: boolean }[] = [];
   for (const o of objs(body)) {
     const p = (o.payload ?? {}) as Record<string, unknown>;
     const ts = typeof o.timestamp === "string" ? Date.parse(o.timestamp) : NaN;
     if (Number.isFinite(ts)) lastTs = ts;
+    if (o.type === "response_item" && (p.type === "function_call" || p.type === "custom_tool_call" || p.type === "local_shell_call")) {
+      const id = String(p.call_id ?? p.id ?? "");
+      const text = codexAction(p);
+      calls.set(id, { ts: Number.isFinite(ts) ? ts : lastTs, text });
+      timeline.push({ ts: Number.isFinite(ts) ? ts : lastTs, text, error: false });
+      continue;
+    }
+    if (o.type === "response_item" && (p.type === "function_call_output" || p.type === "custom_tool_call_output")) {
+      done.add(String(p.call_id ?? ""));
+      continue;
+    }
     if (o.type !== "event_msg") continue;
     if (p.type === "task_started") { started = Number.isFinite(ts) ? ts : now; completed = null; error = null; contextWindow = num(p.model_context_window) ?? contextWindow; }
     if (p.type === "task_complete") {
@@ -78,6 +104,7 @@ export function parseRollout(head: string, body: string, mtime: number, now: num
     }
   }
   const working = started != null && completed == null && now - lastTs < 2 * 60_000;
+  const pending = [...calls.entries()].reverse().find(([id]) => !done.has(id))?.[1];
   const failed = !!error;
   return {
     id: `codex-${id}`,
@@ -92,15 +119,15 @@ export function parseRollout(head: string, body: string, mtime: number, now: num
     needsYou: false,
     next: null,
     name: null,
-    now: working ? "Working" : null,
-    nowSince: working ? started : null,
+    now: working ? (pending?.text ?? "Thinking") : null,
+    nowSince: working ? (pending?.ts ?? started) : null,
     errors1h: error && now - lastTs < 3600_000 ? 1 : 0,
     lastErrors: error ? [oneLine(error, 160) ?? ""] : [],
     waitingFor: null,
     stopped: false,
     autoApprove: false,
     compactedAt: null,
-    timeline: [],
+    timeline: timeline.slice(-15).reverse(),
     agent: "codex",
     tokens,
     contextWindow,
@@ -114,8 +141,8 @@ export function codexSessions(now = Date.now(), windowMs = 12 * 3600_000, home =
   const root = path.join(home, "sessions");
   if (!fs.existsSync(root)) return [];
   const out: CodexSession[] = [];
-  // Only look at today's and yesterday's folders (rollouts are filed by start date).
-  const days = [0, 1].map((d) => new Date(now - d * 86400_000)).map((d) => path.join(root, String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")));
+  // Only look at the last 3 days' folders (rollouts are filed by start date).
+  const days = [0, 1, 2].map((d) => new Date(now - d * 86400_000)).map((d) => path.join(root, String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")));
   for (const dir of days) {
     let files: string[] = [];
     try { files = fs.readdirSync(dir).filter((f) => f.startsWith("rollout-") && f.endsWith(".jsonl")); } catch { continue; }

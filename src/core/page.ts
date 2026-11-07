@@ -34,7 +34,7 @@ export interface Limits {
   codex?: { primaryPct: number | null; secondaryPct: number | null; resetsAt: number | null } | null;
 }
 /** A build plus its share of today's usage (from Claude Code's own per-session estimate; Pro). */
-export interface BuildTokens { baseline: number | null; context: number | null; output: number; turns: number; models: [string, number][]; subagents: number; compactions: number; top: TokenItem[] | null }
+export interface BuildTokens { baseline: number | null; context: number | null; inputTotal?: number; output: number; turns: number; models: [string, number][]; subagents: number; compactions: number; top: TokenItem[] | null }
 export type PageBuild = WidgetSession & { share: number | null; costUsd?: number | null; tokens?: BuildTokens | null; codexTokens?: number | null };
 export interface WeekDay { day: string; pct: number }
 export interface PageData {
@@ -232,7 +232,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     const r = tokenReport(tPaths.get(id) ?? null);
     if (!r || !r.turns) return null;
     // Totals are free; the per-item breakdown (what exactly burned it) is Pro.
-    return { baseline: r.baseline, context: r.context, output: r.output, turns: r.turns, models: r.models, subagents: r.subagents, compactions: r.compactions, top: p.pro ? r.top : null };
+    return { baseline: r.baseline, context: r.context, inputTotal: r.inputTotal, output: r.output, turns: r.turns, models: r.models, subagents: r.subagents, compactions: r.compactions, top: p.pro ? r.top : null };
   };
   const builds: PageBuild[] = [
     ...w.sessions.map((b) => ({ ...b, share: (p.pro || billing === "api") && total > 0 && costById.has(b.id) ? Math.round((costById.get(b.id)! / total) * 100) : null, costUsd: billing === "api" ? costById.get(b.id) ?? null : null, tokens: tokensFor(b.id) })),

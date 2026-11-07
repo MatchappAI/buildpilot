@@ -188,3 +188,35 @@ describe("short commands", () => {
     expect(shortCommand('cd "/a b" ; pytest -q')).toBe("pytest -q");
   });
 });
+
+describe("v0.7 polish", () => {
+  it("normal trial-and-error isn't a red error; real failures are", async () => {
+    const { isRetry } = await import("../../src/core/activity");
+    expect(isRetry(ev("PostToolUseFailure", "✗ Search foo", NOW, { isError: true, toolName: "Grep", errorText: "No matches found" }))).toBe(true);
+    expect(isRetry(ev("PostToolUseFailure", "✗ Edit a.ts", NOW, { isError: true, toolName: "Edit", errorText: "String to replace not found in file" }))).toBe(true);
+    expect(isRetry(ev("PostToolUseFailure", "✗ Run: grep -r x .", NOW, { isError: true, toolName: "Bash", errorText: "Exit code 1" }))).toBe(true);
+    expect(isRetry(ev("PostToolUseFailure", "✗ Run: npm test", NOW, { isError: true, toolName: "Bash", errorText: "Error: 3 tests failed" }))).toBe(false);
+    const a = activityFor(sess(), [ev("PostToolUseFailure", "✗ Search x", NOW - 1000, { isError: true, toolName: "Grep", errorText: "No matches" }), ev("PostToolUseFailure", "✗ Run: npm test", NOW - 500, { isError: true, toolName: "Bash", errorText: "TypeError: x is undefined" })], NOW);
+    expect(a.errors1h).toBe(1);
+    expect(a.retries1h).toBe(1);
+  });
+
+  it("finished turn + 'your turn' alert for long turns; may-be-stuck after 10 quiet minutes", async () => {
+    const a = activityFor(sess({ status: "idle" }), [ev("UserPromptSubmit", "Prompt: build", NOW - 10 * 60_000), ev("Stop", "Finished", NOW - 30_000)], NOW);
+    expect(a.finishedAt).toBe(NOW - 30_000);
+    expect(a.turnMs).toBe(10 * 60_000 - 30_000);
+    const mem: AlertMemory = { sent: {}, seeded: true };
+    const page = { connected: true, builds: [{ id: "s1", folder: "shop", cwd: "/p", status: "idle" as const, word: "", reason: "", task: null, contextPct: null, lastEventAt: NOW, needsYou: false, next: null, share: null, finishedAt: a.finishedAt, turnMs: a.turnMs }], needs: 0, working: 0, billing: "plan" as const, limits: { fiveHourPct: 1, fiveHourResetsAt: null, sevenDayPct: null, sevenDayResetsAt: null, fullAt: null, forecastLocked: false }, costTodayUsd: null, tips: [], plan: { pro: true, licensed: true, trialDaysLeft: null, sellable: false, freeLeft: null, price: "$5/mo", points: [] } };
+    expect(alertsFor(page, mem, NOW)[0]).toMatchObject({ title: "shop finished" });
+    const stuck = activityFor(sess({ lastEventAt: NOW - 12 * 60_000 }), [ev("UserPromptSubmit", "Prompt: x", NOW - 12 * 60_000)], NOW);
+    expect(stuck.maybeStuck).toBe(true);
+  });
+
+  it("meaningful command from a chain; Codex tool calls in plain words", async () => {
+    const { shortCommand } = await import("../../src/core/activity");
+    const { codexAction } = await import("../../src/core/codex");
+    expect(shortCommand("mkdir -p out && cd out && npm run build")).toBe("npm run build");
+    expect(codexAction({ name: "shell", arguments: JSON.stringify({ command: ["bash", "-lc", "pytest -q"] }) })).toBe("Running bash -lc pytest -q".replace("bash -lc ", ""));
+    expect(codexAction({ name: "apply_patch", arguments: "{}" })).toBe("Editing files");
+  });
+});

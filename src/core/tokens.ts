@@ -13,6 +13,8 @@ export interface TokenReport {
   baseline: number | null;
   /** Current context size (input on the latest turn). */
   context: number | null;
+  /** All input tokens sent across turns (incl. cached re-reads): what actually drives limit use. */
+  inputTotal: number;
   output: number;
   thinking: number;
   turns: number;
@@ -80,6 +82,7 @@ export function parseTokens(head: string, body: string): TokenReport {
   const byTool = new Map<string, number>();
   let context: number | null = null;
   let output = 0;
+  let inputTotal = 0;
   let thinking = 0;
   let turns = 0;
   let subagents = 0;
@@ -106,6 +109,7 @@ export function parseTokens(head: string, body: string): TokenReport {
         if (id) seen.add(id);
         turns++;
         context = usageIn(u);
+        inputTotal += context;
         output += typeof u.output_tokens === "number" ? u.output_tokens : 0;
         const det = u.output_tokens_details as Record<string, unknown> | undefined;
         thinking += typeof det?.thinking_tokens === "number" ? (det.thinking_tokens as number) : 0;
@@ -132,6 +136,7 @@ export function parseTokens(head: string, body: string): TokenReport {
   return {
     baseline,
     context,
+    inputTotal,
     output,
     thinking,
     turns,

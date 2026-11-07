@@ -49,9 +49,10 @@ FOLDER="$("$NODE" "$CLI" recent 2>/dev/null)"
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bp-icon-"));
 const set = path.join(tmp, "AppIcon.iconset");
 fs.mkdirSync(set);
+const src = fs.existsSync(path.join(root, "media/brand/icon-1024.png")) ? path.join(root, "media/brand/icon-1024.png") : path.join(root, "media/icon.png");
 for (const s of [16, 32, 64, 128, 256, 512]) {
-  execFileSync("sips", ["-z", String(s), String(s), path.join(root, "media/icon.png"), "--out", path.join(set, `icon_${s}x${s}.png`)], { stdio: "ignore" });
-  if (s <= 256) execFileSync("sips", ["-z", String(s * 2), String(s * 2), path.join(root, "media/icon.png"), "--out", path.join(set, `icon_${s}x${s}@2x.png`)], { stdio: "ignore" });
+  execFileSync("sips", ["-z", String(s), String(s), src, "--out", path.join(set, `icon_${s}x${s}.png`)], { stdio: "ignore" });
+  execFileSync("sips", ["-z", String(s * 2), String(s * 2), src, "--out", path.join(set, `icon_${s}x${s}@2x.png`)], { stdio: "ignore" });
 }
 execFileSync("iconutil", ["-c", "icns", set, "-o", path.join(app, "Contents/Resources/AppIcon.icns")]);
 fs.rmSync(tmp, { recursive: true, force: true });

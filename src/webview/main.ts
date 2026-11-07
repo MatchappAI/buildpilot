@@ -82,6 +82,32 @@ function flash(text: string): void {
   flashTimer = setTimeout(() => document.getElementById("flash")?.classList.remove("on"), 2400);
 }
 
+/** The BuildPilot mark (inline so it works in VS Code and the standalone window without loading files). */
+const MARK = `<svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="bpg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4C78FF"/><stop offset="1" stop-color="#2242D8"/></linearGradient></defs><rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bpg)"/><path d="M132 148 L392 252 L132 356 L176 252 Z" fill="#fff"/><path d="M176 252 L392 252 L132 356 Z" fill="#DCE5FF"/><rect x="300" y="334" width="84" height="24" rx="12" fill="#fff" opacity=".92"/></svg>`;
+
+/** Small ring that fills as the chat fills up. */
+function ring(pct: number): string {
+  const r = 7;
+  const c = 2 * Math.PI * r;
+  const v = Math.min(100, Math.max(0, pct));
+  return `<svg class="ring tone-${tone(pct)}" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="${r}" class="ring-bg"/><circle cx="9" cy="9" r="${r}" class="ring-fg" stroke-dasharray="${((v / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 9 9)"/></svg>`;
+}
+
+/** One calm line at the top when something needs attention (most urgent first, max 2). */
+function headsUp(): string {
+  if (!P || !P.connected) return "";
+  const items: string[] = [];
+  const need = P.builds.find((b) => b.needsYou);
+  if (need) items.push(`<div class="hu hu-need"><span><b>${esc(need.name ?? need.folder)}</b> needs your OK${need.waitingFor ? `: <code>${esc(clip(need.waitingFor, 60))}</code>` : ""}</span><button class="primary small-btn" data-act="openBuild" data-cwd="${esc(need.cwd)}">${standalone ? "Find it" : "Review"}</button></div>`);
+  const L = P.limits;
+  if ((L.fiveHourPct ?? 0) >= 80) items.push(`<div class="hu hu-limit"><span><b>${Math.round(L.fiveHourPct!)}%</b> of your 5-hour limit used${L.fullAt ? ` · runs out around <b>${clock(L.fullAt)}</b>` : ""}${L.fiveHourResetsAt ? ` · back at ${clock(L.fiveHourResetsAt)}` : ""}</span></div>`);
+  const stopped = P.builds.find((b) => b.stopped);
+  if (stopped && items.length < 2) items.push(`<div class="hu hu-stop"><span><b>${esc(stopped.name ?? stopped.folder)}</b> stopped mid-task</span><button class="secondary small-btn" data-act="resumeBuild" data-id="${esc(stopped.id)}" data-cwd="${esc(stopped.cwd)}">Resume</button></div>`);
+  const err = P.builds.find((b) => (b.errors1h ?? 0) >= 3);
+  if (err && items.length < 2) items.push(`<div class="hu hu-err"><span><b>${esc(err.name ?? err.folder)}</b> hit ${err.errors1h} errors this hour</span><button class="secondary small-btn" data-act="toggleErrors" data-id="${esc(err.id)}">See them</button></div>`);
+  return items.length ? `<section class="headsup" aria-label="Needs attention">${items.slice(0, 2).join("")}</section>` : "";
+}
+
 // ---------- render ----------
 function render(): void {
   const app = document.getElementById("app")!;
@@ -95,11 +121,12 @@ function render(): void {
   app.innerHTML = `
   <main class="page">
     <header class="head">
-      <h1>BuildPilot</h1>
+      <h1 class="brand">${MARK}<span>Build<b>Pilot</b></span></h1>
       ${planPill()}
       ${standalone ? `<button class="link proj" data-act="selectProject" title="Prompts, tips and new builds use this project">${esc(S.facts?.name ?? S.project?.name ?? "Choose project")} ▾</button>` : ""}
     </header>
     ${trialNotice()}
+    ${headsUp()}
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
     <footer class="foot">
@@ -136,7 +163,7 @@ function trialNotice(): string {
 
 function connectCard(): string {
   return `<section class="card connect">
-    <h2>Connect Claude Code</h2>
+    <div class="hero">${MARK}<div><h2>Connect Claude Code</h2><p class="muted small">Every build, what needs you, your limits and where your tokens go, in one calm window.</p></div></div>
     <p>BuildPilot adds a few lines to your Claude Code settings so it can see your builds, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and you can disconnect anytime.</p>
     <div class="actions"><button class="primary" data-act="connectAll">Connect</button><button class="link" data-act="showConnectChanges">See exactly what changes</button></div>
   </section>`;
@@ -161,10 +188,12 @@ const dur = (since: number | null | undefined) => {
 };
 
 function buildSub(x: Build): string {
-  if (x.agent === "codex") return `${esc(clip(x.task, 70) || (x.status === "running" ? "Working" : x.word))} · ${ago(x.lastEventAt)}`;
+  if (x.agent === "codex") return x.now ? `<b class="nowtxt">${esc(x.now)}</b>${dur(x.nowSince)}` : `${esc(clip(x.task, 70) || x.word)} · ${ago(x.lastEventAt)}`;
   if (x.needsYou) return `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.waitingFor ?? x.reason, 80) || STATUS_WORD[x.status])}`;
   if (x.stopped) return `<span class="warn-text">Stopped mid-task</span> · ${esc(clip(x.task, 60))}`;
+  if (x.maybeStuck) return `<span class="warn-text">No activity for ${Math.round((Date.now() - x.lastEventAt) / 60_000)} min · may be stuck</span> · ${esc(x.now ?? "")}`;
   if (x.now) return `<b class="nowtxt">${esc(x.now)}</b>${dur(x.nowSince)}`;
+  if (x.finishedAt && x.turnMs && Date.now() - x.finishedAt < 15 * 60_000) return `<span class="ok-text">Finished · your turn</span> · ${esc(clip(x.task, 50))}`;
   return `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
 }
 
@@ -179,13 +208,13 @@ function buildRow(x: Build): string {
   return `<li class="${x.needsYou ? "needs" : ""}${expanded.has(x.id) ? " open" : ""}">
     <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span>
     <div class="b-main">
-      <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" title="Show what it did and where the tokens went">${esc(label)}</button>${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this build" aria-label="Name this build">✎</button>` : ""}${chips}</div>
+      <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" title="Show what it did and where the tokens went">${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this build" aria-label="Name this build">✎</button>` : ""}${chips}</div>
       <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
       ${errPanel}
       ${expanded.has(x.id) ? buildDetails(x) : ""}
     </div>
-    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude usage today (Claude Code's own estimate)">${x.share}% of your usage today</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
-    ${x.agent === "codex" ? "" : buildButton(x)}
+    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">${ring(x.contextPct)}${Math.round(x.contextPct)}%</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null ? `<span class="share" title="This build's share of today's usage across your running builds (from Claude Code's own cost estimate)">${x.share}% of today</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
+    <div class="b-act">${x.agent === "codex" ? "" : buildButton(x)}</div>
   </li>`;
 }
 
@@ -193,7 +222,7 @@ function buildDetails(x: Build): string {
   const t = x.tokens;
   const tok = t
     ? `<div class="tokens"><div class="d-head">Where the tokens went</div>
-        <p class="small">${t.baseline != null ? `Started at <b>${kTok(t.baseline)}</b> before your first message` : "Start size unknown"} · chat now ${t.context != null ? `<b>${kTok(t.context)}</b>` : "unknown"} · Claude wrote ${kTok(t.output)} · ${t.turns} repl${t.turns === 1 ? "y" : "ies"}${t.models.length ? ` · ${t.models.map(([m, n]) => `${esc(shortModel(m))}${t.models.length > 1 ? ` ×${n}` : ""}`).join(", ")}` : ""}${t.subagents ? ` · ${t.subagents} subagent${t.subagents === 1 ? "" : "s"}` : ""}${t.compactions ? ` · compacted ${t.compactions}×` : ""}</p>
+        <p class="small">${t.baseline != null ? `Started at <b>${kTok(t.baseline)}</b> before your first message` : "Start size unknown"} · chat now ${t.context != null ? `<b>${kTok(t.context)}</b>` : "unknown"} · ${t.inputTotal ? `sent ≈${kTok(t.inputTotal)} in total · ` : ""}Claude wrote ${kTok(t.output)} · ${t.turns} repl${t.turns === 1 ? "y" : "ies"}${t.models.length ? ` · ${t.models.map(([m, n]) => `${esc(shortModel(m))}${t.models.length > 1 ? ` ×${n}` : ""}`).join(", ")}` : ""}${t.subagents ? ` · ${t.subagents} subagent${t.subagents === 1 ? "" : "s"}` : ""}${t.compactions ? ` · compacted ${t.compactions}×` : ""}</p>
         ${t.top ? (t.top.length ? `<ul class="toklist">${t.top.map((i) => `<li><span>${esc(i.label)}</span><span class="muted">≈${kTok(i.tokens)}</span></li>`).join("")}</ul><p class="muted tiny">Biggest things pulled into the chat (≈ estimated from size). They're re-sent with every message until a fresh chat.</p>` : `<p class="muted tiny">No large tool output yet.</p>`) : P!.plan.sellable ? `<p class="small"><a href="#" data-act="upgrade">See exactly what used them — Pro</a></p>` : ""}
       </div>`
     : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this build has a transcript BuildPilot can read.</p>`;
@@ -207,7 +236,7 @@ function fileFinder(): string {
   return `<div class="finder">
     <label class="lbl" for="fileq">Who changed a file?</label>
     <div class="finder-row"><input id="fileq" type="text" placeholder="e.g. checkout.tsx" value="${esc(fileQuery)}"><button class="secondary small-btn" data-act="whoChanged">Find</button></div>
-    ${fileResults == null ? "" : fileResults.length ? `<ul class="files">${fileResults.map((r) => `<li><div><b>${esc(r.file)}</b> <span class="muted small">changed ${r.edits}× by ${esc(P!.builds.find((b) => b.id === r.sessionId)?.name ?? P!.builds.find((b) => b.id === r.sessionId)?.folder ?? r.cwd.split("/").pop() ?? "a build")}, ${ago(r.lastTs)}</span></div><button class="link" data-act="undoFile" data-path="${esc(r.path)}" title="Put this file back to its last saved (committed) version">Undo this file</button></li>`).join("")}</ul>` : `<p class="muted small">No build has changed a file matching “${esc(fileQuery)}” recently.</p>`}
+    ${fileResults == null ? "" : fileResults.length ? `<ul class="files">${fileResults.map((r) => `<li><div><b>${esc(r.file)}</b> <span class="muted small">changed ${r.edits}× by ${esc(P!.builds.find((b) => b.id === r.sessionId)?.name ?? P!.builds.find((b) => b.id === r.sessionId)?.folder ?? r.cwd.split("/").pop() ?? "a build")}, ${ago(r.lastTs)}</span></div>${fileResults!.filter((o) => o.path === r.path).length > 1 ? `<span class="warn-text small" title="Undo goes back to the last commit, so it also removes the other builds' changes to this file">changed by ${fileResults!.filter((o) => o.path === r.path).length} builds</span>` : ""}<button class="link" data-act="undoFile" data-path="${esc(r.path)}" title="Put this file back to its last saved (committed) version. This removes every build's changes to it since then.">Undo this file</button></li>`).join("")}</ul>` : `<p class="muted small">No build has changed a file matching “${esc(fileQuery)}” recently.</p>`}
   </div>`;
 }
 
@@ -223,7 +252,13 @@ function buildsSection(): string {
   for (const x of active) groups.set(x.folder, [...(groups.get(x.folder) ?? []), x]);
   const urgency = (xs: Build[]) => Math.min(...xs.map((x) => (x.needsYou ? 0 : x.stopped ? 1 : (x.errors1h ?? 0) > 0 ? 2 : x.status === "running" ? 3 : 4)));
   const ordered = [...groups.entries()].sort((a, b) => urgency(a[1]) - urgency(b[1]) || Math.max(...b[1].map((x) => x.lastEventAt)) - Math.max(...a[1].map((x) => x.lastEventAt)));
-  const list = ordered.map(([name, xs]) => (xs.length > 1 ? `<li class="group">${esc(name)} <span class="muted">· ${xs.length} builds</span></li>` : "") + xs.map(buildRow).join("")).join("");
+  // Once any project has 2+ builds, label every project so rows never look like they belong to the group above.
+  const multi = ordered.filter(([, xs]) => xs.length > 1);
+  const singles = ordered.filter(([, xs]) => xs.length === 1).flatMap(([, xs]) => xs);
+  const head = (label: string, count?: number) => `<li class="group"><span>${esc(label)}</span>${count ? `<span class="count">${count} builds</span>` : ""}</li>`;
+  const list = multi.length
+    ? multi.map(([name, xs]) => head(name, xs.length) + xs.map(buildRow).join("")).join("") + (singles.length ? head("Other builds") + singles.map(buildRow).join("") : "")
+    : ordered.flatMap(([, xs]) => xs).map(buildRow).join("");
   return `<section class="block" aria-label="Builds">
     <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild" title="Starts Claude in a separate copy of this project, so two builds can't undo each other's work">+ New build</button></div>
     ${all.length ? `<ul class="builds">${list}${quiet.length ? `<li class="quiet"><button class="link" data-act="toggleQuiet">${showQuiet ? "Hide" : "Show"} ${quiet.length} quiet build${quiet.length === 1 ? "" : "s"}</button> · <button class="link" data-act="hideIdle">Clear them</button></li>${showQuiet ? quiet.map(buildRow).join("") : ""}` : ""}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
@@ -277,12 +312,12 @@ function limitsSection(): string {
     const urgent = L.fullAt - Date.now() < 3600_000;
     forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}. <span class="muted small">Estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}.${L.accuracy ? ` ${esc(L.accuracy)}` : ""}</span></p>`;
   }
-  return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}${(L.week ?? []).length > 1 ? `<p class="small weekline">This week: ${(L.week ?? []).map((d) => `${esc(d.day)} ${Math.round(d.pct)}%`).join(" → ")}</p>` : ""}${L.weekFullAt ? `<p class="small warn-text">At this pace your week runs out ${weekday(L.weekFullAt)}.</p>` : ""}${L.codex && (L.codex.primaryPct != null || L.codex.secondaryPct != null) ? `<p class="small">Codex: ${L.codex.primaryPct != null ? `${Math.round(L.codex.primaryPct)}% of its short limit` : ""}${L.codex.secondaryPct != null ? ` · ${Math.round(L.codex.secondaryPct)}% weekly` : ""}</p>` : ""}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
+  return `<section class="block" aria-label="Plan limits"><h2 class="label">Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}${(L.week ?? []).length > 1 ? `<p class="small weekline">This week: ${(L.week ?? []).map((d) => `${esc(d.day)} ${Math.round(d.pct)}%`).join(" → ")}</p>` : ""}${L.weekFullAt ? `<p class="small warn-text">At this pace your week runs out ${weekday(L.weekFullAt)}.</p>` : ""}${L.codex && (L.codex.primaryPct != null || L.codex.secondaryPct != null) ? `<p class="small">Codex: ${L.codex.primaryPct != null ? `${Math.round(L.codex.primaryPct)}% of its short limit` : ""}${L.codex.secondaryPct != null ? ` · ${Math.round(L.codex.secondaryPct)}% weekly` : ""}</p>` : ""}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
 }
 
 function tipsSection(): string {
   if (!P!.tips.length) return "";
-  return `<section class="block" aria-label="Tips"><h2>Tips for right now</h2><ul class="tips">${P!.tips
+  return `<section class="block" aria-label="Tips"><h2 class="label">Tips for right now</h2><ul class="tips">${P!.tips
     .map((t) => `<li><span>${esc(t.text)}</span>${t.action ? `<button class="secondary small-btn" data-act="tip" data-tip="${t.action}" ${t.cwd ? `data-cwd="${esc(t.cwd)}"` : ""} ${t.id ? `data-id="${esc(t.id)}"` : ""} title="${esc(t.why)}">${esc(t.actionLabel ?? "Do it")}</button>` : ""}</li>`)
     .join("")}</ul></section>`;
 }

@@ -47,7 +47,10 @@ export function tips(i: TipInput, max = 3): Tip[] {
   // Chats in the home folder usually aren't editing one project, so they don't count as overlapping.
   for (const b of i.builds) if ((b.status === "running" || b.status === "awaiting_approval" || b.status === "blocked") && path.resolve(b.cwd) !== path.resolve(os.homedir())) byFolder.set(b.cwd, (byFolder.get(b.cwd) ?? 0) + 1);
   const crowded = [...byFolder.entries()].find(([, n]) => n >= 2);
-  if (crowded) out.push({ key: "overlap", text: `${crowded[1]} builds are changing the same folder and can undo each other's work. Move one to its own copy.`, why: crowded[0], action: "newBuild", actionLabel: "New build" });
+  if (crowded) {
+    const names = i.builds.filter((b) => b.cwd === crowded[0]).map((b) => (b.name ?? b.folder) + (b.hint ? ` (${b.hint})` : ""));
+    out.push({ key: "overlap", text: `${names.slice(0, 2).join(" and ")} are changing the same folder and can undo each other's work. Move one to its own copy.`, why: crowded[0], action: "newBuild", actionLabel: "Give one its own copy" });
+  }
   if (i.isGit === false) out.push({ key: "nogit", text: "This project has no undo yet. If Claude breaks something, you can't go back.", why: "Without Git you can't roll back a bad AI change.", action: "setupUndo", actionLabel: "Turn on undo" });
   else if ((i.unsaved ?? 0) >= 15) out.push({ key: "unsaved", text: `${i.unsaved} changed files aren't saved yet. Make a save point before the next big change.`, why: "A save point lets you undo the next AI edit if it goes wrong.", action: "checkpoint", actionLabel: "Make save point" });
   // ---- power-user tips from live activity and transcripts (evidence-based) ----

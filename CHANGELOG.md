@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0: new look, fewer false alarms
+- **New brand:** a blue paper-plane-prompt mark and a BuildPilot wordmark, used across the app, Desktop app, extension, thank-you page, README and guide.
+- **Heads-up strip:** one calm line at the top when something needs you (approval, 80% limit, stopped build, error burst), with the button to act.
+- **Calmer rows:** a chat-fullness ring, one meta line, actions on hover, project headers only where they help, and hints that tell same-named builds apart.
+- **Errors you can trust:** searches that find nothing and edits that miss their text count as normal retries, not red errors.
+- **"Finished · your turn"** on the row, plus a notification when a long turn ends. **"May be stuck"** after 10 quiet minutes.
+- **Clearer actions:** the main command in a chain ("npm run build", not "mkdir -p"), and the overlap tip names both builds. Undo warns when several builds changed the file.
+- **Tokens:** a total-sent figure per build (what drives your limits).
+- **Codex:** live action and recent steps from tool calls, with 3 days of logs.
+
 ## 0.6.0: built for heavy Claude Code users
 - **What each build is doing now:** "Running npm test · 4 min", "Editing checkout.tsx", "Thinking" (from hook events). Click a build for its recent steps.
 - **Errors you can see:** a red "3 errors" chip per build. It shows the real error lines and **Copy for Claude**. Error bursts trigger an alert.

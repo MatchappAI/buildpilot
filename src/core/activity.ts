@@ -22,6 +22,23 @@ export interface Activity {
   /** Last time the chat was compacted (summarized), if seen. */
   compactedAt: number | null;
   timeline: TimelineItem[];
+  /** Failed tool calls that are normal trial-and-error (search found nothing, edit text didn't match). */
+  retries1h: number;
+  /** Last turn finished: when, and how long it took (for "finished, your turn" alerts). */
+  finishedAt: number | null;
+  turnMs: number | null;
+  /** No new activity for 10+ minutes while working. */
+  maybeStuck: boolean;
+}
+
+/** Normal trial-and-error, not a real problem: searches with no matches, edits whose text didn't match, grep/test exit 1. */
+export function isRetry(e: HookEvent): boolean {
+  if (!e.isError) return false;
+  const t = (e.errorText ?? "").toLowerCase();
+  if (e.toolName === "Grep" || e.toolName === "Glob" || /^✗ search /i.test(e.summary)) return true;
+  if (/no matches|no files found|string to replace not found|old_string|did not match|not unique|file has not been read yet|must read the file/.test(t)) return true;
+  if (e.toolName === "Bash" && /^✗ run: (grep|rg|egrep|test|\[|diff|cmp|which|command -v|ls )/i.test(e.summary) && (/exit code 1\b/.test(t) || t.length < 40)) return true;
+  return false;
 }
 
 const ACT: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
@@ -41,7 +58,11 @@ const ACT: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
 export function shortCommand(cmd: string): string {
   let c = cmd.trim();
   for (let i = 0; i < 3; i++) c = c.replace(/^cd\s+("[^"]*"|'[^']*'|\S+)\s*(&&|;)\s*/, "").replace(/^([A-Z_][A-Z0-9_]*=("[^"]*"|'[^']*'|\S+)\s+)+/, "");
-  const first = c.split(/\s*(?:\|\||&&|\||;)\s*/)[0] ?? c;
+  const parts = c.split(/\s*(?:\|\||&&|;)\s*/).map((x) => (x.split(/\s*\|\s*/)[0] ?? x).trim()).filter(Boolean);
+  // Prefer the command that matters (build/test/run) over setup like mkdir/cd/export/echo.
+  const meaningful = parts.find((x) => /^(npx|npm|pnpm|yarn|bun|node|deno|python3?|pytest|uv|pip3?|cargo|go|make|tsc|vitest|jest|playwright|git|docker|gh|swift|xcodebuild|ruby|rails|bundle|php|mvn|gradle|dotnet|bash|sh|\.\/)/.test(x));
+  const skip = /^(mkdir|cd|export|echo|printf|set|true|sleep|clear|source|\.)\b/;
+  const first = meaningful ?? parts.find((x) => !skip.test(x)) ?? parts[0] ?? c;
   return first.length > 56 ? `${first.slice(0, 55)}…` : first;
 }
 
@@ -60,7 +81,9 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
 export function activityFor(s: Session, events: HookEvent[], now: number): Activity {
   const ev = [...events].sort((a, b) => a.ts - b.ts || a.id - b.id);
   const last = ev[ev.length - 1];
-  const errs = ev.filter((e) => e.isError && now - e.ts < 3600_000);
+  const recentFails = ev.filter((e) => e.isError && now - e.ts < 3600_000);
+  const errs = recentFails.filter((e) => !isRetry(e));
+  const retries1h = recentFails.length - errs.length;
   const lastErrors = errs.slice(-3).reverse().map((e) => clip((e.errorText || e.summary).replace(/\s+/g, " ").trim(), 160));
   // Current action: an unfinished PreToolUse wins; otherwise "Thinking" right after a prompt or a finished tool.
   let nowText: string | null = null;
@@ -90,6 +113,8 @@ export function activityFor(s: Session, events: HookEvent[], now: number): Activ
   const quiet = now - s.lastEventAt;
   const stopped = !!lastPrompt && !stopAfter && s.status !== "awaiting_approval" && s.status !== "blocked" && (failed || (!s.endedAt && quiet > 30 * 60_000 && quiet < 6 * 3600_000));
   const compact = [...ev].reverse().find((e) => e.hookEvent === "PreCompact");
+  const finish = last?.hookEvent === "Stop" ? last : null;
+  const turnStart = finish ? [...ev].reverse().find((e) => e.hookEvent === "UserPromptSubmit" && e.ts <= finish.ts) ?? null : null;
   const SHOW = new Set(["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop", "StopFailure", "PreCompact", "SessionStart", "SessionEnd", "SubagentStop"]);
   const timeline = ev
     .filter((e) => SHOW.has(e.hookEvent))
@@ -106,5 +131,9 @@ export function activityFor(s: Session, events: HookEvent[], now: number): Activ
     autoApprove: s.permissionMode === "bypassPermissions",
     compactedAt: compact?.ts ?? null,
     timeline,
+    retries1h,
+    finishedAt: finish?.ts ?? null,
+    turnMs: finish && turnStart ? finish.ts - turnStart.ts : null,
+    maybeStuck: !!nowText && since != null && now - s.lastEventAt > 10 * 60_000 && s.status === "running",
   };
 }
