@@ -1,3 +1,4 @@
+import { plainCommand } from "./activity";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -44,7 +45,7 @@ export function codexAction(p: Record<string, unknown>): string {
   let args: Record<string, unknown> = {};
   try { args = typeof p.arguments === "string" ? JSON.parse(p.arguments) : (p.arguments as Record<string, unknown>) ?? {}; } catch { /* not JSON */ }
   const cmd = Array.isArray(args.command) ? (args.command as string[]).join(" ") : typeof args.cmd === "string" ? args.cmd : typeof args.command === "string" ? args.command : null;
-  if (cmd) return `Running ${cmd.replace(/^bash -lc /, "").replace(/\s+/g, " ").slice(0, 60)}`;
+  if (cmd) return plainCommand(cmd.replace(/^bash -lc /, "").replace(/\s+/g, " "));
   if (name === "apply_patch" || /patch/.test(name)) return "Editing files";
   if (typeof p.input === "string" && name === "exec") return "Running a script";
   return `Using ${p.namespace ? `${String(p.namespace)} ` : ""}${name}`.slice(0, 60);

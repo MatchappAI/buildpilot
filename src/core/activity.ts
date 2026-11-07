@@ -4,7 +4,7 @@ import type { HookEvent, Session } from "./types";
  * "What is it doing right now?" for one Claude Code session, from the hook events BuildPilot already records.
  * Pure: give it the session and its recent events (newest last). Never guesses: no event = null.
  */
-export interface TimelineItem { ts: number; text: string; error: boolean }
+export interface TimelineItem { ts: number; text: string; error: boolean; full?: string }
 export interface Activity {
   /** Plain description of the current action, e.g. "Running npm test", "Editing checkout.tsx", "Thinking". */
   now: string | null;
@@ -44,7 +44,7 @@ export function isRetry(e: HookEvent): boolean {
 }
 
 const ACT: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
-  [/^Run: (.+)$/, (m) => { const sc = shortCommand(m[1]!); return /^(freeing|waiting)/.test(sc) ? sc.charAt(0).toUpperCase() + sc.slice(1) : `Running ${sc}`; }],
+  [/^Run: (.+)$/, (m) => plainCommand(m[1]!)],
   [/^Edit (.+)$/, (m) => `Editing ${m[1]}`],
   [/^Write (.+)$/, (m) => `Writing ${m[1]}`],
   [/^Read (.+)$/, (m) => `Reading ${m[1]}`],
@@ -73,7 +73,40 @@ export function shortCommand(cmd: string): string {
   return first.length > 56 ? `${first.slice(0, 55)}…` : first;
 }
 
-/** "Run: npm test" → "Running npm test". */
+/** A shell command in plain words for non-engineers: "npx vitest run" → "Running tests". Full text stays in the tooltip. */
+export function plainCommand(cmd: string): string {
+  const sc = shortCommand(cmd);
+  if (/^(freeing|waiting)/.test(sc)) return sc.charAt(0).toUpperCase() + sc.slice(1);
+  const c = sc.toLowerCase();
+  const rules: Array<[RegExp, string]> = [
+    [/(^|[\s/._-])(test|tests|vitest|jest|pytest|playwright|mocha|spec)([\s:._-]|$)|\bnpm t\b/, "Running tests"],
+    [/\b(typecheck|tsc)\b/, "Checking for type errors"],
+    [/\b(lint|eslint|ruff|prettier|swiftlint)\b/, "Checking code style"],
+    [/\b(npm|pnpm|yarn|bun) (i|install|add|ci)\b|\b(pip3?|uv pip|brew|gem|cargo) (install|add)\b|^bundle( install)?$/, "Installing packages"],
+    [/\b(build|xcodebuild|compile|package|vsce)\b/, "Building the app"],
+    [/\b(dev|start|serve|preview)\b|\bnext dev\b|\bvite\b/, "Starting the app"],
+    [/^git (commit|add)\b/, "Saving changes to git"],
+    [/^git push\b/, "Pushing to GitHub"],
+    [/^git (pull|fetch|clone)\b/, "Getting the latest code"],
+    [/^git (status|diff|log|show|branch|rev-parse)\b/, "Looking at recent changes"],
+    [/^git\b/, "Using git"],
+    [/^gh\b/, "Talking to GitHub"],
+    [/^(curl|wget|open)\b/, "Checking a web address"],
+    [/^(sed|perl) -i\b/, "Editing a file"],
+    [/^(ls|cat|head|tail|find|grep|rg|wc|tree|stat|file|du|sed|awk|jq|sort|uniq|cut)\b/, "Looking through files"],
+    [/^(rm|mv|cp|mkdir|touch|chmod|ln)\b/, "Moving files around"],
+    [/^(npx )?(python3?|node|deno|tsx|ts-node|ruby|bash|sh|zsh|osascript|swift)\b/, "Running a script"],
+    [/^(tar|zip|unzip|gzip|ditto)\b/, "Packing or unpacking files"],
+    [/^(docker|kubectl)\b/, "Working with containers"],
+    [/^(wrangler|vercel|netlify|fly|az|gcloud|aws)\b/, "Deploying or checking the cloud"],
+    [/^(npx|npm|pnpm|yarn|bun) /, "Running a project script"],
+  ];
+  for (const [re, words] of rules) if (re.test(c)) return words;
+  const word = (sc.split(/\s+/)[0] ?? "").split("/").pop() ?? "";
+  return /^[a-z][\w.-]{1,30}$/i.test(word) ? `Running ${word}` : "Running a command";
+}
+
+/** "Run: npm test" → "Running tests". */
 export function presentTense(summary: string): string {
   const s = (summary.replace(/^[✓✗] /, "").split("\n")[0] ?? "").trim();
   for (const [re, f] of ACT) {
@@ -81,6 +114,18 @@ export function presentTense(summary: string): string {
     if (m) return f(m);
   }
   return s;
+}
+
+const PAST: Record<string, string> = { Running: "Ran", Building: "Built", Checking: "Checked", Installing: "Installed", Starting: "Started", Saving: "Saved", Pushing: "Pushed", Getting: "Got", Looking: "Looked", Using: "Used", Talking: "Talked", Moving: "Moved", Packing: "Packed", Working: "Worked", Deploying: "Deployed", Editing: "Edited", Writing: "Wrote", Reading: "Read", Searching: "Searched", Opening: "Opened", Updating: "Updated", Freeing: "Freed", Waiting: "Waited" };
+
+/** A finished step in plain past tense: "✓ Run: npx vitest" → "Ran tests". Prompts, approvals and other text pass through. */
+export function plainStep(summary: string): string {
+  const s = (summary.split("\n")[0] ?? "").trim();
+  if (/^Prompt: /.test(s)) return s.replace(/^Prompt: /, "You: ");
+  const bare = s.replace(/^[✓✗] /, "");
+  if (!ACT.some(([re]) => re.test(bare))) return bare.replace(/^Needs your approval: (.+)$/, (_, x: string) => `Asked you before ${presentTense(x).replace(/^\w/, (c) => c.toLowerCase())}`);
+  const p = presentTense(bare);
+  return p.replace(/^\w+/, (w) => PAST[w] ?? w);
 }
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -127,9 +172,9 @@ export function activityFor(s: Session, events: HookEvent[], now: number): Activ
   const SHOW = new Set(["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop", "StopFailure", "PreCompact", "SessionStart", "SessionEnd", "SubagentStop"]);
   const timeline = ev
     .filter((e) => SHOW.has(e.hookEvent))
-    .slice(-15)
+    .slice(-10)
     .reverse()
-    .map((e) => ({ ts: e.ts, error: e.isError, text: clip(e.hookEvent === "Stop" ? "Finished its turn" : e.hookEvent === "PreCompact" ? "Compacted its memory (summarized the chat)" : e.summary.replace(/^Prompt: /, "You: "), 140) }));
+    .map((e) => ({ ts: e.ts, error: e.isError, full: e.summary.slice(0, 400), text: clip(e.hookEvent === "Stop" ? "Finished its turn" : e.hookEvent === "PreCompact" ? "Compacted its memory (summarized the chat)" : e.hookEvent === "SessionStart" ? "Started" : e.hookEvent === "SessionEnd" ? "Closed" : e.hookEvent === "SubagentStop" ? "A helper finished" : plainStep(e.summary), 110) }));
   return {
     now: nowText ? clip(nowText, 90) : null,
     nowSince: since,

@@ -238,3 +238,14 @@ html, body { overflow-x: hidden; }
 .side { margin-top: 6px; border-top: 0; padding-top: 0; }
 .side h3 { color: var(--ink); text-transform: none; }
 @media (max-width: 520px) { .b-act { width: auto; justify-content: flex-start; } }
+.finder-link { margin: 12px 0 0; font-size: 13px; }
+/* Steady columns: chat % and actions line up row to row. */
+.b-meta { width: 96px; min-width: 96px; align-items: flex-start !important; }
+.b-act { width: 88px; }
+@media (max-width: 520px) { .b-meta { width: 100%; min-width: 0; } .b-act { width: auto; } }
+/* Expanded build: details span the full row. */
+.builds li.open { flex-wrap: wrap; }
+.builds li .details { flex: 0 0 calc(100% - 21px); margin-left: 21px; box-sizing: border-box; }
+.timeline li { display: flex; gap: 10px; }
+.timeline .t { flex: 0 0 64px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.timeline .x, .toklist li span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

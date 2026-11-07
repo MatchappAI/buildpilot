@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.0: a clearer, calmer window
+- **Plain words, not shell:** what each build is doing reads like "Running tests", "Installing packages", "Pushing to GitHub", or "Looking through files", never raw text like "Running -d)". The full command is still there on hover. Codex builds get the same treatment.
+- **Readable history:** "Recent steps" is in plain past tense ("Ran tests", "Edited cart.ts", "Asked you before pushing to GitHub"). It shows the last 10 steps on one line each, with times that no longer wrap.
+- **Expanded builds use the full width:** token details and steps span the row instead of being squeezed into a narrow column. Token sources read "File package-lock.json" and "Output of git status".
+- **Less noise:**
+  - "Who changed a file?" is now a single link until you need it.
+  - "0% of today's use" is hidden.
+  - The chat % column lines up from row to row.
+- **Fixes:**
+  - The start size shows "unknown" instead of "0".
+  - Model names read "Opus 5.5".
+
 ## 0.9.0: polish from the all-round review
 - **Keyboard focus survives live updates:** buttons keep focus when new state arrives, tested.
 - **Accessible dialogs:** the project picker uses real buttons with arrow and Tab access, and every dialog announces its question. Footer actions are real buttons, and the rename pencil is visible.

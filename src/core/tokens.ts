@@ -1,3 +1,4 @@
+import { shortCommand } from "./activity";
 import * as fs from "fs";
 import * as path from "path";
 import { claudeConfigDir, isSafeTranscriptPath } from "./transcript";
@@ -56,10 +57,10 @@ function readBounded(file: string): { head: string; body: string } {
 function target(name: string, input: Record<string, unknown>): string {
   const s = (v: unknown) => (typeof v === "string" ? v : "");
   const fp = s(input.file_path) || s(input.path) || s(input.notebook_path);
-  if (fp) return `${name} ${path.basename(fp)}`;
-  if (name === "Bash") return `Bash ${s(input.command).replace(/\s+/g, " ").slice(0, 60)}`;
-  if (name === "Grep" || name === "Glob") return `${name} ${s(input.pattern).slice(0, 40)}`;
-  if (name === "WebFetch") return `WebFetch ${s(input.url).slice(0, 60)}`;
+  if (fp) return `${name === "Read" ? "File" : name === "Edit" || name === "Write" || name === "MultiEdit" ? "Edit of" : name} ${path.basename(fp)}`;
+  if (name === "Bash") return `Output of ${shortCommand(s(input.command).replace(/\s+/g, " "))}`;
+  if (name === "Grep" || name === "Glob") return `Search for ${s(input.pattern).slice(0, 40)}`;
+  if (name === "WebFetch") return `Web page ${s(input.url).replace(/^https?:\/\//, "").slice(0, 50)}`;
   if (name === "Task" || name === "Agent") return `Subagent ${s(input.description).slice(0, 50)}`;
   return name;
 }
@@ -72,7 +73,7 @@ export function parseTokens(head: string, body: string): TokenReport {
     if (!l.includes('"usage"')) continue;
     try {
       const o = JSON.parse(l);
-      if (o.type === "assistant" && o.message?.usage) { baseline = usageIn(o.message.usage); break; }
+      if (o.type === "assistant" && o.message?.usage) { const b = usageIn(o.message.usage); baseline = b > 0 ? b : null; break; }
     } catch { /* partial line */ }
   }
   const tools = new Map<string, { name: string; label: string }>();

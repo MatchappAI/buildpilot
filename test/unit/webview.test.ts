@@ -210,6 +210,8 @@ describe("one-page UI (real bundle in jsdom)", () => {
     const { doc, w, sent, tick, click } = mount(full());
     await tick();
     await tick();
+    expect(doc.getElementById("fileq")).toBeNull();
+    await click('[data-act="openFinder"]');
     const inp = doc.getElementById("fileq") as HTMLInputElement;
     inp.value = "auth.ts";
     // the mock replies null for whoChanged → empty result message

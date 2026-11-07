@@ -20,14 +20,18 @@ const ev = (hookEvent: string, summary: string, ts: number, o: Partial<HookEvent
 
 describe("what it's doing now", () => {
   it("present tense from summaries, first line only", () => {
-    expect(presentTense("Run: npm test")).toBe("Running npm test");
+    expect(presentTense("Run: npm test")).toBe("Running tests");
+    expect(presentTense("Run: cd /x && npx tsx -e \"go()\" -d)")).toBe("Running a script");
+    expect(presentTense("Run: .build/debug/halo-dsp-tests 2>&1")).toBe("Running tests");
+    expect(presentTense("Run: git push origin main")).toBe("Pushing to GitHub");
+    expect(presentTense("Run: npm i stripe")).toBe("Installing packages");
     expect(presentTense("✓ Edit checkout.tsx")).toBe("Editing checkout.tsx");
-    expect(presentTense("Run: cd x && python3 - <<'EOF'\nimport os")).toBe("Running python3 - <<'EOF'");
+    expect(presentTense("Run: cd x && python3 - <<'EOF'\nimport os")).toBe("Running a script");
   });
 
   it("unfinished tool = current action with start time; prompt = Thinking; errors and waiting command", () => {
     const a = activityFor(sess(), [ev("UserPromptSubmit", "Prompt: fix it", NOW - 300_000), ev("PreToolUse", "Run: npm test", NOW - 120_000, { toolUseId: "t1" })], NOW);
-    expect(a).toMatchObject({ now: "Running npm test", nowSince: NOW - 120_000 });
+    expect(a).toMatchObject({ now: "Running tests", nowSince: NOW - 120_000 });
     expect(activityFor(sess(), [ev("UserPromptSubmit", "Prompt: hi", NOW - 5000)], NOW).now).toBe("Thinking");
     const errs = activityFor(sess(), [ev("PostToolUseFailure", "✗ Run: npm test", NOW - 60_000, { isError: true, errorText: "Error: cannot find module 'x'" })], NOW);
     expect(errs.errors1h).toBe(1);
@@ -69,8 +73,8 @@ describe("where the tokens went", () => {
     expect(r.models).toEqual([["claude-opus-5-5", 2]]);
     expect(r.subagents).toBe(1);
     expect(r.compactions).toBe(1);
-    expect(r.top[0]).toEqual({ label: "Read package-lock.json", tokens: 40000 });
-    expect(r.top[1]).toEqual({ label: "Bash npm test", tokens: 2000 });
+    expect(r.top[0]).toEqual({ label: "File package-lock.json", tokens: 40000 });
+    expect(r.top[1]).toEqual({ label: "Output of npm test", tokens: 2000 });
     expect(kTokens(40000)).toBe("40k");
   });
 });
@@ -216,7 +220,7 @@ describe("v0.7 polish", () => {
     const { shortCommand } = await import("../../src/core/activity");
     const { codexAction } = await import("../../src/core/codex");
     expect(shortCommand("mkdir -p out && cd out && npm run build")).toBe("npm run build");
-    expect(codexAction({ name: "shell", arguments: JSON.stringify({ command: ["bash", "-lc", "pytest -q"] }) })).toBe("Running bash -lc pytest -q".replace("bash -lc ", ""));
+    expect(codexAction({ name: "shell", arguments: JSON.stringify({ command: ["bash", "-lc", "pytest -q"] }) })).toBe("Running tests");
     expect(codexAction({ name: "apply_patch", arguments: "{}" })).toBe("Editing files");
   });
 });
@@ -228,5 +232,15 @@ describe("v0.9 parsing", () => {
     expect(shortCommand("kill $(lsof -ti :8765)")).toBe("freeing port 8765");
     const busy = activityFor(sess({ lastEventAt: NOW - 20 * 60_000 }), [ev("PreToolUse", "Run: npm test", NOW - 20 * 60_000, { toolUseId: "z" })], NOW);
     expect(busy.maybeStuck).toBe(false); // a long npm test is fine
+  });
+});
+
+describe("plain words for finished steps", () => {
+  it("past tense, prompts and approvals", async () => {
+    const { plainStep } = await import("../../src/core/activity");
+    expect(plainStep("✓ Run: cd x && npx vitest run")).toBe("Ran tests");
+    expect(plainStep("✓ Edit cart.ts")).toBe("Edited cart.ts");
+    expect(plainStep("Prompt: add login")).toBe("You: add login");
+    expect(plainStep("Needs your approval: Run: git push")).toBe("Asked you before pushing to GitHub");
   });
 });

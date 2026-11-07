@@ -215,9 +215,10 @@ const errOpen = new Set<string>();
 let showQuiet = false;
 let fileQuery = "";
 let fileResults: { sessionId: string; cwd: string; path: string; file: string; lastTs: number; edits: number }[] | null = null;
+let finderOpen = false;
 
 const kTok = (n: number) => (n >= 1000 ? `${n >= 10000 ? Math.round(n / 1000) : (n / 1000).toFixed(1)}k` : String(n));
-const shortModel = (m: string) => m.replace(/^claude-/, "").replace(/-\d{8}$/, "").replace(/-/g, " ").replace(/\b(\w)/g, (c) => c.toUpperCase());
+const shortModel = (m: string) => m.replace(/^claude-/, "").replace(/-\d{8}$/, "").replace(/-(\d+)-(\d+)$/, " $1.$2").replace(/-/g, " ").replace(/\b(\w)/g, (c) => c.toUpperCase());
 const isQuiet = (x: Build) => !x.needsYou && !x.stopped && x.status !== "running" && Date.now() - x.lastEventAt > 2 * 3600_000;
 const dur = (since: number | null | undefined) => {
   if (!since) return "";
@@ -249,10 +250,10 @@ function buildRow(x: Build): string {
       <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" aria-controls="d-${esc(x.id)}" title="Show what it did and where the tokens went">${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this build" aria-label="Name this build">✎</button>` : ""}${chips}</div>
       <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
       ${errPanel}
-      ${expanded.has(x.id) ? buildDetails(x) : ""}
     </div>
-    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}%</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude Code usage today, from Claude Code's own cost estimate">${x.share}% of today's use</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
+    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}%</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null && x.share >= 1 ? `<span class="share" title="This build's share of all your Claude Code usage today, from Claude Code's own cost estimate">${x.share}% of today's use</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
     <div class="b-act">${x.agent === "codex" ? `<span class="muted small" title="Codex has no hooks, so BuildPilot can only read its logs">read-only</span>` : buildButton(x)}</div>
+    ${expanded.has(x.id) ? buildDetails(x) : ""}
   </li>`;
 }
 
@@ -265,7 +266,7 @@ function buildDetails(x: Build): string {
       </div>`
     : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this build has a transcript BuildPilot can read.</p>`;
   const tl = (x.timeline ?? []).length
-    ? `<div class="d-head">Recent steps</div><ol class="timeline">${(x.timeline ?? []).map((e) => `<li class="${e.error ? "bad" : ""}"><span class="muted">${new Date(e.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span> ${esc(e.text)}</li>`).join("")}</ol>`
+    ? `<div class="d-head">Recent steps</div><ol class="timeline">${(x.timeline ?? []).map((e) => `<li class="${e.error ? "bad" : ""}" title="${esc(e.full ?? e.text)}"><span class="muted t">${new Date(e.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><span class="x">${esc(e.text)}</span></li>`).join("")}</ol>`
     : "";
   return `<div class="details" id="d-${esc(x.id)}">${tok}${tl}</div>`;
 }
@@ -301,7 +302,7 @@ function buildsSection(): string {
     <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild" title="Starts Claude in a separate copy of this project, so two builds can't undo each other's work">+ New build</button></div>
     ${all.length ? `<ul class="builds">${list}${quiet.length ? `<li class="quiet"><button class="link" data-act="toggleQuiet">${showQuiet ? "Hide" : "Show"} ${quiet.length} quiet build${quiet.length === 1 ? "" : "s"}</button> · <button class="link" data-act="hideIdle">Clear them</button></li>${showQuiet ? quiet.map(buildRow).join("") : ""}` : ""}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
     ${sideSection()}
-    ${all.length ? fileFinder() : ""}
+    ${all.length ? (finderOpen || fileResults != null ? fileFinder() : `<p class="finder-link"><button class="link" data-act="openFinder">Who changed a file?</button></p>`) : ""}
   </section>`;
 }
 
@@ -440,6 +441,7 @@ async function act(el: HTMLElement): Promise<void> {
       await call("copy", { text: `These errors happened in ${b.folder} (${b.cwd}). Find the root cause before trying another fix:\n\n${(b.lastErrors ?? []).map((e) => `- ${e}`).join("\n")}` });
       return flash("Copied. Paste it into Claude");
     }
+    case "openFinder": { finderOpen = true; render(); document.getElementById("fileq")?.focus(); return; }
     case "renameBuild": { await call("renameBuild", { id: el.dataset.id }); return; }
     case "whoChanged": {
       fileQuery = ((document.getElementById("fileq") as HTMLInputElement | null)?.value ?? "").trim();
