@@ -4,7 +4,9 @@
 
 Made for people who build with Claude Code and don't want to babysit it, including people who aren't engineers.
 
-- **Builds:** every Claude Code chat across your projects, needs-you first, with **Review in terminal**. Nothing is approved until you approve it there.
+- **Builds:** every Claude Code (and Codex) session across your projects, grouped by project, needs-you first. Each shows **what it's doing right now** ("Running npm test · 4 min"), errors, and the exact command waiting for your OK. **Find it** jumps to the right Terminal/iTerm tab. Name builds, resume ones that stopped mid-task, and clear out quiet ones.
+- **Where the tokens went:** per build, the starting load before you type (tools, MCP, CLAUDE.md), chat size, model, subagents, and the biggest things pulled into the chat, with tips to cut them.
+- **Who changed this file?** It tells you which build changed it and when, with one-click undo.
 - **Plan limits:** 5-hour and weekly usage, when each resets, and *"At this pace you'll run out around 5:47 PM, then wait 1 h 37 min."* It warns you at 80%. API-key users see spend instead.
 - **Tips for right now:** only when they apply, each with one button. Chat nearly full → **Start fresh chat**. A build stuck repeating a fix → plan first. Two builds in one folder → **New build**. No Git → **Turn on undo**.
 - **+ New build → Review → Merge:** another Claude in its own copy of the project (it copies your `.env` files and installs packages), so builds can't undo each other's work. When it's done, **Review** shows each changed file before ↔ after and **Merge** brings it in. On a conflict nothing changes, and you get a ready fix prompt.
@@ -28,7 +30,7 @@ BuildPilot is a helper for **Claude Code**. You don't need VS Code or any other 
 - On a Mac, the **BuildPilot** app on your Desktop does the same: double-click.
 - In Claude Code, `/bp` shows your builds, limits and tips. Also `/bp-new <name>`, `/bp-merge <name>`, `/bp-prompt <idea>`, `/bp-connect` (exact chat % and limits) and `/bp-license <key>`.
 
-**Terminal:** `bp ui` · `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
+**Terminal:** `bp ui` · `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp who <file>` · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
 
 *Optional:* if you also work in VS Code or Cursor, the same page can sit beside your terminal there (`dist/buildpilot.vsix`).
 

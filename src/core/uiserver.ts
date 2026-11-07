@@ -10,6 +10,9 @@ import { checkoutUrl, gate, gateParallel, plan, readUsage, recordUse, saveLicens
 import { worktrees, run } from "./git";
 import { GoalType } from "./types";
 import { shellQuote } from "./prompts";
+import { findBuild } from "./termfind";
+import { setBuildName } from "./glance";
+import { alertsFor, AlertMemory } from "./alerts";
 
 /**
  * BuildPilot as its own app (no VS Code): a private local web server that serves the same one-page UI.
@@ -44,6 +47,12 @@ export function copyText(text: string): Promise<void> {
   });
 }
 
+/** macOS notification; title/body passed as AppleScript arguments (never interpolated). */
+export function notify(title: string, body: string): void {
+  if (process.platform !== "darwin") return;
+  execFile("osascript", ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title.slice(0, 80), body.slice(0, 200)], { timeout: 5000 }, () => {});
+}
+
 const openUrl = (u: string) => execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [u], () => {});
 
 export class UiServer {
@@ -52,6 +61,8 @@ export class UiServer {
   private lastSeen = Date.now();
   private idle: NodeJS.Timeout | null = null;
   private side: unknown[] = [];
+  private alertTimer: NodeJS.Timeout | null = null;
+  private memory: AlertMemory = { sent: {} };
 
   constructor(private engine: Engine, private opts: UiServerOptions) {
     this.token = opts.token ?? randomBytes(16).toString("hex");
@@ -69,11 +80,33 @@ export class UiServer {
       this.server!.once("error", reject);
       this.server!.listen(this.opts.port ?? 0, "127.0.0.1", () => resolve());
     });
+    // macOS notifications so you don't miss "Claude needs you", limits, error bursts or compaction.
+    this.alertTimer = setInterval(() => void this.checkAlerts(), 15_000);
+    void this.checkAlerts();
     if (this.opts.idleExitMs) this.idle = setInterval(() => { if (Date.now() - this.lastSeen > this.opts.idleExitMs!) void this.stop().then(() => process.exit(0)); }, 30_000);
     void this.refreshSide();
   }
 
+  private uiPrefs(): { theme?: string; alerts?: boolean } {
+    try { return JSON.parse(fs.readFileSync(path.join(this.engine.home, "ui.json"), "utf8")) as { theme?: string; alerts?: boolean }; } catch { return {}; }
+  }
+
+  private savePrefs(p: { theme?: string; alerts?: boolean }): void {
+    fs.writeFileSync(path.join(this.engine.home, "ui.json"), JSON.stringify({ ...this.uiPrefs(), ...p }));
+  }
+
+  async checkAlerts(): Promise<void> {
+    if (this.uiPrefs().alerts === false || process.platform !== "darwin") return;
+    try {
+      const pd = pageData(this.engine, this.engine.snapshot());
+      for (const a of alertsFor(pd, this.memory, Date.now())) notify(a.title, a.body);
+    } catch {
+      /* never let alerts break the window */
+    }
+  }
+
   async stop(): Promise<void> {
+    if (this.alertTimer) clearInterval(this.alertTimer);
     if (this.idle) clearInterval(this.idle);
     await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r()));
     this.server = null;
@@ -94,15 +127,11 @@ export class UiServer {
 
   private statePayload() {
     const st = this.engine.snapshot();
-    return { type: "state", state: st, page: { ...pageData(this.engine, st), side: this.side }, settings: { trusted: true, theme: this.theme(), standalone: true } };
+    return { type: "state", state: st, page: { ...pageData(this.engine, st), side: this.side }, settings: { trusted: true, theme: this.theme(), standalone: true, alerts: this.uiPrefs().alerts !== false } };
   }
 
   private theme(): string {
-    try {
-      return JSON.parse(fs.readFileSync(path.join(this.engine.home, "ui.json"), "utf8")).theme === "match" ? "match" : "white";
-    } catch {
-      return "white";
-    }
+    return this.uiPrefs().theme === "match" ? "match" : "white";
   }
 
   private send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8"): void {
@@ -157,12 +186,29 @@ export class UiServer {
         return { flash: "Claude is starting in Terminal" };
       }
       case "openBuild": {
-        const cwd = str("cwd");
-        const panes = await new Promise<string>((r) => execFile("tmux", ["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_path}"], { timeout: 3000 }, (_e, o) => r(String(o ?? ""))));
-        const hit = panes.split("\n").map((l) => l.split("\t")).find(([, p]) => p && path.resolve(p) === path.resolve(cwd));
-        if (hit?.[0]) { execFile("tmux", ["select-window", "-t", hit[0]], () => {}); return { flash: "Switched to its tmux window" }; }
-        return { show: `This build is running in a terminal in:\n${cwd}\n\nSwitch to that terminal window to see what Claude is asking. (If you use tmux, BuildPilot switches to it for you.)` };
+        const r = await findBuild(str("cwd"));
+        return r.found ? { flash: `Switched to it in ${r.how}` } : { show: `${r.how}\n\nSwitch to that window to see what Claude is asking.` };
       }
+      case "renameBuild": {
+        const id = str("id");
+        if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return null;
+        setBuildName(eng, id, str("name"));
+        return { flash: str("name").trim() ? "Renamed" : "Name cleared" };
+      }
+      case "hideIdle": return { flash: `Hid ${eng.hideIdle()} idle build(s). Their history is kept.` };
+      case "whoChanged": {
+        const rows = eng.fileHistory(str("query"));
+        return { files: rows.map((r) => ({ ...r, file: path.basename(r.path) })) };
+      }
+      case "undoFile": {
+        try {
+          const r = await eng.undoFile(str("path"));
+          return { flash: `Put back the last saved version. (Safety save point ${r.safety.slice(0, 8)} has the version you just replaced.)` };
+        } catch (e) {
+          return { show: (e as Error).message };
+        }
+      }
+      case "toggleAlerts": { this.savePrefs({ alerts: this.uiPrefs().alerts === false }); return { flash: this.uiPrefs().alerts === false ? "Alerts off" : "Alerts on" }; }
       case "resumeBuild": {
         const id = str("id");
         const cwd = str("cwd");
@@ -252,11 +298,7 @@ export class UiServer {
       }
       case "upgrade": { const g = gate(eng.home); openUrl(g.allowed ? checkoutUrl(readUsage(eng.home).installId) : g.paywall.url); return null; }
       case "enterLicense": { const v = saveLicense(eng.home, str("key")); return { flash: v.valid ? "BuildPilot Pro unlocked" : `That key didn't work (${v.reason})` }; }
-      case "toggleTheme": {
-        const f = path.join(eng.home, "ui.json");
-        fs.writeFileSync(f, JSON.stringify({ theme: this.theme() === "match" ? "white" : "match" }));
-        return null;
-      }
+      case "toggleTheme": { this.savePrefs({ theme: this.theme() === "match" ? "white" : "match" }); return null; }
       case "projects": {
         const rows = eng.store.all<{ root: string; name: string }>("SELECT root, name FROM projects ORDER BY COALESCE(last_analyzed_at, created_at) DESC LIMIT 15").filter((r) => fs.existsSync(r.root));
         return rows.map((r) => ({ root: r.root, name: path.basename(r.root) }));
@@ -290,6 +332,8 @@ export class UiServer {
     setupUndo: ["Turn on undo for this project?", "Sets up Git here and saves everything as a first save point. Nothing is uploaded."],
     checkpoint: ["Make a save point?", "Saves a snapshot of every file as a private Git ref. Your files and branch don't change."],
     mergeBuild: ["Bring this build's work into your main project?", "Its unsaved work is saved first. If both builds changed the same lines, nothing changes and you get a fix prompt."],
+    hideIdle: ["Hide builds that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again."],
+    undoFile: ["Put this file back to its last saved version?", "Undoes every change since your last commit for this one file. BuildPilot makes a safety save point of the current version first."],
     resumeBuild: ["Resume this Claude conversation?", "Opens Terminal in that folder and continues the same chat (claude --resume)."],
     removeBuild: ["Remove this build's folder?", "Its branch is kept, so nothing is lost. Folders with unsaved changes are never removed."],
   };
@@ -320,6 +364,7 @@ export class UiServer {
       if (m.type === "showConnectChanges") { const r = await post(m); await show("BuildPilot adds these entries to ~/.claude/settings.json:\\n\\n" + r.show); return reply(null); }
       if (m.type === "enterLicense") { const k = await input("Paste your BuildPilot Pro key", "BP1.…", true); if (k) { const r = await post({ type: "enterLicense", key: k }); if (r?.flash) toast(r.flash); await pushState(); } return reply(null); }
       if (m.type === "newBuild") { const label = await input("New build: what's it for? (a few words)", "e.g. checkout page"); if (label === null) return reply(null); if (!(await ask("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy next to your project (with your .env files), installs packages, and opens Claude in Terminal. Two builds use your plan limit about twice as fast.", "Start build"))) return reply(null); m.label = label; }
+      if (m.type === "renameBuild") { const n = await input("Name this build (leave empty to clear)", "e.g. checkout page"); if (n === null) return reply(null); m.name = n; }
       if (m.type === "selectProject") { const list = await post({ type: "projects" }); const p = await pick("Choose a project", list || []); if (!p) return reply(null); m.root = p.root; }
       let r = await post(m);
       if (r && r.confirmAgain) { if (await ask(r.confirmAgain, "Merging now would bring failing code into your main project.", "Merge anyway")) r = await post({ ...m, force: true }); else return reply(null); }

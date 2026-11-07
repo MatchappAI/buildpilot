@@ -217,7 +217,8 @@ Everyday
   bp new "<name>"           start another build in its own copy of this project (--no-env: don't copy .env files)
   bp review · bp merge <name>  see what a side build changed · bring it into your project
   bp builds · bp done <name>  list extra builds · remove a finished one (branch kept)
-  bp go [name]              jump to the build that needs you (its tmux pane, or prints cd)
+  bp go [name]              jump to the build that needs you (Terminal/iTerm tab or tmux)
+  bp who <file>             which Claude build changed a file, and when
   bp prompt auto "<what>"   turn plain words into an expert prompt (prints it; run: claude "$(bp prompt auto '...')")
   bp license [key]          show your plan, or unlock Pro with a key
 
@@ -251,22 +252,16 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     const w = widgetData(engine);
     engine.stop();
     const want = rest[0]?.toLowerCase();
-    const target = want ? w.sessions.find((s) => s.folder.toLowerCase() === want || s.folder.toLowerCase().includes(want)) : w.sessions.find((s) => s.needsYou) ?? w.sessions[0];
+    const target = want ? w.sessions.find((s) => (s.name ?? s.folder).toLowerCase() === want || (s.name ?? s.folder).toLowerCase().includes(want) || s.folder.toLowerCase().includes(want)) : w.sessions.find((s) => s.needsYou) ?? w.sessions[0];
     if (!target) {
       console.log(want ? `No build matching "${rest[0]}". Running: ${w.sessions.map((s) => s.folder).join(", ") || "none"}` : "No builds running.");
       process.exitCode = 1;
       return;
     }
-    if (process.env.TMUX) {
-      const panes = await new Promise<string>((resolve) => execFile("tmux", ["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}\t#{pane_current_path}"], { timeout: 5000 }, (_e, out) => resolve(String(out ?? ""))));
-      const hit = panes.split("\n").map((l) => l.split("\t")).find(([, p]) => p && path.resolve(p) === path.resolve(target.cwd));
-      if (hit?.[0]) {
-        execFile("tmux", ["select-window", "-t", hit[0]], () => execFile("tmux", ["select-pane", "-t", hit[0]!], () => {}));
-        console.log(`→ ${target.folder}${target.needsYou ? ` (waiting: ${target.reason || target.word})` : ""}`);
-        return;
-      }
-    }
-    console.log(`${target.folder}${target.needsYou ? ` is waiting: ${target.reason || target.word}` : ""}\n  cd "${target.cwd}"`);
+    const { findBuild } = await import("./core/termfind");
+    const r = await findBuild(target.cwd);
+    const what = target.needsYou ? ` (waiting: ${target.waitingFor ?? target.reason ?? target.word})` : target.now ? ` (${target.now})` : "";
+    console.log(r.found ? `→ ${target.name ?? target.folder}${what} in ${r.how}` : `${target.name ?? target.folder}${what}\n  ${r.how}\n  cd "${target.cwd}"`);
     return;
   }
   if (cmd === "review" || cmd === "merge") {
@@ -295,6 +290,18 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
       }
     }
     engine.stop();
+    return;
+  }
+  if (cmd === "who") {
+    if (!rest[0]) return usage('Usage: bp who <file>   which Claude build changed it, and when');
+    const engine = new Engine({ light: true });
+    await engine.start();
+    const rows = engine.fileHistory(rest[0]);
+    const names = new Map(widgetData(engine).sessions.map((s) => [s.id, s.name ?? s.folder]));
+    engine.stop();
+    if (!rows.length) console.log(`No build has changed a file matching "${rest[0]}" recently.`);
+    for (const r of rows) console.log(`  ${path.basename(r.path).padEnd(28)} ${r.edits}× by ${names.get(r.sessionId) ?? path.basename(r.cwd)} · ${new Date(r.lastTs).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}\n    ${r.path}`);
+    if (rows.length) console.log("\nUndo one file (back to its last commit): git checkout -- <path>   (or use Undo in bp ui, which saves a safety point first)");
     return;
   }
   if (cmd === "builds" || cmd === "done") {
@@ -453,8 +460,8 @@ function limitsText(p: PageData): string {
   const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const lines: string[] = [];
   if (p.plan.sellable && !p.plan.licensed) lines.push(p.plan.trialDaysLeft != null ? `Pro trial: ${p.plan.trialDaysLeft} day${p.plan.trialDaysLeft === 1 ? "" : "s"} left (after it: 2 builds at once, 20 prompts; limits and forecast stay free)` : `Free plan. Unlimited parallel builds + tests before merge + per-build usage: Pro (${p.plan.price}) · bp license <key>`);
-  lines.push(p.builds.length ? `${p.builds.length} build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
-  for (const b of p.builds.slice(0, 6)) lines.push(`  ${b.needsYou ? "!" : "•"} ${b.folder.padEnd(24)} ${b.needsYou ? oneLine(b.reason, 60) || b.word : b.word}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.costUsd != null ? ` · ~$${b.costUsd.toFixed(2)} today` : b.share != null ? ` · ${b.share}% of your usage today` : ""}`);
+  lines.push(p.builds.length ? `${p.builds.filter((b) => b.needsYou || b.stopped || b.status === "running" || Date.now() - b.lastEventAt < 2 * 3600_000).length} active build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
+  for (const b of p.builds.slice(0, 10)) lines.push(`  ${b.needsYou ? "!" : b.stopped ? "×" : "•"} ${`${b.name ?? b.folder}${b.agent === "codex" ? " (Codex)" : ""}`.padEnd(24)} ${b.needsYou ? `waiting: ${oneLine(b.waitingFor ?? b.reason, 60) || b.word}` : b.stopped ? "stopped mid-task" : oneLine(b.now ?? null, 70) ?? b.word}${(b.errors1h ?? 0) > 0 ? ` · ${b.errors1h} error${b.errors1h === 1 ? "" : "s"}` : ""}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.costUsd != null ? ` · ~$${b.costUsd.toFixed(2)} today` : b.share != null ? ` · ${b.share}% of your usage today` : ""}`);
   const L = p.limits;
   if (p.billing === "api") lines.push("", `Spend today   ${p.costTodayUsd != null ? `~$${p.costTodayUsd.toFixed(2)}` : "unknown"}`);
   else if (L.fiveHourPct != null || L.sevenDayPct != null) {

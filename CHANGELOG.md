@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0: built for heavy Claude Code users
+- **What each build is doing now:** "Running npm test · 4 min", "Editing checkout.tsx", "Thinking" (from hook events). Click a build for its recent steps.
+- **Errors you can see:** a red "3 errors" chip per build. It shows the real error lines and **Copy for Claude**. Error bursts trigger an alert.
+- **Where the tokens went:** per build, the starting size before your first message (tools, MCP, CLAUDE.md), chat size, output, model, subagents and compactions. On Pro, the biggest things pulled into the chat (e.g. "Read package-lock.json ≈38k"). Tips: big file reads, heavy starting load (/mcp), subagent sprawl, compaction.
+- **Many sessions:** no 12-build cap. Builds are grouped by project, you can name them, "Stopped mid-task" gets **Resume**, quiet builds fold away with **Clear them**, and background/temp-folder runs are hidden.
+- **Who changed this file?** Find a file → which build changed it, when → **Undo this file** (safety save point first). Also `bp who <file>` and `/bp-who`.
+- **Codex support (read-only):** Codex sessions from `~/.codex` appear with a Codex tag: working/idle, last message, tokens, limits when reported, errors like "usage limit".
+- **Alerts in the standalone app:** Mac notifications for needs-you, 80% / 30-min limit, error bursts, compaction and stopped builds (once each; toggle in the footer).
+- **Find it, no tmux needed:** brings the right Terminal or iTerm tab to the front (`bp go` too). Waiting rows show the exact command waiting for your OK.
+- **Smarter limits:** the forecast weights recent minutes, so it reacts to big jobs starting or stopping. A weekly history line and a "your week runs out <day>" warning. An "auto-approve on" chip when only some builds skip permissions.
+
 ## 0.5.0
 - **Its own window, no VS Code needed:** `bp ui`, `/bp-ui`, or the Desktop app opens BuildPilot privately on this computer (token-protected local server). Start Claude, fresh chats and new builds in Terminal. **Resume** an idle build (`claude --resume`). **Find it** for a waiting one. Switch project from the header.
 - **One white page instead of a sidebar:** your builds (what needs you first), how full each chat is, plan limits with reset times, tips for right now, and a prompt box. It opens beside your terminal. Use "Match my theme" for dark.

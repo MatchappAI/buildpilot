@@ -158,7 +158,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     await tick();
     expect(doc.querySelector(".proj")).not.toBeNull();
-    const labels = [...doc.querySelectorAll(".builds li")].slice(0, 3).map((li) => li.querySelector("button")?.textContent ?? "");
+    const labels = [...doc.querySelectorAll(".builds > li:not(.group):not(.quiet)")].slice(0, 3).map((li) => li.querySelector(":scope > button")?.textContent ?? "");
     expect(labels).toEqual(["Find it", "", "Resume"]);
     await click('[data-act="resumeBuild"]');
     expect(sent.find((m) => m.type === "resumeBuild")).toMatchObject({ id: "abcd1234-idle", cwd: "/p/shop" });
@@ -167,6 +167,56 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await vs.tick();
     expect(vs.doc.querySelector(".proj")).toBeNull();
     expect(vs.doc.querySelector('[data-act="openBuild"]')?.textContent).toBe("Review in terminal");
+  });
+
+  it("power-user rows: live action, error chip with copy, details with tokens + timeline, groups, quiet builds, rename, Codex tag", async () => {
+    const tokens = { baseline: 51000, context: 90000, output: 1200, turns: 7, models: [["claude-opus-5-5", 7]] as [string, number][], subagents: 2, compactions: 0, top: [{ label: "Read package-lock.json", tokens: 38000 }] };
+    const p = full({
+      builds: [
+        session({ id: "a1", folder: "shop", now: "Running npm test", nowSince: Date.now() - 4 * 60_000, errors1h: 2, lastErrors: ["Error: cannot find module 'x'"], tokens, timeline: [{ ts: Date.now(), text: "✓ Edit cart.ts", error: false }] }),
+        session({ id: "a2", folder: "shop", name: "checkout", autoApprove: true }),
+        session({ id: "q1", folder: "old", status: "idle", lastEventAt: Date.now() - 5 * 3600_000 }),
+        session({ id: "codex-1", folder: "api", agent: "codex", codexTokens: 12000 }),
+      ],
+    });
+    const { doc, sent, tick, click } = mount(p, { standalone: true });
+    await tick();
+    await tick();
+    expect(doc.querySelector(".nowtxt")?.textContent).toBe("Running npm test");
+    expect(doc.body.textContent).toMatch(/Running npm test · 4 min/);
+    expect(doc.querySelector(".group")?.textContent).toMatch(/shop · 2 builds/);
+    expect(doc.body.textContent).toMatch(/checkout/);
+    expect(doc.querySelector(".chip.warn")?.textContent).toBe("auto-approve on");
+    expect(doc.querySelector(".chip.codex")?.textContent).toBe("Codex");
+    expect(doc.body.textContent).toMatch(/Show 1 quiet build/);
+    await click('[data-act="toggleErrors"][data-id="a1"]');
+    expect(doc.querySelector(".errpanel")?.textContent).toMatch(/cannot find module/);
+    await click('[data-act="copyErrors"]');
+    expect(String(sent.find((m) => m.type === "copy")?.text)).toMatch(/Find the root cause[\s\S]*cannot find module/);
+    await click('[data-act="toggleBuild"][data-id="a1"]');
+    expect(doc.querySelector(".tokens")?.textContent).toMatch(/Started at 51k before your first message/);
+    expect(doc.querySelector(".toklist")?.textContent).toMatch(/Read package-lock\.json.*≈38k/);
+    expect(doc.querySelector(".timeline")?.textContent).toMatch(/Edit cart\.ts/);
+    await click('[data-act="toggleQuiet"]');
+    expect(doc.body.textContent).toMatch(/Hide 1 quiet build/);
+    await click('[data-act="renameBuild"][data-id="a2"]');
+    expect(sent.find((m) => m.type === "renameBuild")?.id).toBe("a2");
+    await click('[data-act="hideIdle"]');
+    expect(sent.some((m) => m.type === "hideIdle")).toBe(true);
+  });
+
+  it("who changed a file: search, results, undo", async () => {
+    const { doc, w, sent, tick, click } = mount(full());
+    await tick();
+    await tick();
+    const inp = doc.getElementById("fileq") as HTMLInputElement;
+    inp.value = "auth.ts";
+    // the mock replies null for whoChanged → empty result message
+    await click('[data-act="whoChanged"]');
+    await tick();
+    expect(sent.find((m) => m.type === "whoChanged")?.query).toBe("auth.ts");
+    expect(doc.body.textContent).toMatch(/No build has changed a file matching “auth\.ts”/);
+    void w;
   });
 
   it("tips have one clear action", async () => {

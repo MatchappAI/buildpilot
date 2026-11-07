@@ -3,7 +3,8 @@ import * as os from "os";
 import * as path from "path";
 import { Engine, realpath } from "./engine";
 import { readLiveStatus } from "./hooks";
-import { rowToSession } from "./ingest";
+import { rowToEvent, rowToSession } from "./ingest";
+import { activityFor, TimelineItem } from "./activity";
 import { deriveDisplayStatus } from "./supervisor";
 import { SessionStatus } from "./types";
 
@@ -43,6 +44,20 @@ export interface WidgetSession {
   lastEventAt: number;
   needsYou: boolean;
   next: string | null;
+  /** Your name for this build (set on the page), else null. */
+  name?: string | null;
+  /** Live detail from hook events (see activity.ts). */
+  now?: string | null;
+  nowSince?: number | null;
+  errors1h?: number;
+  lastErrors?: string[];
+  waitingFor?: string | null;
+  stopped?: boolean;
+  autoApprove?: boolean;
+  compactedAt?: number | null;
+  timeline?: TimelineItem[];
+  /** "claude" (default) or "codex" (read-only, from ~/.codex logs). */
+  agent?: "claude" | "codex";
 }
 export interface WidgetData {
   v: 1;
@@ -56,14 +71,17 @@ export interface WidgetData {
 
 /** Active Claude Code sessions across all folders, needs-you first. Shared by the terminal glance and the menu-bar widget. */
 export function glanceItems(engine: Engine, now: number) {
+  // Open sessions from the last 12 h (quiet ones collapse on the page), plus ones that ended mid-task in the last 3 h.
   const rows = engine.store
-    .all<Record<string, unknown>>("SELECT * FROM sessions WHERE ended_at IS NULL AND last_event_at > ? AND id NOT LIKE 'demo-%' ORDER BY last_event_at DESC LIMIT 12", [now - 3 * 3600_000])
+    .all<Record<string, unknown>>("SELECT * FROM sessions WHERE id NOT LIKE 'demo-%' AND ((ended_at IS NULL AND last_event_at > ?) OR (ended_at IS NOT NULL AND ended_at > ?)) ORDER BY last_event_at DESC LIMIT 60", [now - 12 * 3600_000, now - 3 * 3600_000])
     .map(rowToSession);
   const items = rows
     .map((s) => {
       const d = deriveDisplayStatus(s, now);
-      return { s, status: d.status, reason: d.reason, live: readLiveStatus(s.id, engine.home) };
+      const events = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? ORDER BY ts DESC, id DESC LIMIT 80", [s.id]).map(rowToEvent);
+      return { s, status: d.status, reason: d.reason, live: readLiveStatus(s.id, engine.home), act: activityFor(s, events, now) };
     })
+    .filter((x) => (!x.s.endedAt || x.act.stopped) && !isBackground(x.s.cwd))
     .filter((x) => x.status !== "unknown" || now - x.s.lastEventAt < 3600_000);
   const isNeed = (st: SessionStatus) => st === "awaiting_approval" || st === "blocked" || st === "failed";
   const needs = items.filter((x) => isNeed(x.status));
@@ -79,6 +97,12 @@ function projectNext(engine: Engine, cwd: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Headless/background runs (temp folders: scripts, CI, agent sandboxes) aren't builds you're watching. */
+export function isBackground(cwd: string): boolean {
+  const p = path.resolve(cwd);
+  return p.startsWith("/private/tmp/") || p.startsWith("/tmp/") || p.startsWith("/private/var/folders/") || p.startsWith("/var/folders/") || p.startsWith(path.resolve(os.tmpdir()) + path.sep);
 }
 
 /** A readable name for where a build runs. Chats started in the home folder aren't a project. */
@@ -104,6 +128,18 @@ export function oneLine(text: string | null, max = 90): string | null {
   return c.length > max ? `${c.slice(0, max - 1).trimEnd()}…` : c;
 }
 
+/** Names you give builds live in notes under a global key (not tied to one project). */
+export const NAMES_SCOPE = "__names";
+export function buildName(engine: Engine, sessionId: string): string | null {
+  const v = engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = ?", [NAMES_SCOPE, `name:${sessionId}`]);
+  return typeof v === "string" && v ? v : null;
+}
+export function setBuildName(engine: Engine, sessionId: string, name: string): void {
+  const n = name.replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!n) engine.store.run("DELETE FROM notes WHERE project_id = ? AND key = ?", [NAMES_SCOPE, `name:${sessionId}`]);
+  else engine.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [NAMES_SCOPE, `name:${sessionId}`, n, Date.now()]);
+}
+
 export function widgetData(engine: Engine, now = Date.now()): WidgetData {
   const { items, needs, isNeed } = glanceItems(engine, now);
   const pick = (k: "fiveHourPct" | "sevenDayPct") => {
@@ -125,6 +161,17 @@ export function widgetData(engine: Engine, now = Date.now()): WidgetData {
       lastEventAt: x.s.lastEventAt,
       needsYou: isNeed(x.status),
       next: projectNext(engine, x.s.cwd),
+      name: buildName(engine, x.s.id),
+      now: x.act.now,
+      nowSince: x.act.nowSince,
+      errors1h: x.act.errors1h,
+      lastErrors: x.act.lastErrors,
+      waitingFor: x.act.waitingFor,
+      stopped: x.act.stopped,
+      autoApprove: x.act.autoApprove,
+      compactedAt: x.act.compactedAt,
+      timeline: x.act.timeline,
+      agent: "claude" as const,
     })),
     needs: needs.length,
     working: items.filter((x) => x.status === "running").length,

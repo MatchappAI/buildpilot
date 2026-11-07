@@ -17,6 +17,8 @@ import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
 import { BuildPilotPanel, WebviewMessage } from "./sidebar";
 import { pageData } from "../core/page";
+import { setBuildName } from "../core/glance";
+import { alertsFor, AlertMemory } from "../core/alerts";
 import { count, setConsent, shouldAsk } from "../core/counts";
 
 let engine: Engine | null = null;
@@ -53,11 +55,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const pd = pageData(eng, st);
         sidebar.post({ type: "state", state: st, settings: uiSettings(), page: { ...pd, side } });
         limitAlert(pd);
+        if (cfg().get<string>("notifications", "important") !== "off") for (const a of alertsFor(pd, alertMem, Date.now())) if (!a.key.startsWith("80:") && !a.key.startsWith("30:") && !a.key.startsWith("need:")) void vscode.window.showWarningMessage(`BuildPilot: ${a.title}. ${a.body}`, "Open BuildPilot").then((c) => c && sidebar.show());
         updateStatus(st);
         if (Date.now() - sideAt > 5000) void refreshSide();
       }
     }, 150);
   };
+  const alertMem: AlertMemory = { sent: {} };
   // Free: one heads-up per 5-hour window at 80%, and again if the forecast says < 30 min.
   const limitAlert = (pd: ReturnType<typeof pageData>) => {
     const L = pd.limits;
@@ -389,6 +393,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         if (fs.existsSync(cwd)) await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(cwd), { forceNewWindow: true });
         return;
       }
+      case "renameBuild": {
+        const id = String(m.id ?? "");
+        if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return;
+        const name = await vscode.window.showInputBox({ title: "Name this build", prompt: "Leave empty to clear", placeHolder: "e.g. checkout page" });
+        if (name === undefined) return;
+        setBuildName(eng, id, name);
+        push();
+        return;
+      }
+      case "hideIdle": {
+        if (!(await confirm("Hide builds that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again.", "Hide"))) return;
+        void vscode.window.setStatusBarMessage(`$(check) Hid ${eng.hideIdle()} idle build(s).`, 4000);
+        push();
+        return;
+      }
+      case "whoChanged":
+        return { files: eng.fileHistory(String(m.query ?? "")).map((r) => ({ ...r, file: path.basename(r.path) })) };
+      case "undoFile": {
+        const file = String(m.path ?? "");
+        if (!file) return;
+        if (!requireTrust("change files")) return;
+        if (!(await confirm(`Put ${path.basename(file)} back to its last saved version?`, "Undoes every change since your last commit for this one file. BuildPilot makes a safety save point of the current version first.", "Undo this file"))) return;
+        try {
+          const r = await eng.undoFile(file);
+          void vscode.window.showInformationMessage(`Restored. Safety save point ${r.safety.slice(0, 8)} has the version you replaced.`);
+        } catch (e) {
+          void vscode.window.showErrorMessage((e as Error).message);
+        }
+        return;
+      }
+      case "toggleAlerts":
+        await cfg().update("notifications", cfg().get<string>("notifications", "important") === "off" ? "important" : "off", vscode.ConfigurationTarget.Global);
+        push();
+        return;
       case "resumeBuild": {
         const id = String(m.id ?? "");
         const cwd = String(m.cwd ?? "");

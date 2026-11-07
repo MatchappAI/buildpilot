@@ -16,6 +16,7 @@ let P: PageData | null = null;
 let trusted = true;
 let theme: "white" | "match" = "white";
 let standalone = false;
+let alertsOn = true;
 const FREE = 20;
 let promptText = "";
 let built: BuiltPrompt | null = null;
@@ -33,7 +34,7 @@ function call<T = unknown>(type: string, data: Record<string, unknown> = {}): Pr
   });
 }
 window.addEventListener("message", (e: MessageEvent) => {
-  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean; theme?: string; standalone?: boolean } };
+  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean; theme?: string; standalone?: boolean; alerts?: boolean } };
   if (m.type === "reply" && m.id) {
     waiting.get(m.id)?.(m.result);
     waiting.delete(m.id);
@@ -43,6 +44,7 @@ window.addEventListener("message", (e: MessageEvent) => {
     trusted = m.settings?.trusted ?? true;
     theme = m.settings?.theme === "match" ? "match" : "white";
     standalone = !!m.settings?.standalone;
+    alertsOn = m.settings?.alerts !== false;
     // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
     const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted, theme });
     if (key === lastKey) return;
@@ -101,7 +103,7 @@ function render(): void {
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
     <footer class="foot">
-      <a href="#" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</a> · <a href="#" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</a>${P.connected ? ` · <a href="#" data-act="disconnect">Disconnect</a>` : ""}
+      <a href="#" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</a> · <a href="#" data-act="toggleTheme">${theme === "match" ? "White page" : "Match my theme"}</a>${standalone ? ` · <a href="#" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</a>` : ""}${P.connected ? ` · <a href="#" data-act="disconnect">Disconnect</a>` : ""}
     </footer>
   </main>
   <div id="flash" class="flash" aria-hidden="true"></div>`;
@@ -142,22 +144,91 @@ function connectCard(): string {
 
 const STATUS_WORD: Record<string, string> = { running: "Working", idle: "Idle", blocked: "Waiting for your answer", awaiting_approval: "Waiting for your OK", completed: "Done", failed: "Stopped with an error", unknown: "Quiet" };
 
+type Build = PageData["builds"][number];
+const expanded = new Set<string>();
+const errOpen = new Set<string>();
+let showQuiet = false;
+let fileQuery = "";
+let fileResults: { sessionId: string; cwd: string; path: string; file: string; lastTs: number; edits: number }[] | null = null;
+
+const kTok = (n: number) => (n >= 1000 ? `${n >= 10000 ? Math.round(n / 1000) : (n / 1000).toFixed(1)}k` : String(n));
+const shortModel = (m: string) => m.replace(/^claude-/, "").replace(/-\d{8}$/, "").replace(/-/g, " ").replace(/\b(\w)/g, (c) => c.toUpperCase());
+const isQuiet = (x: Build) => !x.needsYou && !x.stopped && x.status !== "running" && Date.now() - x.lastEventAt > 2 * 3600_000;
+const dur = (since: number | null | undefined) => {
+  if (!since) return "";
+  const m = Math.round((Date.now() - since) / 60_000);
+  return m < 1 ? "" : ` · ${m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`}`;
+};
+
+function buildSub(x: Build): string {
+  if (x.agent === "codex") return `${esc(clip(x.task, 70) || (x.status === "running" ? "Working" : x.word))} · ${ago(x.lastEventAt)}`;
+  if (x.needsYou) return `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.waitingFor ?? x.reason, 80) || STATUS_WORD[x.status])}`;
+  if (x.stopped) return `<span class="warn-text">Stopped mid-task</span> · ${esc(clip(x.task, 60))}`;
+  if (x.now) return `<b class="nowtxt">${esc(x.now)}</b>${dur(x.nowSince)}`;
+  return `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
+}
+
+function buildRow(x: Build): string {
+  const label = x.name ?? x.folder;
+  const chips = [
+    x.agent === "codex" ? `<span class="chip codex" title="Read from Codex's own logs. Codex has no hooks, so approvals and errors aren't shown here.">Codex</span>` : "",
+    (x.errors1h ?? 0) > 0 ? `<button class="chip err" data-act="toggleErrors" data-id="${esc(x.id)}" title="Errors in the last hour">${x.errors1h} error${x.errors1h === 1 ? "" : "s"}</button>` : "",
+    x.autoApprove && !P!.builds.every((b) => b.autoApprove || b.agent === "codex") ? `<span class="chip warn" title="Running with permissions skipped: Claude won't ask before running commands">auto-approve on</span>` : "",
+  ].join("");
+  const errPanel = errOpen.has(x.id) && (x.lastErrors ?? []).length ? `<div class="errpanel"><ul>${(x.lastErrors ?? []).map((e) => `<li><code>${esc(e)}</code></li>`).join("")}</ul><button class="link" data-act="copyErrors" data-id="${esc(x.id)}">Copy for Claude</button></div>` : "";
+  return `<li class="${x.needsYou ? "needs" : ""}${expanded.has(x.id) ? " open" : ""}">
+    <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span>
+    <div class="b-main">
+      <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" title="Show what it did and where the tokens went">${esc(label)}</button>${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this build" aria-label="Name this build">✎</button>` : ""}${chips}</div>
+      <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
+      ${errPanel}
+      ${expanded.has(x.id) ? buildDetails(x) : ""}
+    </div>
+    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude usage today (Claude Code's own estimate)">${x.share}% of your usage today</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
+    ${x.agent === "codex" ? "" : buildButton(x)}
+  </li>`;
+}
+
+function buildDetails(x: Build): string {
+  const t = x.tokens;
+  const tok = t
+    ? `<div class="tokens"><div class="d-head">Where the tokens went</div>
+        <p class="small">${t.baseline != null ? `Started at <b>${kTok(t.baseline)}</b> before your first message` : "Start size unknown"} · chat now ${t.context != null ? `<b>${kTok(t.context)}</b>` : "unknown"} · Claude wrote ${kTok(t.output)} · ${t.turns} repl${t.turns === 1 ? "y" : "ies"}${t.models.length ? ` · ${t.models.map(([m, n]) => `${esc(shortModel(m))}${t.models.length > 1 ? ` ×${n}` : ""}`).join(", ")}` : ""}${t.subagents ? ` · ${t.subagents} subagent${t.subagents === 1 ? "" : "s"}` : ""}${t.compactions ? ` · compacted ${t.compactions}×` : ""}</p>
+        ${t.top ? (t.top.length ? `<ul class="toklist">${t.top.map((i) => `<li><span>${esc(i.label)}</span><span class="muted">≈${kTok(i.tokens)}</span></li>`).join("")}</ul><p class="muted tiny">Biggest things pulled into the chat (≈ estimated from size). They're re-sent with every message until a fresh chat.</p>` : `<p class="muted tiny">No large tool output yet.</p>`) : P!.plan.sellable ? `<p class="small"><a href="#" data-act="upgrade">See exactly what used them — Pro</a></p>` : ""}
+      </div>`
+    : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this build has a transcript BuildPilot can read.</p>`;
+  const tl = (x.timeline ?? []).length
+    ? `<div class="d-head">Recent steps</div><ol class="timeline">${(x.timeline ?? []).map((e) => `<li class="${e.error ? "bad" : ""}"><span class="muted">${new Date(e.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span> ${esc(e.text)}</li>`).join("")}</ol>`
+    : "";
+  return `<div class="details">${tok}${tl}</div>`;
+}
+
+function fileFinder(): string {
+  return `<div class="finder">
+    <label class="lbl" for="fileq">Who changed a file?</label>
+    <div class="finder-row"><input id="fileq" type="text" placeholder="e.g. checkout.tsx" value="${esc(fileQuery)}"><button class="secondary small-btn" data-act="whoChanged">Find</button></div>
+    ${fileResults == null ? "" : fileResults.length ? `<ul class="files">${fileResults.map((r) => `<li><div><b>${esc(r.file)}</b> <span class="muted small">changed ${r.edits}× by ${esc(P!.builds.find((b) => b.id === r.sessionId)?.name ?? P!.builds.find((b) => b.id === r.sessionId)?.folder ?? r.cwd.split("/").pop() ?? "a build")}, ${ago(r.lastTs)}</span></div><button class="link" data-act="undoFile" data-path="${esc(r.path)}" title="Put this file back to its last saved (committed) version">Undo this file</button></li>`).join("")}</ul>` : `<p class="muted small">No build has changed a file matching “${esc(fileQuery)}” recently.</p>`}
+  </div>`;
+}
+
 function buildsSection(): string {
-  const b = P!.builds;
-  const summary = !b.length
+  const all = P!.builds;
+  const active = all.filter((x) => !isQuiet(x));
+  const quiet = all.filter(isQuiet);
+  const summary = !all.length
     ? "No builds running"
-    : `${b.length} build${b.length === 1 ? "" : "s"}${P!.working ? ` · ${P!.working} working` : ""}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}`;
+    : `${active.length} build${active.length === 1 ? "" : "s"}${P!.working ? ` · ${P!.working} working` : ""}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}`;
+  // Group by project when a project has 2+ builds; most urgent group first.
+  const groups = new Map<string, Build[]>();
+  for (const x of active) groups.set(x.folder, [...(groups.get(x.folder) ?? []), x]);
+  const urgency = (xs: Build[]) => Math.min(...xs.map((x) => (x.needsYou ? 0 : x.stopped ? 1 : (x.errors1h ?? 0) > 0 ? 2 : x.status === "running" ? 3 : 4)));
+  const ordered = [...groups.entries()].sort((a, b) => urgency(a[1]) - urgency(b[1]) || Math.max(...b[1].map((x) => x.lastEventAt)) - Math.max(...a[1].map((x) => x.lastEventAt)));
+  const list = ordered.map(([name, xs]) => (xs.length > 1 ? `<li class="group">${esc(name)} <span class="muted">· ${xs.length} builds</span></li>` : "") + xs.map(buildRow).join("")).join("");
   return `<section class="block" aria-label="Builds">
     <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild" title="Starts Claude in a separate copy of this project, so two builds can't undo each other's work">+ New build</button></div>
-    ${b.length ? `<ul class="builds">${b
-      .map((x) => `<li class="${x.needsYou ? "needs" : ""}">
-        <span class="dot dot-${x.status}" aria-hidden="true"></span>
-        <div class="b-main"><div class="b-name">${esc(x.folder)}</div><div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${x.needsYou ? `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.reason, 70) || STATUS_WORD[x.status])}` : `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`}</div></div>
-        <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null ? `<span class="share" title="This build's share of all your Claude usage today (Claude Code's own estimate)">${x.share}% of your usage today</span>` : ""}</div>
-        ${buildButton(x)}
-      </li>`)
-      .join("")}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
+    ${all.length ? `<ul class="builds">${list}${quiet.length ? `<li class="quiet"><button class="link" data-act="toggleQuiet">${showQuiet ? "Hide" : "Show"} ${quiet.length} quiet build${quiet.length === 1 ? "" : "s"}</button> · <button class="link" data-act="hideIdle">Clear them</button></li>${showQuiet ? quiet.map(buildRow).join("") : ""}` : ""}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
     ${sideSection()}
+    ${all.length ? fileFinder() : ""}
   </section>`;
 }
 
@@ -206,13 +277,13 @@ function limitsSection(): string {
     const urgent = L.fullAt - Date.now() < 3600_000;
     forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""}. <span class="muted small">Estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}.${L.accuracy ? ` ${esc(L.accuracy)}` : ""}</span></p>`;
   }
-  return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
+  return `<section class="block" aria-label="Plan limits"><h2>Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}${(L.week ?? []).length > 1 ? `<p class="small weekline">This week: ${(L.week ?? []).map((d) => `${esc(d.day)} ${Math.round(d.pct)}%`).join(" → ")}</p>` : ""}${L.weekFullAt ? `<p class="small warn-text">At this pace your week runs out ${weekday(L.weekFullAt)}.</p>` : ""}${L.codex && (L.codex.primaryPct != null || L.codex.secondaryPct != null) ? `<p class="small">Codex: ${L.codex.primaryPct != null ? `${Math.round(L.codex.primaryPct)}% of its short limit` : ""}${L.codex.secondaryPct != null ? ` · ${Math.round(L.codex.secondaryPct)}% weekly` : ""}</p>` : ""}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
 }
 
 function tipsSection(): string {
   if (!P!.tips.length) return "";
   return `<section class="block" aria-label="Tips"><h2>Tips for right now</h2><ul class="tips">${P!.tips
-    .map((t) => `<li><span>${esc(t.text)}</span>${t.action ? `<button class="secondary small-btn" data-act="tip" data-tip="${t.action}" ${t.cwd ? `data-cwd="${esc(t.cwd)}"` : ""} title="${esc(t.why)}">${esc(t.actionLabel ?? "Do it")}</button>` : ""}</li>`)
+    .map((t) => `<li><span>${esc(t.text)}</span>${t.action ? `<button class="secondary small-btn" data-act="tip" data-tip="${t.action}" ${t.cwd ? `data-cwd="${esc(t.cwd)}"` : ""} ${t.id ? `data-id="${esc(t.id)}"` : ""} title="${esc(t.why)}">${esc(t.actionLabel ?? "Do it")}</button>` : ""}</li>`)
     .join("")}</ul></section>`;
 }
 
@@ -248,6 +319,7 @@ function promptSection(): string {
 function bind(): void {
   document.getElementById("req")?.addEventListener("input", (e) => { vs.request = (e.target as HTMLTextAreaElement).value; persist(); });
   document.getElementById("req")?.addEventListener("keydown", (e) => { const k = e as KeyboardEvent; if (k.key === "Enter" && (k.metaKey || k.ctrlKey)) void buildNow(); });
+  document.getElementById("fileq")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") (document.querySelector('[data-act="whoChanged"]') as HTMLElement | null)?.click(); });
   document.getElementById("ptext")?.addEventListener("input", (e) => { promptText = (e.target as HTMLTextAreaElement).value; });
   document.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); void act(el); }));
 }
@@ -282,11 +354,30 @@ async function act(el: HTMLElement): Promise<void> {
     case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
     case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd });
     case "resumeBuild": return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
+    case "toggleBuild": { const id = el.dataset.id!; if (expanded.has(id)) expanded.delete(id); else expanded.add(id); return render(); }
+    case "toggleErrors": { const id = el.dataset.id!; if (errOpen.has(id)) errOpen.delete(id); else errOpen.add(id); return render(); }
+    case "toggleQuiet": showQuiet = !showQuiet; return render();
+    case "copyErrors": {
+      const b = P?.builds.find((x) => x.id === el.dataset.id);
+      if (!b) return;
+      await call("copy", { text: `These errors happened in ${b.folder} (${b.cwd}). Find the root cause before trying another fix:\n\n${(b.lastErrors ?? []).map((e) => `- ${e}`).join("\n")}` });
+      return flash("Copied. Paste it into Claude");
+    }
+    case "renameBuild": { await call("renameBuild", { id: el.dataset.id }); return; }
+    case "whoChanged": {
+      fileQuery = ((document.getElementById("fileq") as HTMLInputElement | null)?.value ?? "").trim();
+      if (!fileQuery) { flash("Type a file name"); return; }
+      const r = await call<{ files: typeof fileResults } | null>("whoChanged", { query: fileQuery });
+      fileResults = r?.files ?? [];
+      return render();
+    }
+    case "undoFile": { await call("undoFile", { path: el.dataset.path }); return; }
     case "reviewBuild": case "mergeBuild": case "removeBuild": return void call(a, { dir: el.dataset.dir, branch: el.dataset.branch });
     case "tip": {
       const t = el.dataset.tip;
       if (t === "startFresh") return void call("startFresh", { cwd: el.dataset.cwd });
       if (t === "setupUndo") return void call("setupUndo");
+      if (t === "resumeBuild") return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
       if (t === "pause") { await call("openBuild", { cwd: el.dataset.cwd }); return flash("Press Esc in that terminal to pause Claude"); }
       if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
       if (t === "newBuild") return void call("newBuild");

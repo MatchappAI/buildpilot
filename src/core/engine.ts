@@ -6,7 +6,7 @@ import * as path from "path";
 import { analyzeRepo, listFiles, RepoFacts, scanSecrets, SecretFinding } from "./analyzer";
 import { Store } from "./db";
 import { DoctorCheck, runDoctor } from "./doctor";
-import { changeSet, Checkpoint, createCheckpoint, gitAvailable, isRepo, listCheckpoints, recentCommits, Commit, run } from "./git";
+import { changeSet, Checkpoint, createCheckpoint, restoreFiles, gitAvailable, isRepo, listCheckpoints, recentCommits, Commit, run } from "./git";
 import { AuditResult, detectAppUrl, detectDrift, findBrowser, runAudit, VisualCheck, visualCheck } from "./checks";
 import { buildpilotHome, claudeSettingsPath, ensureHome, hookStatus, HookStatus, LiveStatus, readLiveStatus, statuslineStatus, StatuslineStatus } from "./hooks";
 import { Ingestor, rowToEvent, rowToSession, SpoolReader } from "./ingest";
@@ -546,6 +546,38 @@ export class Engine extends EventEmitter {
     this.store.run("INSERT INTO approvals (project_id, action, detail, approved_at, outcome) VALUES (?, 'worktree', ?, ?, ?)", [p.id, dir, ts, branch]);
     this.addDecision(`Separate worktree for parallel work: ${path.basename(dir)}`, `Branch ${branch}. Merge it back when that session's work is done.`);
     return { dir, branch, copied };
+  }
+
+  /** Which builds changed a file (by name or path), most recent first. From recorded edit events. */
+  fileHistory(query: string, limit = 8): { sessionId: string; cwd: string; path: string; lastTs: number; edits: number }[] {
+    const q = query.trim();
+    if (!q) return [];
+    const like = `%${q.replace(/[%_]/g, (c) => `\\${c}`)}`;
+    const rows = this.store.all<{ session_id: string; file_path: string; last: number; n: number; cwd: string }>(
+      `SELECT e.session_id, e.file_path, MAX(e.ts) AS last, COUNT(*) AS n, s.cwd FROM events e JOIN sessions s ON s.id = e.session_id
+       WHERE e.file_path LIKE ? ESCAPE '\\' AND e.hook_event = 'PostToolUse' AND (e.summary LIKE '✓ Edit %' OR e.summary LIKE '✓ Write %')
+       GROUP BY e.session_id, e.file_path ORDER BY last DESC LIMIT ?`,
+      [like, limit],
+    );
+    return rows.map((r) => ({ sessionId: r.session_id, cwd: r.cwd, path: r.file_path, lastTs: Number(r.last), edits: Number(r.n) }));
+  }
+
+  /** Put one file back to its last saved (committed) version. A safety checkpoint of the current state is made first. */
+  async undoFile(file: string): Promise<{ root: string; safety: string }> {
+    const abs = path.resolve(file);
+    let root: string | null = null;
+    for (let d = path.dirname(abs); d !== path.dirname(d); d = path.dirname(d)) if (fs.existsSync(path.join(d, ".git"))) { root = d; break; }
+    if (!root) throw new Error("That file isn't in a Git project, so there's no saved version to go back to.");
+    const r = await restoreFiles(root, "HEAD", [path.relative(root, abs)]);
+    return { root, safety: r.safety.sha };
+  }
+
+  /** Marks builds quiet for 2+ hours as ended (history is kept). Returns how many. */
+  hideIdle(now = Date.now(), quietMs = 2 * 3600_000): number {
+    this.store.run("UPDATE sessions SET ended_at = ?, status = 'completed', status_reason = 'Hidden as idle' WHERE ended_at IS NULL AND last_event_at < ? AND id NOT LIKE 'demo-%'", [now, now - quietMs]);
+    const n = this.store.changes();
+    this.emit("changed");
+    return n;
   }
 
   /** BuildPilot-made builds (worktrees on bp/ or buildpilot/ branches) for this project. */

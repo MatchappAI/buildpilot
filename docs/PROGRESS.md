@@ -1,5 +1,9 @@
 # Progress (2026-11-06)
 
+## v0.6.0: power-user release
+Live action + errors per build, token breakdown from transcripts, Codex (read-only), notifications in the standalone app, find the right Terminal/iTerm tab, many-session handling (groups, names, stopped mid-task, clear quiet), who-changed-this-file + undo, weighted forecast and weekly pace. See CHANGELOG.
+
+
 ## State: v0.5.0, one white page, Free/Pro with a trial, Claude Code plugin, license Worker, persona-tested (3 rounds × 8 user types)
 - Sidebar replaced by one page (`src/extension/sidebar.ts` → BuildPilotPanel). Data: `src/core/page.ts`, `tips.ts`. Plans: `license.ts`. Counts: `counts.ts`.
 - Plugin in `plugin/`, validated and installed in a scratch config (events captured). Worker in `server/`, tested; **not deployed** (needs Stripe + Cloudflare).

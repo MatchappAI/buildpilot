@@ -121,3 +121,30 @@ body.match .summary, body.match .paywall, body.match code { background: var(--ca
 .side { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .side h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
 .proj { margin-left: auto; font-size: 14px; }
+.chip { display: inline-block; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-left: 6px; border: 1px solid var(--line); background: #fff; color: var(--muted); vertical-align: 1px; }
+.chip.err { color: var(--bad); border-color: #f2c4bc; background: #fff6f4; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; }
+.chip.warn { color: var(--warn); border-color: #f0d79a; background: #fff8e6; }
+.chip.codex { color: #444; background: #f3f3f3; }
+.name-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
+.name-btn:hover { text-decoration: underline; }
+.pencil { background: none; border: 0; padding: 0 4px; color: var(--muted); cursor: pointer; font-size: 12px; opacity: 0; }
+.builds li:hover .pencil, .pencil:focus-visible { opacity: 1; }
+.nowtxt { font-weight: 500; color: var(--ink); }
+.group { font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 0 0 !important; border-top: 0 !important; }
+.quiet { font-size: 13px; color: var(--muted); }
+.errpanel { margin: 8px 0 2px; padding: 8px 10px; background: #fff6f4; border: 1px solid #f2c4bc; border-radius: 8px; }
+.errpanel ul { margin: 0 0 4px; padding-left: 16px; }
+.errpanel code { background: none; padding: 0; font-size: 12px; white-space: pre-wrap; }
+.details { margin-top: 10px; padding: 10px 12px; background: #f8f8f8; border-radius: 10px; }
+.d-head { font-size: 12px; font-weight: 600; color: var(--muted); margin: 4px 0; text-transform: uppercase; letter-spacing: .03em; }
+.toklist, .timeline { list-style: none; margin: 4px 0; padding: 0; font-size: 13px; }
+.toklist li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.timeline li { padding: 2px 0; }
+.timeline li.bad { color: var(--bad); }
+.finder { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.finder-row { display: flex; gap: 8px; }
+.finder input { flex: 1; font: inherit; padding: 6px 10px; border: 1px solid #d6d6d6; border-radius: 8px; }
+.files { list-style: none; margin: 8px 0 0; padding: 0; }
+.files li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.weekline { color: var(--muted); margin: 8px 0 0; }
+body.match .details, body.match .chip, body.match .finder input { background: var(--card); color: var(--ink); }
