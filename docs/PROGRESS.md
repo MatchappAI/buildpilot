@@ -1,5 +1,11 @@
 # Progress (2026-11-06)
 
+## v0.10.0: clearer, calmer window (current)
+- Tested as a user against live sessions: opened the window, expanded a build, searched for a file, wrote a prompt, opened Advanced tools. No JS errors.
+- Plain-English activity and steps, full-width details, file finder behind a link, aligned columns. 143 tests plus smoke pass.
+- Installed: `~/.buildpilot/bin` + media, VS Code 0.10.0, Desktop folder + `~/Desktop/BuildPilot.app`. The public plugin installs as 0.10.0 from GitHub (checked in a scratch config).
+- Still needs the owner: the Stripe webhook secret + a test purchase, then a live Payment Link.
+
 ## v0.6.0: power-user release
 Live action + errors per build, token breakdown from transcripts, Codex (read-only), notifications in the standalone app, find the right Terminal/iTerm tab, many-session handling (groups, names, stopped mid-task, clear quiet), who-changed-this-file + undo, weighted forecast and weekly pace. See CHANGELOG.
 
