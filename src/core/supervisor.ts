@@ -338,7 +338,7 @@ export function supervise(i: SupervisorInput): SupervisorOutput {
       issues.push({ key: "no-tests", severity: "medium", title: "No automated tests", plain: "Without tests, nobody (you or the AI) can tell if a change broke something.", evidence: [{ kind: "observed", text: `${f.sourceFileCount} source files, 0 test files` }] });
       recs.push(rec("no-tests", "medium", "Add tests for your most important flow", "A few tests on the core user journey catch most regressions AI edits introduce.", [{ kind: "observed", text: "0 test files" }], { kind: "prompt", goal: "tests", request: "Add automated tests for the most important user flow in this project." }, 8));
     } else if (f.testFileCount > 0 && !lastTest && (f.scripts.test || f.languages.includes("Python"))) {
-      recs.push(rec("run-tests", "low", "Run the tests to establish a baseline", "Test status is Unknown until they've been run once.", [{ kind: "observed", text: `${f.testFileCount} test files, never run by BuildPilot` }], f.scripts.test ? { kind: "run_script", script: "test" } : undefined, 6));
+      recs.push(rec("run-tests", "low", "Run the tests to establish a baseline", "Test status is unknown until the tests run once (by you, Claude or BuildPilot).", [{ kind: "observed", text: `${f.testFileCount} test files, no test run seen yet` }], f.scripts.test ? { kind: "run_script", script: "test" } : undefined, 6));
     }
     const dirty = (i.changes?.unstaged.length ?? 0) + (i.changes?.untracked.length ?? 0) + (i.changes?.staged.length ?? 0);
     if (!f.isGit && f.sourceFileCount > 0) {

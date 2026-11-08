@@ -33,13 +33,17 @@ export interface Activity {
   nowFull: string | null;
 }
 
+const MUST_WORK = /\b(test|tests|vitest|jest|pytest|mocha|playwright|cypress|go test|cargo (test|build|check)|build|tsc|typecheck|lint|eslint|ruff|mypy|compile|make|gradle|mvn|install|npm (ci|i)\b|pnpm i\b|yarn( install)?\b|pip install|bundle|start|dev|serve|deploy|migrate|docker|git (commit|push|merge|rebase|pull))\b/i;
+
 /** Normal trial-and-error, not a real problem: searches with no matches, edits whose text didn't match, grep/test exit 1. */
 export function isRetry(e: HookEvent): boolean {
   if (!e.isError) return false;
   const t = (e.errorText ?? "").toLowerCase();
   if (e.toolName === "Grep" || e.toolName === "Glob" || /^✗ search /i.test(e.summary)) return true;
   if (/no matches|no files found|string to replace not found|old_string|did not match|not unique|file has not been read yet|must read the file/.test(t)) return true;
-  if (e.toolName === "Bash" && /^✗ run: (grep|rg|egrep|test|\[|diff|cmp|which|command -v|ls )/i.test(e.summary) && (/exit code 1\b/.test(t) || t.length < 40)) return true;
+  // A shell command that exits non-zero is usually Claude exploring (grep, ls, a probe). It only counts as an error when
+  // the command is one that has to work: tests, builds, type checks, lint, installs, running the app, git saves/pushes.
+  if (e.toolName === "Bash" && !MUST_WORK.test(e.summary.replace(/^✗ run: /i, ""))) return true;
   return false;
 }
 

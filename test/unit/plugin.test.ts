@@ -36,7 +36,7 @@ describe("spool hooks (plugin spool.sh and settings hook.sh)", () => {
     return [["plugin", path.join(plugin, "hooks", "spool.sh")], ["settings", settingsHook]];
   };
   const prep = (home: string) => fs.mkdirSync(path.join(spool(home), "tmp"), { recursive: true });
-  const fire = (script: string, home: string) => execFileSync("sh", [script], { input: '{"hook_event_name":"Stop"}', env: { ...process.env, BUILDPILOT_HOME: home } });
+  const fire = (script: string, home: string, ev = "Stop") => execFileSync("sh", [script], { input: `{"hook_event_name":"${ev}"}`, env: { ...process.env, BUILDPILOT_HOME: home } });
 
   for (const [name, script] of scripts()) {
     it(`${name}: first event starts the 2-day clock and the folder is owner-only`, () => {
@@ -48,13 +48,25 @@ describe("spool hooks (plugin spool.sh and settings hook.sh)", () => {
       const f = path.join(spool(home), events(home)[0]!);
       expect(fs.statSync(f).mode & 0o077).toBe(0);
     });
-    it(`${name}: stops writing after 2000 unread events`, () => {
+    it(`${name}: past 2000 unread events drops tool steps but keeps status changes`, () => {
       const home = path.join(tmpDir(), "h");
       prep(home);
       fs.writeFileSync(path.join(spool(home), ".alive"), "");
       for (let i = 0; i < 2001; i++) fs.writeFileSync(path.join(spool(home), `e${i}.json`), "{}");
-      fire(script, home);
+      fire(script, home, "PreToolUse");
       expect(events(home)).toHaveLength(2001);
+      fire(script, home, "Stop");
+      fire(script, home, "PermissionRequest");
+      expect(events(home)).toHaveLength(2003);
+      expect(fs.readdirSync(path.join(spool(home), "tmp"))).toHaveLength(0); // nothing left half-written
+    });
+    it(`${name}: hard stop at 5000 unread events`, () => {
+      const home = path.join(tmpDir(), "h");
+      prep(home);
+      fs.writeFileSync(path.join(spool(home), ".alive"), "");
+      for (let i = 0; i < 5001; i++) fs.writeFileSync(path.join(spool(home), `e${i}.json`), "{}");
+      fire(script, home, "Stop");
+      expect(events(home)).toHaveLength(5001);
     });
     it(`${name}: stops writing when nothing has read the spool for 2 days`, () => {
       const home = path.join(tmpDir(), "h");

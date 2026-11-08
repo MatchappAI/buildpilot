@@ -14,7 +14,7 @@ import { buildClaudeMd, buildHandoff } from "./memory";
 import { buildPrompt, BuiltPrompt, PromptOptions, relevantFiles } from "./prompts";
 import { gate, Paywall, recordUse } from "./license";
 import { clip } from "./redact";
-import { deriveDisplayStatus, lastTestRun, normalizeError, supervise, SupervisorOutput } from "./supervisor";
+import { deriveDisplayStatus, isTestCommand, lastTestRun, normalizeError, supervise, SupervisorOutput } from "./supervisor";
 import { readUsage } from "./transcript";
 import { ChangeSet, Decision, HookEvent, Project, Requirement, Session, SessionStatus, TestRun, UsageSnapshot } from "./types";
 
@@ -412,7 +412,23 @@ export class Engine extends EventEmitter {
     return new Set(this.store.all<{ key: string }>("SELECT key FROM rec_history WHERE project_id = ? AND dismissed_until > ?", [this.project.id, Date.now()]).map((r) => r.key));
   }
 
+  /** Test runs: ones BuildPilot ran, plus test commands Claude ran in this project's sessions (newest first). */
   testRuns(limit = 20): TestRun[] {
+    if (!this.project) return [];
+    const observed: TestRun[] = this.store
+      .all<{ id: number; ts: number; summary: string; is_error: number; error_text: string | null }>(
+        `SELECT e.id, e.ts, e.summary, e.is_error, e.error_text FROM events e JOIN sessions s ON s.id = e.session_id
+         WHERE s.project_id = ? AND e.tool_name = 'Bash' AND e.hook_event IN ('PostToolUse','PostToolUseFailure') AND e.agent_id IS NULL
+         ORDER BY e.ts DESC LIMIT 300`,
+        [this.project.id],
+      )
+      .filter((r) => isTestCommand(r.summary))
+      .slice(0, limit)
+      .map((r) => ({ id: -Number(r.id), projectId: this.project!.id, command: r.summary.replace(/^[✓✗] Run: /, ""), startedAt: Number(r.ts), durationMs: 0, exitCode: Number(r.is_error) ? 1 : 0, passed: !Number(r.is_error), outputTail: r.error_text ?? "", source: "observed_session" as const }));
+    return [...this.ownTestRuns(limit), ...observed].sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
+  }
+
+  private ownTestRuns(limit: number): TestRun[] {
     if (!this.project) return [];
     return this.store.all<Record<string, unknown>>("SELECT * FROM test_runs WHERE project_id = ? ORDER BY started_at DESC LIMIT ?", [this.project.id, limit]).map((r) => ({
       id: Number(r.id),
@@ -453,7 +469,7 @@ export class Engine extends EventEmitter {
     this.store.run("UPDATE approvals SET outcome = ? WHERE id = (SELECT MAX(id) FROM approvals WHERE project_id = ?)", [r.code === 0 ? "passed" : `failed (exit ${r.code})`, p.id]);
     this.runningScript = null;
     await this.analyze();
-    return this.testRuns(1)[0]!;
+    return this.ownTestRuns(1)[0]!;
   }
 
   async checkpoint(label: string): Promise<Checkpoint> {

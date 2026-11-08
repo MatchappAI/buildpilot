@@ -9,10 +9,13 @@ mkdir -p "$d/tmp" 2>/dev/null || exit 0
 [ -e "$d/.alive" ] || : > "$d/.alive"
 # Safety stop: nothing has read the spool for 2 days. One stat, no scan.
 [ -n "$(find "$d/.alive" -mmin +2880 2>/dev/null)" ] && exit 0
-# Hard cap: never keep more than 2000 unread events (counted by the shell itself, no extra process).
-set -- "$d"/*.json
-[ $# -gt 2000 ] && exit 0
 t=$(mktemp "$d/tmp/evt.XXXXXX" 2>/dev/null) || exit 0
 head -c 1048576 > "$t"
+# Over 2000 unread events: drop tool steps, but always keep what changes a session's status
+# (prompt, approval, question, finished, failed, ended). Hard stop at 5000.
+set -- "$d"/*.json
+if [ $# -gt 2000 ]; then
+  if [ $# -gt 5000 ] || grep -Eq '"hook_event_name" *: *"(PreToolUse|PostToolUse|PostToolUseFailure|SubagentStart|SubagentStop|PreCompact|PostCompact|TaskCreated|TaskCompleted)"' "$t"; then rm -f "$t"; exit 0; fi
+fi
 mv "$t" "$d/$(basename "$t").json" 2>/dev/null || rm -f "$t"
 exit 0

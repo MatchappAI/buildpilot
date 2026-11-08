@@ -24,7 +24,13 @@ export const HOOK_EVENTS = [
   "SubagentStart",
   "SubagentStop",
   "PreCompact",
+  "PostCompact",
+  "TaskCreated",
+  "TaskCompleted",
 ] as const;
+
+/** Added in 0.12 (checklist progress, compaction end). Missing ones mean "update available", not "not connected". */
+export const NEWER_EVENTS = ["PostCompact", "TaskCreated", "TaskCompleted"] as const;
 
 export const HOOK_SCRIPT = `#!/bin/sh
 # BuildPilot hook (installed by BuildPilot).
@@ -35,10 +41,14 @@ umask 077
 [ -d "$d/tmp" ] || exit 0
 [ -e "$d/.alive" ] || : > "$d/.alive"
 [ -n "$(find "$d/.alive" -mmin +2880 2>/dev/null)" ] && exit 0
-set -- "$d"/*.json
-[ $# -gt 2000 ] && exit 0
 t=$(mktemp "$d/tmp/evt.XXXXXX" 2>/dev/null) || exit 0
 head -c 1048576 > "$t"
+# Over 2000 unread events: drop tool steps, but always keep what changes a session's status
+# (prompt, approval, question, finished, failed, ended). Hard stop at 5000.
+set -- "$d"/*.json
+if [ $# -gt 2000 ]; then
+  if [ $# -gt 5000 ] || grep -Eq '"hook_event_name" *: *"(PreToolUse|PostToolUse|PostToolUseFailure|SubagentStart|SubagentStop|PreCompact|PostCompact|TaskCreated|TaskCompleted)"' "$t"; then rm -f "$t"; exit 0; fi
+fi
 mv "$t" "$d/$(basename "$t").json" 2>/dev/null || rm -f "$t"
 exit 0
 `;
@@ -70,6 +80,8 @@ function isOurs(h: unknown, home: string): boolean {
 
 export interface HookStatus {
   installed: boolean;
+  /** Connected, but newer events (checklist progress) aren't subscribed yet: run `bp hooks install` again. */
+  outdated?: boolean;
   missingEvents: string[];
   settingsPath: string;
   scriptPresent: boolean;
@@ -113,14 +125,17 @@ export function connectPreview(home = buildpilotHome()): string {
 export function hookStatus(settingsFile: string, home = buildpilotHome()): HookStatus {
   const { data, error } = readSettings(settingsFile);
   const hooks = (data.hooks ?? {}) as Record<string, unknown>;
-  const missing = HOOK_EVENTS.filter((ev) => {
+  const missingAll = HOOK_EVENTS.filter((ev) => {
     const groups = hooks[ev];
     if (!Array.isArray(groups)) return true;
     return !groups.some((g) => Array.isArray((g as Json)?.hooks) && ((g as Json).hooks as unknown[]).some((h) => isOurs(h, home)));
   });
+  // Events added in later versions don't make an older install "disconnected"; they show as an available update.
+  const missing = missingAll.filter((ev) => !(NEWER_EVENTS as readonly string[]).includes(ev));
   return {
     installed: missing.length === 0 && !error,
-    missingEvents: [...missing],
+    outdated: missing.length === 0 && missingAll.length > 0,
+    missingEvents: [...missingAll],
     settingsPath: settingsFile,
     scriptPresent: fs.existsSync(path.join(home, "hook.sh")),
     settingsError: error,

@@ -81,8 +81,9 @@ class NodeBackend implements Backend {
   static open(mod: NodeSqlite, file: string | null): NodeBackend {
     const db = new mod.DatabaseSync(file ?? ":memory:");
     if (file) {
-      db.exec("PRAGMA journal_mode = WAL");
+      // busy_timeout first: switching to WAL needs a lock another process may briefly hold.
       db.exec("PRAGMA busy_timeout = 4000");
+      db.exec("PRAGMA journal_mode = WAL");
       db.exec("PRAGMA synchronous = NORMAL");
     }
     db.exec("SELECT count(*) FROM sqlite_master"); // validates the file header
@@ -119,7 +120,11 @@ class SqlJsBackend implements Backend {
   readonly kind = "sql.js" as const;
   private dirty = false;
   private timer: NodeJS.Timeout | null = null;
-  constructor(private readonly db: Database, private readonly file: string | null) {}
+  /**
+   * readOnly: the file is (or was) used by node:sqlite in WAL mode. sql.js can't see WAL pages and would replace the
+   * file under the other processes, losing their writes, so this process keeps its changes in memory only.
+   */
+  constructor(private readonly db: Database, private readonly file: string | null, readonly readOnly = false) {}
   exec(sql: string): void {
     this.db.exec(sql);
     this.markDirty();
@@ -149,7 +154,7 @@ class SqlJsBackend implements Backend {
     }, 750);
   }
   flush(): void {
-    if (!this.file || !this.dirty) return;
+    if (!this.file || !this.dirty || this.readOnly) return;
     const data = this.db.export();
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
     const tmp = `${this.file}.tmp`;
@@ -164,6 +169,31 @@ class SqlJsBackend implements Backend {
     this.db.close();
   }
 }
+
+/** True only for errors that mean the file itself is damaged (not busy, locked or unreadable for another reason). */
+export function isCorruption(e: unknown): boolean {
+  const m = `${(e as { code?: string })?.code ?? ""} ${(e as Error)?.message ?? e}`;
+  return /SQLITE_CORRUPT|SQLITE_NOTADB|malformed|not a database|file is encrypted/i.test(m);
+}
+
+/** True when another runtime uses this file in WAL mode (header bytes 18/19 = 2, or a -wal file exists). */
+export function usesWal(file: string): boolean {
+  if (fs.existsSync(`${file}-wal`)) return true;
+  try {
+    const fd = fs.openSync(file, "r");
+    try {
+      const b = Buffer.alloc(2);
+      fs.readSync(fd, b, 0, 2, 18);
+      return b[0] === 2 || b[1] === 2;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
+const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 function quarantine(file: string): void {
   for (const suffix of ["", "-wal", "-shm"]) {
@@ -187,10 +217,16 @@ export class Store {
     if (mod) {
       try {
         backend = NodeBackend.open(mod, file);
-      } catch {
+      } catch (e) {
         if (!file) throw new Error("Could not open in-memory database");
-        quarantine(file);
-        backend = NodeBackend.open(mod, file);
+        if (isCorruption(e)) {
+          quarantine(file); // kept aside, never deleted
+          backend = NodeBackend.open(mod, file);
+        } else {
+          // Busy, locked, permissions, too many files: never treat as damage. Wait once, then report.
+          sleep(1500);
+          backend = NodeBackend.open(mod, file);
+        }
       }
       if (file) {
         try {
@@ -203,16 +239,18 @@ export class Store {
       sqlPromise ??= initSqlJs({ locateFile: () => locateWasm() });
       const SQL = await sqlPromise;
       let db: Database;
+      const shared = !!file && fs.existsSync(file) && usesWal(file);
       if (file && fs.existsSync(file)) {
         try {
           db = new SQL.Database(fs.readFileSync(file));
           db.exec("SELECT count(*) FROM sqlite_master");
-        } catch {
+        } catch (e) {
+          if (shared || !isCorruption(e)) throw new Error("BuildPilot can't read its data with this Node.js version. Update Node.js to 22.13 or newer.");
           quarantine(file);
           db = new SQL.Database();
         }
       } else db = new SQL.Database();
-      backend = new SqlJsBackend(db, file);
+      backend = new SqlJsBackend(db, file, shared);
     }
     const store = new Store(backend, file);
     store.migrate();

@@ -181,6 +181,14 @@ export function nextStatus(p: RawHookPayload): { status: SessionStatus; reason: 
   }
 }
 
+/** Events arriving together are read in one pass. */
+const DRAIN_BATCH_MS = 250;
+/** Two identical payloads closer than this are one event delivered twice. */
+export const DEDUPE_WINDOW_MS = 5000;
+/** A tool event this soon after Stop/StopFailure/SessionEnd is a late background hook, not new work. */
+const LATE_EVENT_MS = 5000;
+const TERMINAL = new Set(["idle", "failed", "completed"]);
+
 export interface IngestResult {
   accepted: boolean;
   duplicate?: boolean;
@@ -197,21 +205,25 @@ export class Ingestor {
   ingestRaw(raw: string, ts = Date.now()): IngestResult {
     const v = validatePayload(raw);
     if (!v.ok) return { accepted: false, reason: v.reason };
-    const fingerprint = createHash("sha256").update(raw).digest("hex").slice(0, 32);
-    return this.ingest(v.payload, ts, fingerprint);
+    // Same bytes within a few seconds = the same event delivered twice (plugin + settings hooks both installed).
+    // Same bytes later = a genuine repeat ("yes", a second Stop or idle notice) and must count.
+    const h = createHash("sha256").update(raw).digest("hex").slice(0, 32);
+    const bucket = Math.floor(ts / DEDUPE_WINDOW_MS);
+    return this.ingest(v.payload, ts, `${h}:${bucket}`, [`${h}:${bucket - 1}`]);
   }
 
-  ingest(p: RawHookPayload, ts: number, fingerprint: string): IngestResult {
+  ingest(p: RawHookPayload, ts: number, fingerprint: string, alsoSeenAs: string[] = []): IngestResult {
     // Cheap early exit; the INSERT OR IGNORE below is the real (race-safe) duplicate guard.
-    if (this.store.get("SELECT 1 AS x FROM events WHERE fingerprint = ?", [fingerprint])) {
+    const keys = [fingerprint, ...alsoSeenAs];
+    if (this.store.get(`SELECT 1 AS x FROM events WHERE fingerprint IN (${keys.map(() => "?").join(",")})`, keys)) {
       return { accepted: false, duplicate: true, reason: "duplicate", sessionId: p.session_id };
     }
     const isError = p.hook_event_name === "PostToolUseFailure" && !p.is_interrupt || p.hook_event_name === "StopFailure";
     const errorText = isError ? clip(p.error ?? str(p.error_details) ?? str(p.error_type) ?? "", 600) : null;
     const filePath = toolFilePath(p);
     const cwd = p.cwd ?? "";
-    const existing = this.store.get<{ id: string; started_at: number; last_event_at: number }>(
-      "SELECT id, started_at, last_event_at FROM sessions WHERE id = ?",
+    const existing = this.store.get<{ id: string; started_at: number; last_event_at: number; status: string; status_reason: string; ended_at: number | null }>(
+      "SELECT id, started_at, last_event_at, status, status_reason, ended_at FROM sessions WHERE id = ?",
       [p.session_id],
     );
     if (!existing) {
@@ -229,7 +241,12 @@ export class Ingestor {
     if (this.store.changes() === 0) return { accepted: false, duplicate: true, reason: "duplicate", sessionId: p.session_id }; // another process got it first
     // Out-of-order safety: only let an event change status if it is not older than the latest one we have.
     const isLatest = !existing || ts >= existing.last_event_at;
-    const ns = nextStatus(p);
+    let ns = nextStatus(p);
+    // Subagents report their own tool calls; they must not flip the main session back to "working" after it finished.
+    // Approvals and questions from a subagent still need the user, so those pass through.
+    if (ns && p.agent_id && ns.status === "running") ns = null;
+    // Hooks run as separate background processes, so a tool event can land just after Stop. It doesn't restart the session.
+    if (ns && existing && ns.status === "running" && p.hook_event_name !== "UserPromptSubmit" && TERMINAL.has(existing.status) && ts - existing.last_event_at < LATE_EVENT_MS) ns = null;
     const sets: string[] = ["event_count = event_count + 1"];
     const params: (string | number | null)[] = [];
     if (isError) sets.push("error_count = error_count + 1");
@@ -246,6 +263,8 @@ export class Ingestor {
       }
     }
     if (p.hook_event_name === "SessionStart" && existing) sets.push("ended_at = NULL");
+    // A session hidden as idle comes back as soon as Claude does something there again.
+    else if (existing?.ended_at != null && existing.status_reason === "Hidden as idle" && p.hook_event_name !== "SessionEnd" && isLatest) sets.push("ended_at = NULL");
     if (p.hook_event_name === "SessionEnd") {
       sets.push("ended_at = ?");
       params.push(ts);
@@ -284,6 +303,7 @@ export class SpoolReader {
   private watcher: fs.FSWatcher | null = null;
   private poll: NodeJS.Timeout | null = null;
   private draining = false;
+  private lastBeat = 0;
   stats = { accepted: 0, duplicates: 0, rejected: 0, lastEventAt: 0 };
 
   constructor(
@@ -296,14 +316,31 @@ export class SpoolReader {
     fs.mkdirSync(path.join(this.dir, "tmp"), { recursive: true, mode: 0o700 });
     this.drain();
     try {
-      this.watcher = fs.watch(this.dir, () => this.drain());
+      // Only new event files wake us. Our own heartbeat (.alive) and half-written files (tmp/) are ignored,
+      // and bursts are batched, otherwise every drain would trigger the next one.
+      this.watcher = fs.watch(this.dir, (_e, name) => {
+        const n = name ? String(name) : "";
+        if (n && !n.endsWith(".json")) return;
+        this.schedule();
+      });
     } catch {
       /* fs.watch unsupported: polling below still works */
     }
     this.poll = setInterval(() => this.drain(), 3000);
   }
 
+  private pending: NodeJS.Timeout | null = null;
+  private schedule(): void {
+    if (this.pending) return;
+    this.pending = setTimeout(() => {
+      this.pending = null;
+      this.drain();
+    }, DRAIN_BATCH_MS);
+  }
+
   stop(): void {
+    if (this.pending) clearTimeout(this.pending);
+    this.pending = null;
     this.watcher?.close();
     this.watcher = null;
     if (this.poll) clearInterval(this.poll);
@@ -315,11 +352,15 @@ export class SpoolReader {
     if (this.draining) return 0;
     this.draining = true;
     let accepted = 0;
-    try {
-      // Heartbeat: hooks stop writing if no reader has touched this for 2 days (e.g. BuildPilot removed, hooks left).
-      fs.writeFileSync(path.join(this.dir, ".alive"), "");
-    } catch {
-      /* read-only: hooks fall back to writing */
+    // Heartbeat: hooks stop writing if no reader has touched this for 2 days (e.g. BuildPilot removed, hooks left).
+    // Touched at most once a minute.
+    if (Date.now() - this.lastBeat > 60_000) {
+      this.lastBeat = Date.now();
+      try {
+        fs.writeFileSync(path.join(this.dir, ".alive"), "");
+      } catch {
+        /* read-only: hooks fall back to writing */
+      }
     }
     try {
       let files: { name: string; mtime: number }[];
