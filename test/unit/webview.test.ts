@@ -112,7 +112,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelector(".status")?.textContent).toMatch(/1 needs you/);
     expect(doc.body.innerHTML).toContain("&lt;img src=x");
     expect(w.__xss).toBeUndefined();
-    expect(doc.querySelector(".mem")?.textContent).toBe("chat 34%");
+    expect(doc.querySelector(".mem")?.textContent).toBe("chat 34% full");
     expect(doc.querySelector(".mem svg.ring")).not.toBeNull();
     expect(doc.querySelector('.builds [data-act="openBuild"]')?.textContent).toBe("Review in terminal");
     await click('[data-act="openBuild"]');
@@ -153,14 +153,14 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(sent.some((m) => m.type === "reviewBuild")).toBe(true);
   });
 
-  it("standalone window (no VS Code): project switcher; Find it for waiting builds, Resume for idle ones, nothing for running", async () => {
-    const p = full({ builds: [session({ id: "w1", needsYou: true, status: "blocked" }), session({ id: "r1", folder: "run" }), session({ id: "abcd1234-idle", folder: "old", status: "idle" })] });
+  it("standalone window (no VS Code): project switcher; Go to tab on every row, Resume for a session that stopped mid-task", async () => {
+    const p = full({ builds: [session({ id: "w1", needsYou: true, status: "blocked" }), session({ id: "r1", folder: "run" }), session({ id: "abcd1234-idle", folder: "old", status: "idle", stopped: true })] });
     const { doc, sent, tick, click } = mount(p, { standalone: true });
     await tick();
     await tick();
     expect(doc.querySelector(".proj")).not.toBeNull();
     const labels = [...doc.querySelectorAll(".builds > li:not(.group):not(.quiet)")].slice(0, 3).map((li) => li.querySelector(".b-act > button")?.textContent ?? "");
-    expect(labels).toEqual(["Find it", "", "Resume"]);
+    expect(labels).toEqual(["Go to tab", "Resume", "Go to tab"]); // stopped mid-task sorts above running
     await click('[data-act="resumeBuild"]');
     expect(sent.find((m) => m.type === "resumeBuild")).toMatchObject({ id: "abcd1234-idle", cwd: "/p/shop" });
     const vs = mount(p);
@@ -185,11 +185,11 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     expect(doc.querySelector(".nowtxt")?.textContent).toBe("Running npm test");
     expect(doc.body.textContent).toMatch(/Running npm test · 4 min/);
-    expect(doc.querySelector(".group")?.textContent).toMatch(/shop\s*2 builds/);
+    expect(doc.querySelector(".group")?.textContent).toMatch(/shop\s*2 sessions/);
     expect(doc.body.textContent).toMatch(/checkout/);
     expect(doc.querySelector(".chip.warn")?.textContent).toBe("auto-approve on");
     expect(doc.querySelector(".chip.codex")?.textContent).toBe("Codex");
-    expect(doc.body.textContent).toMatch(/Show 1 quiet build/);
+    expect(doc.body.textContent).toMatch(/Show 1 quiet session/);
     await click('[data-act="toggleErrors"][data-id="a1"]');
     expect(doc.querySelector(".errpanel")?.textContent).toMatch(/cannot find module/);
     await click('[data-act="copyErrors"]');
@@ -199,7 +199,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelector(".toklist")?.textContent).toMatch(/Read package-lock\.json.*≈38k/);
     expect(doc.querySelector(".timeline")?.textContent).toMatch(/Edit cart\.ts/);
     await click('[data-act="toggleQuiet"]');
-    expect(doc.body.textContent).toMatch(/Hide 1 quiet build/);
+    expect(doc.body.textContent).toMatch(/Hide 1 quiet session/);
     await click('[data-act="renameBuild"][data-id="a2"]');
     expect(sent.find((m) => m.type === "renameBuild")?.id).toBe("a2");
     await click('[data-act="hideIdle"]');

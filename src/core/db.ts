@@ -34,6 +34,8 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE sessions ADD COLUMN last_turn_input_tokens INTEGER;
    ALTER TABLE sessions ADD COLUMN total_output_tokens INTEGER;
    ALTER TABLE sessions ADD COLUMN assistant_turns INTEGER NOT NULL DEFAULT 0;`,
+  // 4: Claude's own checklist per session (JSON, see types.ts Checklist)
+  `ALTER TABLE sessions ADD COLUMN checklist TEXT;`,
 ];
 
 let sqlPromise: Promise<SqlJsStatic> | null = null;

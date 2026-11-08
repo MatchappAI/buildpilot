@@ -79,7 +79,9 @@ function clip(text: string | null | undefined, max = 90): string {
   const t = (text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "").replace(/\s+/g, " ");
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 }
-const tone = (pct: number | null) => (pct == null ? "none" : pct >= 85 ? "bad" : pct >= 65 ? "warn" : "ok");
+/** One set of thresholds everywhere: chat 70 / 90 % full, plan limits 80 / 95 % used. */
+const toneChat = (pct: number | null) => (pct == null ? "none" : pct >= 90 ? "bad" : pct >= 70 ? "warn" : "ok");
+const tone = (pct: number | null) => (pct == null ? "none" : pct >= 95 ? "bad" : pct >= 80 ? "warn" : "ok");
 
 let flashTimer: ReturnType<typeof setTimeout> | null = null;
 function flash(text: string): void {
@@ -159,12 +161,12 @@ function render(): void {
     <header class="head">
       <h1 class="brand">${MARK}<span>Build<b>Pilot</b></span></h1>
       ${planPill()}
-      ${standalone ? `<button class="link proj" data-act="selectProject" title="Prompts, tips and new builds use this project">${esc(S.facts?.name ?? S.project?.name ?? "Choose project")} ▾</button>` : ""}
+      ${standalone ? `<button class="link proj" data-act="selectProject" title="Prompts, tips and side builds use this project">Project: ${esc(S.facts?.name ?? S.project?.name ?? "choose")} ▾</button>` : ""}
     </header>
     ${trialNotice()}
     ${headsUp()}
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
-    ${!P.connected ? connectCard() : `${buildsSection()}${limitsSection()}${tipsSection()}${promptSection()}`}
+    ${!P.connected ? connectCard() : `<div class="cols"><div class="col-main">${buildsSection()}</div><div class="col-side">${limitsSection()}${tipsSection()}${promptSection()}</div></div>`}
     <footer class="foot">
       <button type="button" class="linkbtn" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</button> · <button type="button" class="linkbtn" data-act="toggleTheme" data-to="${theme === "match" ? "white" : "match"}">${theme === "match" ? "White page" : standalone ? "Dark page" : "Match my theme"}</button>${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
     </footer>
@@ -240,10 +242,24 @@ function buildSub(x: Build): string {
   if (x.agent === "codex") return x.now ? `<b class="nowtxt">${esc(x.now)}</b>${dur(x.nowSince)}` : `${esc(clip(x.task, 70) || x.word)} · ${ago(x.lastEventAt)}`;
   if (x.needsYou) return `${ago(x.lastEventAt) === "just now" ? "Waiting" : `Waiting ${ago(x.lastEventAt).replace(" ago", "")}`} · ${esc(clip(x.waitingFor ?? x.reason, 80) || STATUS_WORD[x.status])}`;
   if (x.stopped) return `<span class="warn-text">Stopped mid-task</span> · ${esc(clip(x.task, 60))}`;
-  if (x.maybeStuck) return `<span class="warn-text">Quiet for ${Math.round((Date.now() - x.lastEventAt) / 60_000)} min, may be stuck</span>`;
+  if (x.maybeStuck) return x.now && x.now !== "Thinking" ? `<span class="warn-text">${esc(x.now)}${dur(x.nowSince)}, may be stuck</span>` : `<span class="warn-text">Quiet for ${Math.round((Date.now() - x.lastEventAt) / 60_000)} min, may be stuck</span>`;
   if (x.now) return `<b class="nowtxt" title="${esc(x.nowFull ?? x.now)}">${esc(x.now)}</b>${dur(x.nowSince)}`;
   if (x.finishedAt && x.turnMs && Date.now() - x.finishedAt < 15 * 60_000) return `<span class="ok-text">Finished · your turn</span> · ${esc(clip(x.task, 50))}`;
   return `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
+}
+
+/** "Step 3 of 7 · Adding login" from Claude's own checklist, else what this request has done so far and whether it's proven. */
+function progressLine(x: Build): string {
+  if (x.agent === "codex" || x.needsYou) return "";
+  const c = x.checklist;
+  if (c && c.total > 1 && c.done < c.total) {
+    return `<div class="b-prog"><span class="steps" title="${esc(c.items.map((i) => `${i.status === "completed" ? "✓" : i.status === "in_progress" ? "→" : "·"} ${i.title}`).join("\n"))}">Step ${Math.min(c.done + 1, c.total)} of ${c.total}</span>${c.current ? ` · ${esc(clip(c.current, 70))}` : ""}<span class="pbar" aria-hidden="true"><span style="width:${Math.round((c.done / c.total) * 100)}%"></span></span></div>`;
+  }
+  const t = x.turn;
+  if (!t || (!t.steps && !t.files)) return "";
+  const proof = t.proof === "verified" ? `<span class="ok-text">✓ tests passed after the last change</span>` : t.proof === "failing" ? `<span class="bad-text">✗ tests failing</span>` : t.proof === "unverified" ? `<span class="warn-text">${t.done ? "finished, not tested yet" : "not tested yet"}</span>` : "";
+  const parts = [`${t.steps} step${t.steps === 1 ? "" : "s"}`, t.files ? `${t.files} file${t.files === 1 ? "" : "s"} changed` : "", proof].filter(Boolean);
+  return `<div class="b-prog">${parts.join(" · ")}</div>`;
 }
 
 function buildRow(x: Build): string {
@@ -257,11 +273,14 @@ function buildRow(x: Build): string {
   return `<li class="${x.needsYou ? "needs" : ""}${expanded.has(x.id) ? " open" : ""}">
     <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span>
     <div class="b-main">
-      <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" aria-controls="d-${esc(x.id)}" title="Show what it did and where the tokens went">${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this build" aria-label="Name this build">✎</button>` : ""}${chips}</div>
+      <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" aria-controls="d-${esc(x.id)}" title="Show what it did and where the tokens went"><span class="chev" aria-hidden="true">${expanded.has(x.id) ? "▾" : "▸"}</span>${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this session" aria-label="Name this session">✎</button>` : ""}${chips}</div>
       <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
+      ${progressLine(x)}
+      ${x.task && x.agent !== "codex" && !x.stopped && !(x.finishedAt && Date.now() - x.finishedAt < 15 * 60_000) ? `<div class="b-task" title="${esc(x.task.slice(0, 600))}">“${esc(clip(x.task, 110))}”</div>` : ""}
+      ${(x.risks ?? []).length ? `<div class="b-risk" role="note"><span aria-hidden="true">⚠</span> ${esc(x.risks![0]!)}${x.risks!.length > 1 ? ` <span class="muted">+${x.risks!.length - 1} more</span>` : ""}</div>` : ""}
       ${errPanel}
     </div>
-    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${tone(x.contextPct)}" title="How much of this chat Claude can still keep in mind. Near 100% it starts forgetting details.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}%</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null && x.share >= 1 ? `<span class="share" title="This build's share of all your Claude Code usage today, from Claude Code's own cost estimate">${x.share}% of today's use</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
+    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${toneChat(x.contextPct)}" title="How full this chat is. From 70% Claude starts to lose details; a fresh chat with a summary keeps it sharp.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null && x.share >= 1 ? `<span class="share" title="This build's share of all your Claude Code usage today, from Claude Code's own cost estimate">${x.share}% of today's use</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
     <div class="b-act">${x.agent === "codex" ? `<span class="muted small" title="Codex has no hooks, so BuildPilot can only read its logs">read-only</span>` : buildButton(x)}</div>
     ${expanded.has(x.id) ? buildDetails(x) : ""}
   </li>`;
@@ -275,9 +294,18 @@ function buildDetails(x: Build): string {
         ${t.top ? (t.top.length ? `<ul class="toklist">${t.top.map((i) => `<li><span>${esc(i.label)}</span><span class="muted">≈${kTok(i.tokens)}</span></li>`).join("")}</ul><p class="muted tiny">Biggest things pulled into the chat (≈ estimated from size). They're re-sent with every message until a fresh chat.</p>` : `<p class="muted tiny">No large tool output yet.</p>`) : P!.plan.sellable ? `<p class="small"><a href="#" data-act="upgrade">See exactly what used them · Pro</a></p>` : ""}
       </div>`
     : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this build has a transcript BuildPilot can read.</p>`;
-  const tl = (x.timeline ?? []).length
-    ? `<div class="d-head">Recent steps</div><ol class="timeline">${(x.timeline ?? []).map((e) => `<li class="${e.error ? "bad" : ""}" title="${esc(e.full ?? e.text)}"><span class="muted t">${new Date(e.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><span class="x">${esc(e.text)}</span></li>`).join("")}</ol>`
-    : "";
+  // Repeated steps in a row ("Looked through files" ×7) collapse into one line.
+  const steps: { ts: number; text: string; error: boolean; full?: string; n: number }[] = [];
+  for (const e of x.timeline ?? []) {
+    const prev = steps[steps.length - 1];
+    if (prev && prev.text === e.text && prev.error === e.error) prev.n++;
+    else steps.push({ ...e, n: 1 });
+  }
+  const risks = (x.risks ?? []).length ? `<div class="d-head">Worth a look</div><ul class="risks">${x.risks!.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : "";
+  const list = x.checklist && x.checklist.total ? `<div class="d-head">Claude's checklist · ${x.checklist.done} of ${x.checklist.total} done</div><ul class="checklist">${x.checklist.items.slice(0, 20).map((i) => `<li class="${i.status}"><span aria-hidden="true">${i.status === "completed" ? "✓" : i.status === "in_progress" ? "→" : "○"}</span> ${esc(i.title)}</li>`).join("")}</ul>` : "";
+  const tl = steps.length
+    ? `${risks}${list}<div class="d-head">Recent steps</div><ol class="timeline">${steps.map((e) => `<li class="${e.error ? "bad" : ""}" title="${esc(e.full ?? e.text)}"><span class="muted t">${new Date(e.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><span class="x">${esc(e.text)}${e.n > 1 ? ` <span class="muted">×${e.n}</span>` : ""}</span></li>`).join("")}</ol>`
+    : `${risks}${list}`;
   return `<div class="details" id="d-${esc(x.id)}">${tok}${tl}</div>`;
 }
 
@@ -294,8 +322,8 @@ function buildsSection(): string {
   const active = all.filter((x) => !isQuiet(x));
   const quiet = all.filter(isQuiet);
   const summary = !all.length
-    ? "No builds running"
-    : `${active.length} build${active.length === 1 ? "" : "s"}${P!.working ? ` · ${P!.working} working` : ""}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}`;
+    ? "No Claude sessions running"
+    : `${active.length} session${active.length === 1 ? "" : "s"}${P!.working ? ` · ${P!.working} working` : ""}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}`;
   // Group by project when a project has 2+ builds; most urgent group first.
   const groups = new Map<string, Build[]>();
   for (const x of active) groups.set(x.folder, [...(groups.get(x.folder) ?? []), x]);
@@ -304,13 +332,13 @@ function buildsSection(): string {
   // Once any project has 2+ builds, label every project so rows never look like they belong to the group above.
   const multi = ordered.filter(([, xs]) => xs.length > 1);
   const singles = ordered.filter(([, xs]) => xs.length === 1).flatMap(([, xs]) => xs);
-  const head = (label: string, count?: number) => `<li class="group"><h3 class="group-h">${esc(label)}</h3>${count ? `<span class="count">${count} builds</span>` : ""}</li>`;
+  const head = (label: string, count?: number) => `<li class="group"><h3 class="group-h">${esc(label)}</h3>${count ? `<span class="count">${count} sessions</span>` : ""}</li>`;
   const list = multi.length
-    ? multi.map(([name, xs]) => head(name, xs.length) + xs.map(buildRow).join("")).join("") + (singles.length ? head("Other builds") + singles.map(buildRow).join("") : "")
+    ? multi.map(([name, xs]) => head(name, xs.length) + xs.map(buildRow).join("")).join("") + (singles.length ? head("Other sessions") + singles.map(buildRow).join("") : "")
     : ordered.flatMap(([, xs]) => xs).map(buildRow).join("");
-  return `<section class="block" aria-label="Builds">
-    <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild" title="Starts Claude in a separate copy of this project, so two builds can't undo each other's work">+ New build</button></div>
-    ${all.length ? `<ul class="builds">${list}${quiet.length ? `<li class="quiet"><button class="link" data-act="toggleQuiet">${showQuiet ? "Hide" : "Show"} ${quiet.length} quiet build${quiet.length === 1 ? "" : "s"}</button> · <button class="link" data-act="hideIdle">Clear them</button></li>${showQuiet ? quiet.map(buildRow).join("") : ""}` : ""}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal, or press <b>+ New build</b>. Builds show up here as soon as Claude does something.</p>`}
+  return `<section class="block" aria-label="Sessions">
+    <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild" title="Starts another Claude in a separate copy of this project (a side build), so two sessions can't undo each other's work">+ New side build</button></div>
+    ${all.length ? `<ul class="builds">${list}${quiet.length ? `<li class="quiet"><button class="link" data-act="toggleQuiet">${showQuiet ? "Hide" : "Show"} ${quiet.length} quiet session${quiet.length === 1 ? "" : "s"}</button> · <button class="link" data-act="hideIdle">Clear them</button></li>${showQuiet ? quiet.map(buildRow).join("") : ""}` : ""}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal. Sessions show up here as soon as Claude does something.</p>`}
     ${sideSection()}
     ${all.length ? (finderOpen || fileResults != null ? fileFinder() : `<p class="finder-link"><button class="link" data-act="openFinder">Who changed a file?</button></p>`) : ""}
   </section>`;
@@ -330,9 +358,10 @@ function sideSection(): string {
 function buildButton(x: PageData["builds"][number]): string {
   const featured = x.needsYou && P!.builds.find((b) => b.needsYou)?.id === x.id;
   if (!standalone) return `<button class="${x.needsYou ? (featured ? "secondary small-btn" : "primary") : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>`;
-  if (x.needsYou) return `<button class="${featured ? "secondary small-btn" : "primary"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Switches to it if you use tmux; otherwise tells you where it's running. Nothing is approved until you approve it there.">Find it</button>`;
-  if (x.status === "running") return "";
-  return `<button class="link" data-act="resumeBuild" data-id="${esc(x.id)}" data-cwd="${esc(x.cwd)}" title="Reopens this Claude conversation in Terminal">Resume</button>`;
+  if (x.needsYou) return `<button class="${featured ? "secondary small-btn" : "primary"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Brings its Terminal, iTerm or tmux tab forward. Nothing is approved until you approve it there.">Go to tab</button>`;
+  const fresh = (x.contextPct ?? 0) >= 70 && x.status !== "running" ? `<button class="link" data-act="startFresh" data-cwd="${esc(x.cwd)}" title="Copies a summary of the work so far and opens a new Claude in this folder">Start fresh</button>` : "";
+  if (x.stopped) return `${fresh}<button class="link" data-act="resumeBuild" data-id="${esc(x.id)}" data-cwd="${esc(x.cwd)}" title="Reopens this Claude conversation in Terminal">Resume</button>`;
+  return `${fresh}<button class="link" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Brings its Terminal, iTerm or tmux tab forward">Go to tab</button>`;
 }
 
 function bar(label: string, pct: number | null, right: string): string {
@@ -490,5 +519,23 @@ live.className = "sr-only";
 live.setAttribute("role", "status");
 live.setAttribute("aria-live", "polite");
 document.body.appendChild(live);
+// Keyboard: j / k move between sessions, Enter opens details, g goes to its terminal tab, / jumps to the prompt box.
+document.addEventListener("keydown", (e) => {
+  const t = e.target as HTMLElement | null;
+  if (e.metaKey || e.ctrlKey || e.altKey || (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) || document.querySelector(".bp-modal")) return;
+  const names = [...document.querySelectorAll<HTMLElement>(".builds .name-btn")];
+  const i = names.findIndex((n) => n === document.activeElement);
+  if (e.key === "j" || e.key === "k") {
+    if (!names.length) return;
+    e.preventDefault();
+    names[e.key === "j" ? Math.min(names.length - 1, i + 1) : Math.max(0, i < 0 ? 0 : i - 1)]!.focus();
+  } else if (e.key === "g" && i >= 0) {
+    e.preventDefault();
+    (names[i]!.closest("li")?.querySelector('[data-act="openBuild"],[data-act="resumeBuild"]') as HTMLElement | null)?.click();
+  } else if (e.key === "/") {
+    const box = document.getElementById("req");
+    if (box) { e.preventDefault(); box.focus(); }
+  }
+});
 render();
 vscode.postMessage({ type: "ready" });

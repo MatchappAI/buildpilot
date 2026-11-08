@@ -4,9 +4,9 @@ import * as path from "path";
 import { Engine, realpath } from "./engine";
 import { readLiveStatus } from "./hooks";
 import { rowToEvent, rowToSession } from "./ingest";
-import { activityFor, TimelineItem } from "./activity";
+import { Activity, activityFor, risksIn, TimelineItem, turnSummary } from "./activity";
 import { deriveDisplayStatus } from "./supervisor";
-import { SessionStatus } from "./types";
+import { Checklist, SessionStatus } from "./types";
 
 /**
  * Terminal "glance": what BuildPilot prints when a terminal opens.
@@ -61,6 +61,12 @@ export interface WidgetSession {
   turnMs?: number | null;
   maybeStuck?: boolean;
   nowFull?: string | null;
+  /** Latest request: steps, files changed, proof (verified / failing / unverified). Observed only. */
+  turn?: Activity["turn"];
+  /** Risky things it did recently, in plain words. */
+  risks?: string[];
+  /** Claude's own checklist when it keeps one (TodoWrite / task tools): done of total, and the current item. */
+  checklist?: Checklist | null;
   /** Extra words to tell apart builds that would otherwise have the same name. */
   hint?: string | null;
   /** "claude" (default) or "codex" (read-only, from ~/.codex logs). */
@@ -86,7 +92,16 @@ export function glanceItems(engine: Engine, now: number) {
     .map((s) => {
       const d = deriveDisplayStatus(s, now);
       const events = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? ORDER BY ts DESC, id DESC LIMIT 80", [s.id]).map(rowToEvent);
-      return { s, status: d.status, reason: d.reason, live: readLiveStatus(s.id, engine.home), act: activityFor(s, events, now) };
+      const act = activityFor(s, events, now);
+      // The last 80 events may not reach back to the start of a long request: summarize it from its own events.
+      const lastAsk = engine.store.get<{ ts: number }>("SELECT MAX(ts) AS ts FROM events WHERE session_id = ? AND hook_event = 'UserPromptSubmit' AND summary NOT LIKE 'Prompt: [Subagent hand-back]%' AND summary NOT IN ('Prompt: Message from another Claude session','Prompt: Background task update','Prompt: System update','Prompt: Report from a helper')", [s.id]);
+      if (lastAsk?.ts != null) {
+        const turnEv = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND ts >= ? AND (hook_event IN ('UserPromptSubmit','Stop','PostToolUse','PostToolUseFailure')) ORDER BY ts, id LIMIT 3000", [s.id, Number(lastAsk.ts)]).map(rowToEvent);
+        act.turn = turnSummary(turnEv);
+      }
+      const riskEv = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND ts > ? AND hook_event IN ('PostToolUse','PostToolUseFailure') AND tool_name IN ('Bash','Edit','Write','MultiEdit','NotebookEdit') ORDER BY ts, id LIMIT 2000", [s.id, now - 3 * 3600_000]).map(rowToEvent);
+      act.risks = risksIn(riskEv);
+      return { s, status: d.status, reason: d.reason, live: readLiveStatus(s.id, engine.home), act };
     })
     .filter((x) => (!x.s.endedAt || x.act.stopped) && !isBackground(x.s.cwd))
     .filter((x) => x.status !== "unknown" || now - x.s.lastEventAt < 3600_000);
@@ -194,6 +209,9 @@ export function widgetData(engine: Engine, now = Date.now()): WidgetData {
       turnMs: x.act.turnMs,
       maybeStuck: x.act.maybeStuck,
       nowFull: x.act.nowFull,
+      turn: x.act.turn,
+      risks: x.act.risks,
+      checklist: x.s.checklist ?? null,
       agent: "claude" as const,
     })).map((b, _i, all) => ({ ...b, hint: all.filter((o) => (o.name ?? o.folder) === (b.name ?? b.folder)).length > 1 ? disambiguate(b) : null })),
     needs: needs.length,

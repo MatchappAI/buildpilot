@@ -27,13 +27,89 @@ export interface Activity {
   /** Last turn finished: when, and how long it took (for "finished, your turn" alerts). */
   finishedAt: number | null;
   turnMs: number | null;
+  /**
+   * The latest request so far, from observed events only: steps taken, files changed, and proof.
+   * proof: "verified" = tests passed after the last edit · "failing" = the last test run after editing failed ·
+   * "unverified" = files changed but no test run since · null = no file changes (nothing to verify).
+   */
+  turn: { steps: number; files: number; proof: "verified" | "failing" | "unverified" | null; done: boolean } | null;
+  /** Risky things Claude did in the last 3 hours, in plain words (destructive commands, secret files, test edits while failing). */
+  risks: string[];
   /** No new activity for 10+ minutes while working. */
   maybeStuck: boolean;
   /** Full text of the current action (for tooltips). */
   nowFull: string | null;
 }
 
-const MUST_WORK = /\b(test|tests|vitest|jest|pytest|mocha|playwright|cypress|go test|cargo (test|build|check)|build|tsc|typecheck|lint|eslint|ruff|mypy|compile|make|gradle|mvn|install|npm (ci|i)\b|pnpm i\b|yarn( install)?\b|pip install|bundle|start|dev|serve|deploy|migrate|docker|git (commit|push|merge|rebase|pull))\b/i;
+const TEST_RUN = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|vitest|jest)\b|\bnpx\s+(vitest|jest|playwright)\b|\bpytest\b|\bgo test\b|\bcargo test\b|\bvitest\b|\bjest\b/;
+const TEST_FILE = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[a-z]+$|_test\.(go|py)$|(^|\/)test_[^/]+\.py$/i;
+const DESTRUCTIVE: Array<[RegExp, string]> = [
+  [/\bgit\s+push\b[^\n]*(--force\b|-f\b|--force-with-lease)/, "force-pushed with git (can overwrite others' work)"],
+  [/\bgit\s+reset\s+--hard\b/, "ran git reset --hard (throws away unsaved changes)"],
+  [/\bgit\s+clean\s+-[a-z]*f/, "ran git clean (deletes untracked files)"],
+  [/\bgit\s+(checkout|restore)\s+(--\s+)?\.(\s|$)/, "discarded all unsaved changes with git"],
+  [/\brm\s+-[a-z]*r[a-z]*f?\b|\brm\s+-[a-z]*f[a-z]*r\b/, "deleted folders with rm -rf"],
+  [/\b(drop\s+(table|database)|truncate\s+table)\b/i, "dropped or emptied a database table"],
+  [/--no-verify\b/, "skipped git safety checks (--no-verify)"],
+];
+const SECRET_FILE = /(^|\/)(\.env(\.[\w-]+)?|\.npmrc|\.pypirc|id_rsa|id_ed25519|credentials(\.json)?|secrets?\.(json|ya?ml))$/i;
+
+/** Risky things in these events, newest first, each kind once. Observed only. */
+export function risksIn(ev: HookEvent[]): string[] {
+  const out: string[] = [];
+  const add = (t: string) => { if (!out.includes(t)) out.push(t); };
+  for (const e of [...ev].reverse()) {
+    if (e.agentId == null && (e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure") && e.toolName === "Bash") {
+      const cmd = e.summary.replace(/^[✓✗] Run: /, "");
+      if (/\.example\b|\.sample\b/.test(cmd)) continue;
+      for (const [re, text] of DESTRUCTIVE) {
+        if (!re.test(cmd)) continue;
+        if (/rm -rf/.test(text)) {
+          // Name what was deleted; routine build/cache folders aren't worth a warning.
+          const target = /\brm\s+-[a-z]+\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd)?.[1]?.replace(/^["']|["']$/g, "") ?? "";
+          if (!target || /(^|\/)(node_modules|dist|build|out|\.next|coverage|tmp|\.cache|__pycache__|\.turbo|\.parcel-cache)\/?$/.test(target) || /^\$?\(?mktemp|^\/tmp\/|^\$TMPDIR/.test(target)) continue;
+          add(`It deleted ${target.length > 48 ? `${target.slice(0, 47)}…` : target} with rm -rf`);
+        } else add(`It ${text}`);
+      }
+    }
+    if (e.hookEvent === "PostToolUse" && isEditLike(e) && e.filePath && SECRET_FILE.test(e.filePath) && !/\.(example|sample|template)$/.test(e.filePath)) add(`It edited a secrets file (${e.filePath.split("/").pop()})`);
+  }
+  // Tests failing, then test files edited, then tests pass: worth a look (the fix may have weakened the test).
+  const firstFail = ev.findIndex((e) => e.toolName === "Bash" && e.isError && TEST_RUN.test(e.summary));
+  if (firstFail >= 0) {
+    const after = ev.slice(firstFail);
+    const testEdits = new Set(after.filter((e) => e.hookEvent === "PostToolUse" && isEditLike(e) && e.filePath && TEST_FILE.test(e.filePath)).map((e) => e.filePath));
+    const passedLater = after.some((e) => e.hookEvent === "PostToolUse" && e.toolName === "Bash" && TEST_RUN.test(e.summary));
+    if (testEdits.size && passedLater) add(`Tests were failing, then it changed ${testEdits.size} test file${testEdits.size === 1 ? "" : "s"} and they passed: check it fixed the code, not the test`);
+  }
+  return out.slice(0, 3);
+}
+
+const isEditLike = (e: HookEvent) => e.toolName === "Edit" || e.toolName === "Write" || e.toolName === "MultiEdit" || e.toolName === "NotebookEdit";
+
+/** Steps, files and proof for the latest request (see Activity.turn). */
+const SYSTEM_PROMPT = /^Prompt: (Message from another Claude session|Background task update|System update|Report from a helper|\[Subagent hand-back\])/;
+/** The last prompt the person actually typed (Claude Code also submits helper reports and background updates). */
+export const isUserPrompt = (e: HookEvent) => e.hookEvent === "UserPromptSubmit" && !SYSTEM_PROMPT.test(e.summary);
+
+export function turnSummary(ev: HookEvent[]): Activity["turn"] {
+  const start = [...ev].reverse().find(isUserPrompt);
+  if (!start) return null;
+  const turn = ev.filter((e) => e.ts >= start.ts && e.agentId == null);
+  const steps = turn.filter((e) => e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure").length;
+  const edits = turn.filter((e) => e.hookEvent === "PostToolUse" && isEditLike(e) && e.filePath);
+  const files = new Set(edits.map((e) => e.filePath)).size;
+  const lastEdit = edits[edits.length - 1];
+  const testsAfter = lastEdit ? turn.filter((e) => e.ts >= lastEdit.ts && e.toolName === "Bash" && (e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure") && TEST_RUN.test(e.summary)) : [];
+  const lastTest = testsAfter[testsAfter.length - 1];
+  const proof = !files ? null : !lastTest ? "unverified" : lastTest.isError ? "failing" : "verified";
+  return { steps, files, proof, done: turn.some((e) => e.hookEvent === "Stop") };
+}
+
+const MUST_WORK = new RegExp(
+  `${TEST_RUN.source}|\\b(npm|pnpm|yarn|bun)\\s+(run\\s+)?(build|lint|typecheck|start|dev|ci|install|i|add)\\b|^(npx\\s+)?(tsc|eslint|ruff|mypy|prettier --check)\\b|\\b(cargo (build|check)|go build|make|gradle|mvn|xcodebuild|pip3? install|docker (build|compose)|git (commit|push|merge|rebase|pull))\\b|\\b(wrangler|vercel|netlify|fly) deploy\\b`,
+  "i",
+);
 
 /** Normal trial-and-error, not a real problem: searches with no matches, edits whose text didn't match, grep/test exit 1. */
 export function isRetry(e: HookEvent): boolean {
@@ -47,6 +123,15 @@ export function isRetry(e: HookEvent): boolean {
   return false;
 }
 
+/** Tool names in plain words; MCP tools become "Using <server>". */
+function friendlyTool(name: string): string {
+  const known: Record<string, string> = { ScheduleWakeup: "Setting a reminder to check back", AskUserQuestion: "Asking you a question", ExitPlanMode: "Presenting its plan", EnterPlanMode: "Planning", Skill: "Using a skill", Monitor: "Watching a background job", TaskCreate: "Updating its to-do list", TaskUpdate: "Updating its to-do list", TaskList: "Checking its to-do list", NotebookEdit: "Editing a notebook", ToolSearch: "Loading a tool", SendMessage: "Messaging a helper", KillShell: "Stopping a background job", BashOutput: "Checking a background job" };
+  if (known[name]) return known[name]!;
+  const mcp = /^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/.exec(name);
+  if (mcp) return `Using ${mcp[1]!.replace(/^(claude_ai_|plugin_[^_]+_)/, "").replace(/[_-]+/g, " ")}`;
+  return `Using ${name}`;
+}
+
 const ACT: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^Run: (.+)$/, (m) => plainCommand(m[1]!)],
   [/^Edit (.+)$/, (m) => `Editing ${m[1]}`],
@@ -57,7 +142,7 @@ const ACT: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^Web search (.+)$/, (m) => `Searching the web for ${m[1]}`],
   [/^Subagent: (.*)$/, (m) => `Running a subagent${m[1] ? `: ${m[1]}` : ""}`],
   [/^Update todo list$/, () => "Updating its to-do list"],
-  [/^Use (.+)$/, (m) => `Using ${m[1]}`],
+  [/^Use (.+)$/, (m) => friendlyTool(m[1]!)],
 ];
 
 /** Shell commands are noisy: drop a leading `cd <dir> &&`, env assignments and pipes after the first command. */
@@ -83,6 +168,9 @@ export function plainCommand(cmd: string): string {
   if (/^(freeing|waiting)/.test(sc)) return sc.charAt(0).toUpperCase() + sc.slice(1);
   const c = sc.toLowerCase();
   const rules: Array<[RegExp, string]> = [
+    // Read-only tools first: "ls test; grep foo" is looking around, not running tests.
+    [/^(sed|perl) -i\b/, "Editing a file"],
+    [/^(ls|cat|head|tail|find|grep|rg|wc|tree|stat|file|du|sed|awk|jq|sort|uniq|cut|echo|printf)\b/, "Looking through files"],
     [/(^|[\s/._-])(test|tests|vitest|jest|pytest|playwright|mocha|spec)([\s:._-]|$)|\bnpm t\b/, "Running tests"],
     [/\b(typecheck|tsc)\b/, "Checking for type errors"],
     [/\b(lint|eslint|ruff|prettier|swiftlint)\b/, "Checking code style"],
@@ -96,8 +184,6 @@ export function plainCommand(cmd: string): string {
     [/^git\b/, "Using git"],
     [/^gh\b/, "Talking to GitHub"],
     [/^(curl|wget|open)\b/, "Checking a web address"],
-    [/^(sed|perl) -i\b/, "Editing a file"],
-    [/^(ls|cat|head|tail|find|grep|rg|wc|tree|stat|file|du|sed|awk|jq|sort|uniq|cut)\b/, "Looking through files"],
     [/^(rm|mv|cp|mkdir|touch|chmod|ln)\b/, "Moving files around"],
     [/^(npx )?(python3?|node|deno|tsx|ts-node|ruby|bash|sh|zsh|osascript|swift)\b/, "Running a script"],
     [/^(tar|zip|unzip|gzip|ditto)\b/, "Packing or unpacking files"],
@@ -120,7 +206,7 @@ export function presentTense(summary: string): string {
   return s;
 }
 
-const PAST: Record<string, string> = { Running: "Ran", Building: "Built", Checking: "Checked", Installing: "Installed", Starting: "Started", Saving: "Saved", Pushing: "Pushed", Getting: "Got", Looking: "Looked", Using: "Used", Talking: "Talked", Moving: "Moved", Packing: "Packed", Working: "Worked", Deploying: "Deployed", Editing: "Edited", Writing: "Wrote", Reading: "Read", Searching: "Searched", Opening: "Opened", Updating: "Updated", Freeing: "Freed", Waiting: "Waited" };
+const PAST: Record<string, string> = { Running: "Ran", Building: "Built", Checking: "Checked", Installing: "Installed", Starting: "Started", Saving: "Saved", Pushing: "Pushed", Getting: "Got", Looking: "Looked", Using: "Used", Talking: "Talked", Moving: "Moved", Packing: "Packed", Working: "Worked", Deploying: "Deployed", Editing: "Edited", Writing: "Wrote", Reading: "Read", Searching: "Searched", Opening: "Opened", Updating: "Updated", Freeing: "Freed", Waiting: "Waited", Setting: "Set", Asking: "Asked", Presenting: "Presented", Planning: "Planned", Watching: "Watched", Loading: "Loaded", Messaging: "Messaged", Stopping: "Stopped" };
 
 /** A finished step in plain past tense: "✓ Run: npx vitest" → "Ran tests". Prompts, approvals and other text pass through. */
 export function plainStep(summary: string): string {
@@ -192,8 +278,10 @@ export function activityFor(s: Session, events: HookEvent[], now: number): Activ
     retries1h,
     finishedAt: finish?.ts ?? null,
     turnMs: finish && turnStart ? finish.ts - turnStart.ts : null,
-    // "May be stuck" only when Claude is thinking with nothing running for 10+ minutes (a long npm test is fine).
-    maybeStuck: nowText === "Thinking" && now - s.lastEventAt > 10 * 60_000 && s.status === "running",
+    turn: turnSummary(ev),
+    risks: risksIn(ev.filter((e) => now - e.ts < 3 * 3600_000)),
+    // "May be stuck": thinking with nothing running for 10+ minutes, or one step running for 20+ minutes.
+    maybeStuck: s.status === "running" && ((nowText === "Thinking" && now - s.lastEventAt > 10 * 60_000) || (since != null && nowText !== "Thinking" && now - since > 20 * 60_000)),
     nowFull: pendingFull,
   };
 }

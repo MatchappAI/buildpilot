@@ -70,6 +70,18 @@ export interface Session {
   endedAt: number | null;
   eventCount: number;
   errorCount: number;
+  /** Claude's own to-do list for this session, when it keeps one. */
+  checklist?: Checklist | null;
+}
+
+/** Claude's checklist (TodoWrite or task tools), as observed. Never estimated. */
+export interface Checklist {
+  done: number;
+  total: number;
+  /** The item in progress (its "active" wording when Claude gave one). */
+  current: string | null;
+  items: { id?: string; title: string; status: "pending" | "in_progress" | "completed" }[];
+  updatedAt: number;
 }
 
 export interface HookEvent {

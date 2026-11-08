@@ -259,3 +259,36 @@ html, body { overflow-x: hidden; }
 .timeline li { display: flex; gap: 10px; }
 .timeline .t { flex: 0 0 64px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .timeline .x, .toklist li span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- v0.12 companion: one steady grid per session row, progress, risks ---- */
+.builds > li:not(.group):not(.quiet) { display: grid; grid-template-columns: 9px minmax(0, 1fr) 104px auto; column-gap: 12px; align-items: start; }
+.builds > li:not(.group):not(.quiet) > .dot { margin-top: 7px; }
+.builds > li:not(.group):not(.quiet) > .b-meta { width: auto; min-width: 0; padding-top: 2px; }
+.builds > li:not(.group):not(.quiet) > .b-act { width: auto; min-width: 0; display: flex; gap: 10px; justify-content: flex-end; padding-top: 1px; }
+.builds > li:not(.group):not(.quiet) > .details { grid-column: 2 / -1; margin-left: 0; }
+.side .builds > li:not(.group) { grid-template-columns: minmax(0, 1fr) auto auto; }
+.chev { display: inline-block; width: 14px; color: var(--muted); font-size: 12px; }
+.b-prog, .b-task, .b-risk { font-size: 12.5px; line-height: 1.45; margin-top: 2px; }
+.b-prog { color: var(--muted); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.b-prog .steps { color: var(--ink); font-weight: 600; }
+.b-prog .pbar { display: inline-block; width: 64px; height: 4px; border-radius: 2px; background: var(--line); margin-left: 6px; overflow: hidden; }
+.b-prog .pbar span { display: block; height: 100%; background: var(--accent); }
+.b-task { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.b-risk { color: var(--warn); }
+.ok-text { color: var(--ok); } .bad-text { color: var(--bad); }
+.risks, .checklist { list-style: none; padding: 0; margin: 4px 0 10px; font-size: 13px; }
+.risks li { color: var(--warn); padding: 2px 0; }
+.checklist li { padding: 1px 0; } .checklist li.completed { color: var(--muted); text-decoration: line-through; } .checklist li.in_progress { font-weight: 600; }
+.mem.tone-warn { color: var(--warn); } .mem.tone-bad { color: var(--bad); }
+/* Wide standalone window: sessions on the left, limits, tips and the prompt on the right. */
+@media (min-width: 1040px) {
+  body.sa .page { max-width: 1160px; }
+  body.sa .cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
+  body.sa .cols .block { margin-top: 0; }
+  body.sa .col-side { display: flex; flex-direction: column; gap: 16px; }
+  body.sa .col-side > .block { margin: 0; }
+}
+@media (max-width: 520px) {
+  .builds > li:not(.group):not(.quiet) { grid-template-columns: 9px minmax(0, 1fr); }
+  .builds > li:not(.group):not(.quiet) > .b-meta, .builds > li:not(.group):not(.quiet) > .b-act { grid-column: 2; justify-content: flex-start; }
+}

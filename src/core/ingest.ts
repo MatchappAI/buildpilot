@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Store } from "./db";
 import { clip } from "./redact";
-import { HookEvent, Session, SessionStatus } from "./types";
+import { Checklist, HookEvent, Session, SessionStatus } from "./types";
 
 /**
  * Typed ingestion of Claude Code hook payloads.
@@ -82,6 +82,7 @@ export function cleanPrompt(raw: string): string {
   if (tag === "cross-session-message") return "Message from another Claude session";
   if (tag === "task-notification") return "Background task update";
   if (tag === "system-reminder") return "System update";
+  if (/^\[Subagent hand-back\]/.test(t)) return "Report from a helper";
   if (tag === "command-name" || tag === "command-message") {
     const cmd = /<command-name>([^<]*)<\/command-name>/.exec(t)?.[1];
     return cmd ? `Ran ${cmd.trim()}` : "Ran a slash command";
@@ -93,7 +94,7 @@ export function cleanPrompt(raw: string): string {
   return t || "[pasted text]";
 }
 
-const SYSTEM_LABELS = new Set(["Message from another Claude session", "Background task update", "System update"]);
+const SYSTEM_LABELS = new Set(["Message from another Claude session", "Background task update", "System update", "Report from a helper"]);
 /** True for messages Claude Code injected itself (not something the user asked for). */
 export function isSystemPrompt(cleaned: string): boolean {
   return SYSTEM_LABELS.has(cleaned);
@@ -197,6 +198,20 @@ export interface IngestResult {
 }
 
 export class Ingestor {
+  private checklistAfter(p: RawHookPayload, ts: number): Checklist | null | undefined {
+    if (p.agent_id) return undefined; // a subagent's private list isn't the session's plan
+    const isList = (p.hook_event_name === "PreToolUse" && /^(TodoWrite|TaskCreate|TaskUpdate)$/.test(p.tool_name ?? "")) || p.hook_event_name === "TaskCreated" || p.hook_event_name === "TaskCompleted";
+    if (!isList) return undefined;
+    const raw = this.store.scalar("SELECT checklist FROM sessions WHERE id = ?", [p.session_id]);
+    let prev: Checklist | null = null;
+    try {
+      prev = raw ? (JSON.parse(String(raw)) as Checklist) : null;
+    } catch {
+      prev = null;
+    }
+    return nextChecklist(prev, p, ts);
+  }
+
   constructor(
     private readonly store: Store,
     private readonly resolveProject: (cwd: string) => string | null,
@@ -273,6 +288,11 @@ export class Ingestor {
       sets.push("current_task = ?");
       params.push(clip(cleanPrompt(p.prompt), 300));
     }
+    const cl = this.checklistAfter(p, ts);
+    if (cl !== undefined) {
+      sets.push("checklist = ?");
+      params.push(cl ? JSON.stringify(cl) : null);
+    }
     if (p.transcript_path) {
       sets.push("transcript_path = ?");
       params.push(p.transcript_path);
@@ -293,6 +313,48 @@ export class Ingestor {
     this.store.run(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`, params);
     return { accepted: true, sessionId: p.session_id };
   }
+}
+
+export type { Checklist };
+
+/**
+ * Checklist updates from what Claude itself wrote: TodoWrite (whole list), TaskCreate/TaskUpdate tools and the
+ * TaskCreated/TaskCompleted hooks (one item at a time). Returns undefined when the event doesn't touch the list.
+ */
+export function nextChecklist(prev: Checklist | null, p: RawHookPayload, ts: number): Checklist | null | undefined {
+  const ti = (p.tool_input ?? {}) as Record<string, unknown>;
+  const st = (v: unknown): Checklist["items"][number]["status"] => (v === "completed" || v === "done" ? "completed" : v === "in_progress" ? "in_progress" : "pending");
+  const title = (o: Record<string, unknown>) => clip(str(o.content) ?? str(o.subject) ?? str(o.title) ?? str(o.description) ?? str(o.task_subject) ?? "", 120);
+  let items: Checklist["items"] | null = null;
+  let active: string | null = null;
+  if (p.hook_event_name === "PreToolUse" && p.tool_name === "TodoWrite" && Array.isArray(ti.todos)) {
+    const todos = (ti.todos as unknown[]).filter((t): t is Record<string, unknown> => !!t && typeof t === "object").slice(0, 100);
+    items = todos.map((t) => ({ title: title(t), status: st(t.status) })).filter((t) => t.title);
+    const cur = todos.find((t) => t.status === "in_progress");
+    active = cur ? clip(str(cur.activeForm) ?? title(cur), 120) : null;
+  } else if (p.hook_event_name === "PreToolUse" && (p.tool_name === "TaskCreate" || p.tool_name === "TaskUpdate")) {
+    items = [...(prev?.items ?? [])];
+    const id = str(ti.taskId) ?? str(ti.task_id) ?? str(ti.id) ?? undefined;
+    const i = id ? items.findIndex((x) => x.id === id) : -1;
+    if (p.tool_name === "TaskCreate" && title(ti)) items.push({ id, title: title(ti), status: st(ti.status) });
+    else if (i >= 0) items[i] = { ...items[i]!, status: ti.status !== undefined ? st(ti.status) : items[i]!.status, title: title(ti) || items[i]!.title };
+    else return undefined;
+    if (ti.status === "in_progress") active = clip(str(ti.activeForm) ?? title(ti) ?? "", 120) || null;
+  } else if (p.hook_event_name === "TaskCreated" || p.hook_event_name === "TaskCompleted") {
+    const o = p as unknown as Record<string, unknown>;
+    const t = title(o);
+    const id = str(o.task_id) ?? str(o.taskId) ?? undefined;
+    if (!t && !id) return undefined;
+    items = [...(prev?.items ?? [])];
+    const i = items.findIndex((x) => (id && x.id === id) || (!!t && x.title === t));
+    const status = p.hook_event_name === "TaskCompleted" ? "completed" : "pending";
+    if (i >= 0) items[i] = { ...items[i]!, status: p.hook_event_name === "TaskCompleted" ? "completed" : items[i]!.status };
+    else if (t) items.push({ id, title: t, status });
+  } else return undefined;
+  if (!items.length) return null;
+  const cur = active ?? items.find((x) => x.status === "in_progress")?.title ?? (prev && !active ? prev.current : null);
+  const done = items.filter((x) => x.status === "completed").length;
+  return { done, total: items.length, current: done === items.length ? null : cur, items: items.slice(0, 100), updatedAt: ts };
 }
 
 /**
@@ -446,6 +508,14 @@ export function rowToSession(r: Record<string, unknown>): Session {
     endedAt: r.ended_at == null ? null : Number(r.ended_at),
     eventCount: Number(r.event_count ?? 0),
     errorCount: Number(r.error_count ?? 0),
+    checklist: (() => {
+      if (r.checklist == null) return null;
+      try {
+        return JSON.parse(String(r.checklist)) as Checklist;
+      } catch {
+        return null;
+      }
+    })(),
   };
 }
 
