@@ -113,6 +113,7 @@ export class Engine extends EventEmitter {
   private runningScript: string | null = null;
   appUrlOverride = "";
   private settingsFile: string;
+  private pruneTimer: NodeJS.Timeout | null = null;
   private changeTimer: NodeJS.Timeout | null = null;
   demo = false;
 
@@ -131,12 +132,36 @@ export class Engine extends EventEmitter {
       this.spool.drain();
       return;
     }
-    this.store.prune();
+    this.housekeeping();
+    // Long-running windows (bp ui, VS Code) clean up hourly, not only at start.
+    this.pruneTimer = setInterval(() => this.housekeeping(), 3600_000);
+    this.pruneTimer.unref?.();
     this.spool.start();
     void this.probeTools();
   }
 
+  /** Drops old events/sessions and status files from sessions not seen for 7 days. */
+  private housekeeping(): void {
+    try {
+      this.store.prune();
+      const dir = path.join(this.home, "status");
+      const cutoff = Date.now() - 7 * 86400_000;
+      for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+        const full = path.join(dir, f);
+        try {
+          if (fs.statSync(full).mtimeMs < cutoff) fs.unlinkSync(full);
+        } catch {
+          /* gone already */
+        }
+      }
+    } catch {
+      /* never let cleanup break the app */
+    }
+  }
+
   stop(): void {
+    if (this.pruneTimer) clearInterval(this.pruneTimer);
+    this.pruneTimer = null;
     this.spool?.stop();
     this.spool = null;
     if (this.changeTimer) clearTimeout(this.changeTimer);

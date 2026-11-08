@@ -332,5 +332,7 @@ export class Store {
          SELECT id FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY ts DESC, id DESC) AS rn FROM events) WHERE rn > ?)`,
       [maxEventsPerSession],
     );
+    // Sessions with nothing left and no activity for the same period (demo rows and hidden history included).
+    this.run("DELETE FROM sessions WHERE last_event_at < ? AND NOT EXISTS (SELECT 1 FROM events e WHERE e.session_id = sessions.id)", [cutoff]);
   }
 }
