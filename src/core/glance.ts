@@ -245,10 +245,10 @@ export function glance(engine: Engine, o: GlanceOptions): string {
 
   // Waiting sessions first, then the rest; at most 5 rows.
   const ordered = [...needs, ...items.filter((x) => !needs.includes(x))].slice(0, 5);
-  const nameW = Math.min(18, Math.max(8, ...ordered.map((x) => (path.basename(x.s.cwd) || "?").length)));
+  const nameW = Math.min(18, Math.max(8, ...ordered.map((x) => folderLabel(x.s.cwd).length)));
   for (const x of ordered) {
-    const name = fit(path.basename(x.s.cwd) || "?", nameW);
-    const ctx = x.live?.contextPct != null ? `context ${Math.round(x.live.contextPct)}%` : "";
+    const name = fit(folderLabel(x.s.cwd), nameW);
+    const ctx = x.live?.contextPct != null ? `chat ${Math.round(x.live.contextPct)}% full` : "";
     const what =
       x.status === "awaiting_approval" || x.status === "blocked" || x.status === "failed"
         ? x.reason
@@ -263,6 +263,9 @@ export function glance(engine: Engine, o: GlanceOptions): string {
     lines.push(`${tone(x.status, `  ${MARK[x.status]} `)}${name}  ${tone(x.status, word)}${dim(middle.replace(/^ {2}/, ""))}${ctx ? `  ${ctx}` : ""}`);
   }
   if (items.length > ordered.length) lines.push(dim(`    +${items.length - ordered.length} more`));
+  // One line for anything risky it did recently (destructive command, secrets file, test edited while failing).
+  const risky = ordered.map((x) => ({ x, r: x.act.risks[0] })).find((v) => v.r);
+  if (risky) lines.push(c("33", `  ⚠ ${folderLabel(risky.x.s.cwd)}: ${fit(risky.r!, W - 8 - folderLabel(risky.x.s.cwd).length).trimEnd()}`));
 
   // This folder's saved next step (computed by BuildPilot in VS Code; the terminal never runs a slow analysis).
   const pid = engine.resolveProject(realpath(o.cwd));
@@ -276,6 +279,6 @@ export function glance(engine: Engine, o: GlanceOptions): string {
       /* not analyzed yet */
     }
   }
-  lines.push(dim(`  bp = details · bp open = BuildPilot in VS Code · bp prompt <goal> "<what you want>"`));
+  lines.push(dim(`  bp ui = window · bp today = your day · bp go = jump to the one that needs you`));
   return lines.join("\n");
 }

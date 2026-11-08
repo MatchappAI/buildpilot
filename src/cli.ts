@@ -18,7 +18,7 @@ import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
 import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
-import { glance, oneLine, widgetData } from "./core/glance";
+import { folderLabel, glance, oneLine, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
 import { gateParallel, paywallText, readLicense, saveLicense } from "./core/license";
@@ -29,6 +29,8 @@ import { openUri } from "./core/extId";
 import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
 import { GoalType } from "./core/types";
+
+const STATUS_PLAIN: Record<string, string> = { running: "Working", awaiting_approval: "Needs your OK", blocked: "Needs an answer", idle: "Your turn", completed: "Closed", failed: "Failed", unknown: "No recent news" };
 
 function usage(msg: string): void {
   console.error(msg);
@@ -257,6 +259,49 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     process.stdout.write(bits.join(" "));
     return;
   }
+  if (cmd === "doctor") {
+    const { selfCheck } = await import("./core/selfcheck");
+    const r = await selfCheck({ fix: rest.includes("--fix") });
+    if (rest.includes("--json")) { console.log(JSON.stringify(r)); return; }
+    for (const x of r.findings) console.log(`${x.ok ? "✓" : "✗"} ${x.text}${!x.ok && x.fix ? `\n    → ${x.fix}` : ""}`);
+    for (const x of r.fixed) console.log(`✓ Fixed: ${x}`);
+    const bad = r.findings.filter((x) => !x.ok).length;
+    console.log(bad ? `\n${bad} thing${bad === 1 ? "" : "s"} to fix.${rest.includes("--fix") ? "" : " Run bp doctor --fix for the safe ones."}` : "\nAll good.");
+    return;
+  }
+  if (cmd === "today") {
+    // Your day across every project: what needs you, what's working, what finished (and whether it was proven), risks, one next step.
+    const engine = new Engine({ light: true });
+    await engine.start();
+    const w = widgetData(engine);
+    const midnight = new Date().setHours(0, 0, 0, 0);
+    const finished = engine.store.all<{ cwd: string; n: number }>("SELECT s.cwd, COUNT(*) AS n FROM events e JOIN sessions s ON s.id = e.session_id WHERE e.hook_event = 'Stop' AND e.ts >= ? AND e.agent_id IS NULL GROUP BY s.cwd ORDER BY n DESC", [midnight]);
+    engine.stop();
+    const name = (b: (typeof w.sessions)[number]) => b.name ?? b.folder;
+    const out: string[] = [];
+    const projects = new Set([...w.sessions.map((b) => b.folder), ...finished.map((f) => folderLabel(f.cwd))]);
+    out.push(`Today · ${projects.size} project${projects.size === 1 ? "" : "s"} · ${w.sessions.length} open session${w.sessions.length === 1 ? "" : "s"}${w.fiveHourPct != null ? ` · 5-hour limit ${Math.round(w.fiveHourPct)}%` : ""}${w.sevenDayPct != null ? ` · week ${Math.round(w.sevenDayPct)}%` : ""}`);
+    const needs = w.sessions.filter((b) => b.needsYou);
+    const blocked = w.sessions.filter((b) => !b.needsYou && (b.stopped || b.status === "failed" || b.maybeStuck));
+    const working = w.sessions.filter((b) => b.status === "running" && !b.maybeStuck);
+    const unproven = w.sessions.filter((b) => b.turn?.proof === "unverified" && b.turn.done);
+    const failing = w.sessions.filter((b) => b.turn?.proof === "failing");
+    const risky = w.sessions.filter((b) => (b.risks ?? []).length);
+    const section = (title: string, rows: string[]) => { if (rows.length) out.push("", title, ...rows.map((r) => `  ${r}`)); };
+    section("Needs you", needs.map((b) => `${name(b)}: ${oneLine(b.waitingFor ?? b.reason, 90) || b.word}`));
+    section("Stuck or stopped", blocked.map((b) => `${name(b)}: ${b.stopped ? "stopped mid-task" : b.status === "failed" ? "its last turn failed" : "may be stuck"}`));
+    section("Working", working.map((b) => `${name(b)}: ${b.checklist && b.checklist.done < b.checklist.total ? `step ${b.checklist.done + 1} of ${b.checklist.total}` : oneLine(b.now ?? null, 60) ?? "working"}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}`));
+    section("Check before you trust it", [
+      ...failing.map((b) => `${name(b)}: tests failing after its last change`),
+      ...unproven.map((b) => `${name(b)}: finished, but no tests ran after its changes`),
+      ...risky.map((b) => `${name(b)}: ${b.risks![0]}`),
+    ]);
+    section("Finished turns today", finished.slice(0, 8).map((f) => `${folderLabel(f.cwd)}: ${f.n} turn${f.n === 1 ? "" : "s"}`));
+    const next = needs[0] ? `Go to ${name(needs[0])} (bp go)` : failing[0] ? `Ask ${name(failing[0])} to fix the failing tests` : blocked[0] ? `Check ${name(blocked[0])} (bp go ${name(blocked[0])})` : unproven[0] ? `Ask ${name(unproven[0])} to run the tests` : w.sessions.find((b) => (b.contextPct ?? 0) >= 70) ? `Start a fresh chat in ${name(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!)} (it's ${Math.round(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!.contextPct!)}% full)` : null;
+    out.push("", next ? `Next: ${next}` : w.sessions.length ? "Nothing needs you right now." : "No Claude sessions today yet.");
+    console.log(out.join("\n"));
+    return;
+  }
   if (cmd === "jump") {
     // For the menu-bar widget and notifications: bring a session's Terminal/iTerm tab (or tmux pane) forward.
     // Exit 3 = its tab wasn't found (the caller can open a Terminal in that folder instead).
@@ -414,13 +459,18 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
       console.log(engine.brief(st));
       break;
     case "status":
-      console.log(`${st.facts?.name}: stage ${st.out.stage.stage} (${st.out.stage.confidence}), ${st.out.health.label}`);
-      console.log(`Progress: ${st.out.progress.label}`);
+      console.log(`${st.facts?.name}: ${st.out.health.label}`);
+      if (st.out.progress.total > 0) console.log(`Progress: ${st.out.progress.label}`);
       for (const i of st.out.issues.slice(0, 10)) console.log(`  [${i.severity}] ${i.title}`);
       if (st.out.next) console.log(`Next: ${st.out.next.title}\n  ${st.out.next.why}`);
       break;
     case "sessions":
-      for (const s of st.out.sessions) console.log(`${s.id.slice(0, 8)}  ${s.displayStatus.padEnd(17)} ${new Date(s.lastEventAt).toLocaleTimeString()}  ${s.currentTask ?? ""}`);
+      for (const s of st.out.sessions) {
+        const when = new Date(s.lastEventAt);
+        const day = when.toDateString() === new Date().toDateString() ? "today" : when.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+        const task = (s.currentTask ?? "").replace(/\s+/g, " ");
+        console.log(`${(STATUS_PLAIN[s.displayStatus] ?? s.displayStatus).padEnd(16)} ${day} ${when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).padEnd(8)}  ${task.length > 90 ? `${task.slice(0, 89)}…` : task}  ${"\x1b[2m"}(${s.id.slice(0, 8)})${"\x1b[0m"}`.replace(process.env.NO_COLOR ? /\x1b\[[0-9;]*m/g : /$^/, ""));
+      }
       if (!st.out.sessions.length) console.log(st.hooks.installed ? "No sessions observed for this folder yet." : "Hooks not installed: run `buildpilot hooks install`.");
       break;
     case "handoff":

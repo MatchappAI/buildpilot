@@ -499,6 +499,7 @@ async function act(el: HTMLElement): Promise<void> {
       if (t === "fixDoubleHooks") return void call("fixDoubleHooks");
       if (t === "resumeBuild") return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
       if (t === "pause") { await call("openBuild", { cwd: el.dataset.cwd }); return flash("Press Esc in that terminal to pause Claude"); }
+      if (t === "goTo") return void call("openBuild", { cwd: el.dataset.cwd });
       if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
       if (t === "newBuild") return void call("newBuild");
       if (t === "planMode") {

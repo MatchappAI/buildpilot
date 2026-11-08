@@ -175,3 +175,12 @@ describe("trust: redaction covers common command-line secrets", () => {
     expect(redact("ls -p src")).toBe("ls -p src");
   });
 });
+
+describe("trust: a session keeps the folder it started in", () => {
+  it("cd into a subfolder or another repo doesn't rename it", async () => {
+    const { store, ing } = await ingestor();
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", cwd: "/p/app", hook_event_name: "SessionStart", source: "startup" }), 1000);
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", cwd: "/p/app/src/deep", hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: "x" }), 2000);
+    expect(session(store).cwd).toBe("/p/app");
+  });
+});

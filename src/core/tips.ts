@@ -6,7 +6,7 @@ import type { WidgetSession } from "./glance";
  * "Tips for right now": current Claude Code best practices, shown only when the data says they apply.
  * Deterministic. Each tip carries the observation that triggered it (never a generic lecture).
  */
-export type TipAction = "startFresh" | "checkpoint" | "newBuild" | "planMode" | "setupUndo" | "pause" | "resumeBuild" | "fixDoubleHooks" | null;
+export type TipAction = "startFresh" | "checkpoint" | "newBuild" | "planMode" | "setupUndo" | "pause" | "goTo" | "resumeBuild" | "fixDoubleHooks" | null;
 export interface Tip { key: string; text: string; why: string; action: TipAction; actionLabel?: string; cwd?: string; id?: string }
 
 export interface TipInput {
@@ -60,6 +60,8 @@ export function tips(i: TipInput, max = 3): Tip[] {
   for (const b of i.builds as TokenBuild[]) {
     if (b.compactedAt && i.now - b.compactedAt < 30 * 60_000) out.push({ key: `compact:${b.id}`, text: `${b.name ?? b.folder} just compacted its memory, so it may have forgotten your rules and decisions. Start a fresh chat with a summary.`, why: "Compaction summarizes the chat to free space; details get lost.", action: "startFresh", actionLabel: "Start fresh chat", cwd: b.cwd });
     if ((b.errors1h ?? 0) >= 3) out.push({ key: `errors:${b.id}`, text: `${b.name ?? b.folder} hit ${b.errors1h} errors in the last hour. Check them before it burns more of your limit.`, why: (b.lastErrors ?? [])[0] ?? "", action: null });
+    if ((b.risks ?? []).length) out.push({ key: `risk:${b.id}`, text: `${b.name ?? b.folder}: ${b.risks![0]}.`, why: "BuildPilot saw this in its recent steps. It may be fine; it's worth a look before you build on it.", action: "goTo", actionLabel: "Go to its tab", cwd: b.cwd });
+    if (b.turn?.done && b.turn.proof === "unverified" && b.turn.files >= 2) out.push({ key: `unproven:${b.id}`, text: `${b.name ?? b.folder} finished changing ${b.turn.files} files but ran no tests afterwards. "Done" isn't proof: ask it to run the tests.`, why: "No test command ran after its last edit.", action: null });
     if (b.stopped) out.push({ key: `stopped:${b.id}`, text: `${b.name ?? b.folder} stopped in the middle of a task.`, why: "Its last request never finished.", action: "resumeBuild", actionLabel: "Resume", cwd: b.cwd, id: b.id });
     const t = b.tokens;
     if (t?.top?.[0] && t.top[0].tokens >= 15_000 && /^(Read|Bash|Grep|Glob|WebFetch)/.test(t.top[0].label)) out.push({ key: `hog:${b.id}`, text: `In ${b.name ?? b.folder}, "${t.top[0].label}" pulled about ${k(t.top[0].tokens)} tokens into the chat. Ask Claude to read only the part it needs, or ignore that file.`, why: "Big tool output stays in the chat and is re-sent on every message.", action: null });
@@ -70,7 +72,7 @@ export function tips(i: TipInput, max = 3): Tip[] {
   else if ((i.claudeMdTokens ?? 0) >= 8000) out.push({ key: "claudemd", text: `Your CLAUDE.md is about ${k(i.claudeMdTokens!)} tokens and is sent with every message. Trim it to the rules that matter.`, why: "Shorter project rules = more room for real work.", action: null });
   // (Weekly pace is shown in the limits card, so no duplicate tip.)
   // Most urgent first; one tip per kind.
-  const ORDER = ["limit", "stopped", "errors", "compact", "memory", "stuck", "overlap", "hog", "week", "weekpace", "baseline", "subagents", "claudemd", "nogit", "unsaved"];
+  const ORDER = ["limit", "risk", "stopped", "errors", "unproven", "compact", "memory", "stuck", "overlap", "hog", "week", "weekpace", "baseline", "subagents", "claudemd", "nogit", "unsaved"];
   const rank = (t: Tip) => { const i2 = ORDER.indexOf(t.key.split(":")[0]!); return i2 < 0 ? 99 : i2; };
   const seenKind = new Set<string>();
   return out.sort((a, b) => rank(a) - rank(b)).filter((t) => { const kk = t.key.split(":")[0]!; if (seenKind.has(kk)) return false; seenKind.add(kk); return true; }).slice(0, max);

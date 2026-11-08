@@ -272,7 +272,9 @@ export class Ingestor {
         sets.push("status = ?", "status_reason = ?");
         params.push(ns.status, ns.reason);
       }
-      if (cwd) {
+      // A session belongs to the folder it was started in (that's where its terminal is), even if Claude later
+      // cd's into a subfolder or another repo. Only a new start (resume/clear) moves it.
+      if (cwd && p.hook_event_name === "SessionStart") {
         sets.push("cwd = ?", "project_id = COALESCE(?, project_id)");
         params.push(cwd, this.resolveProject(cwd));
       }

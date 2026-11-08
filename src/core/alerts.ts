@@ -58,6 +58,7 @@ export function alertsFor(p: PageData, mem: AlertMemory, now: number): Alert[] {
     if (b.compactedAt && now - b.compactedAt < 10 * 60_000) cand.push({ key: `compact:${b.id}:${b.compactedAt}`, title: `${who} compacted its memory`, body: "It may have forgotten your rules. Consider a fresh chat with a summary." });
     // "Your turn": a long turn (3+ min) just finished, so you're not left waiting on a build that's done.
     if (b.finishedAt && b.turnMs && b.turnMs >= 3 * 60_000 && now - b.finishedAt < 3 * 60_000) cand.push({ key: `fin:${b.id}:${b.finishedAt}`, title: `${who} finished`, body: `Done after ${Math.round(b.turnMs / 60_000)} min. Your turn.` });
+    for (const r of b.risks ?? []) cand.push({ key: `risk:${b.id}:${r.slice(0, 60)}`, title: `${who}: worth a look`, body: r });
     if (b.stopped) cand.push({ key: `stop:${b.id}:${b.lastEventAt}`, title: `${who} stopped mid-task`, body: "Its last request never finished. Resume it from BuildPilot." });
   }
   const L = p.limits;
