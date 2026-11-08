@@ -1,7 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { Engine, UiState } from "./engine";
-import { widgetData, WidgetSession } from "./glance";
+import { folderLabel, widgetData, WidgetSession } from "./glance";
+import { rowToEvent, rowToSession } from "./ingest";
+import { turnSummary } from "./activity";
 import { LiveStatus, pluginConnected, readLiveStatus } from "./hooks";
 import { FREE_PROMPTS, plan as planOf, PRICE, PRO_POINTS } from "./license";
 import { Tip, tips } from "./tips";
@@ -40,6 +42,8 @@ export interface WeekDay { day: string; pct: number }
 export interface PageData {
   connected: boolean;
   builds: PageBuild[];
+  /** Sessions that ended earlier today (not shown as builds), with what their last request proved. */
+  earlier?: { id: string; folder: string; cwd: string; task: string | null; endedAt: number; proof: "verified" | "failing" | "unverified" | null; files: number }[];
   needs: number;
   working: number;
   billing: Billing;
@@ -53,6 +57,17 @@ export interface PageData {
 }
 
 const DAY = 86_400_000;
+
+/** Sessions that closed today and aren't in the live list, newest first (max 8). Observed only. */
+function earlierToday(engine: Engine, now: number, live: Set<string>): NonNullable<PageData["earlier"]> {
+  const midnight = new Date(now).setHours(0, 0, 0, 0);
+  const rows = engine.store.all<Record<string, unknown>>("SELECT * FROM sessions WHERE ended_at >= ? AND id NOT LIKE 'demo-%' AND status_reason != 'Hidden as idle' ORDER BY ended_at DESC LIMIT 20", [midnight]);
+  return rows.map(rowToSession).filter((s) => !live.has(s.id) && s.eventCount > 2).slice(0, 8).map((s) => {
+    const ev = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND hook_event IN ('UserPromptSubmit','Stop','PostToolUse','PostToolUseFailure') ORDER BY ts, id LIMIT 3000", [s.id]).map(rowToEvent);
+    const t = turnSummary(ev);
+    return { id: s.id, folder: folderLabel(s.cwd), cwd: s.cwd, task: s.currentTask ? s.currentTask.slice(0, 160) : null, endedAt: s.endedAt!, proof: t?.proof ?? null, files: t?.files ?? 0 };
+  });
+}
 
 /**
  * Per-session cost already spent before today (so "today" means today). Stored per day in cost-baselines.json:
@@ -296,6 +311,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     billing,
     limits,
     costTodayUsd,
+    earlier: earlierToday(engine, now, new Set(w.sessions.map((b) => b.id))),
     tips: tipList,
     plan: { pro: p.pro, licensed: p.licensed, trialDaysLeft: p.trialDaysLeft, trialEndsAt: p.trialDaysLeft != null ? now + p.trialDaysLeft * DAY : null, sellable: p.sellable, freeLeft: p.freeLeft, price: PRICE, points: PRO_POINTS },
   };

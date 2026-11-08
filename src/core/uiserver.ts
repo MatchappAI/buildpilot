@@ -247,7 +247,8 @@ export class UiServer {
 
   /** A file a Claude session edited (the "who changed this file" list). */
   private knownEditedFile(file: string): boolean {
-    return !!file && !!this.engine.store.get("SELECT 1 AS x FROM events WHERE file_path = ? LIMIT 1", [path.resolve(file)]);
+    // Only files a session EDITED (Read/Grep events also carry a file path).
+    return !!file && !!this.engine.store.get("SELECT 1 AS x FROM events WHERE file_path = ? AND hook_event = 'PostToolUse' AND tool_name IN ('Edit','Write','MultiEdit','NotebookEdit') LIMIT 1", [path.resolve(file)]);
   }
 
   /** One of the current project's side builds (git worktrees made by + New build). */

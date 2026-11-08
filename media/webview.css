@@ -292,3 +292,7 @@ html, body { overflow-x: hidden; }
   .builds > li:not(.group):not(.quiet) { grid-template-columns: 9px minmax(0, 1fr); }
   .builds > li:not(.group):not(.quiet) > .b-meta, .builds > li:not(.group):not(.quiet) > .b-act { grid-column: 2; justify-content: flex-start; }
 }
+.earlier { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.earlier ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.earlier li { padding: 3px 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.earlier .e-name { font-weight: 600; }

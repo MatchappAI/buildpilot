@@ -18,6 +18,8 @@ export interface RepoFacts {
   lockfiles: string[];
   scripts: Record<string, string>; // package.json scripts (names + clipped commands)
   hasNodeModules: boolean;
+  /** Number of dependencies + devDependencies in package.json (0 = nothing to install). */
+  depCount?: number;
   nodeEngine: string | null;
   nvmrc: string | null;
   fileCount: number;
@@ -176,6 +178,7 @@ export async function analyzeRepo(root: string): Promise<RepoFacts> {
     ["tailwindcss", "Tailwind"], ["@anthropic-ai/sdk", "Anthropic SDK"], ["openai", "OpenAI SDK"], ["googleapis", "Google APIs"], ["vitest", "Vitest"],
     ["jest", "Jest"], ["@playwright/test", "Playwright"], ["mocha", "Mocha"], ["cypress", "Cypress"],
   ];
+  facts.depCount = deps.size;
   for (const [dep, label] of fw) if (deps.has(dep) && !facts.frameworks.includes(label)) facts.frameworks.push(label);
   const pyReq = readText(path.join(root, "requirements.txt")) ?? readText(path.join(root, "pyproject.toml")) ?? "";
   for (const [dep, label] of [["django", "Django"], ["flask", "Flask"], ["fastapi", "FastAPI"], ["pytest", "pytest"], ["streamlit", "Streamlit"]] as const) {

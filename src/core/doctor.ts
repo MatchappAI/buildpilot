@@ -87,7 +87,7 @@ export function runDoctor(f: RepoFacts, nodeVersion: string | null): DoctorCheck
         checks.push({ key: "node-version", label: "Node.js version", status: "ok", severity: "info", detail: `installed ${nodeVersion}; project does not pin a version`, plain: "Node.js is installed.", evidence: [{ kind: "observed", text: `node ${nodeVersion}` }] });
       }
     }
-    checks.push(
+    if (f.depCount !== 0) checks.push(
       f.hasNodeModules
         ? { key: "deps-installed", label: "Dependencies", status: "ok", severity: "info", detail: "node_modules present", plain: "Project libraries are installed.", evidence: [{ kind: "observed", text: "node_modules exists" }] }
         : { key: "deps-installed", label: "Dependencies", status: "fail", severity: "high", detail: "node_modules missing", plain: "The libraries this project needs aren't installed yet, so it can't build or run. Run the install command.", evidence: [{ kind: "observed", text: "node_modules does not exist" }] },

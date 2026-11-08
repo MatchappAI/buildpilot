@@ -339,9 +339,18 @@ function buildsSection(): string {
   return `<section class="block" aria-label="Sessions">
     <div class="row-head"><h2 class="status">${summary}</h2><button class="secondary" data-act="newBuild" title="Starts another Claude in a separate copy of this project (a side build), so two sessions can't undo each other's work">+ New side build</button></div>
     ${all.length ? `<ul class="builds">${list}${quiet.length ? `<li class="quiet"><button class="link" data-act="toggleQuiet">${showQuiet ? "Hide" : "Show"} ${quiet.length} quiet session${quiet.length === 1 ? "" : "s"}</button> · <button class="link" data-act="hideIdle">Clear them</button></li>${showQuiet ? quiet.map(buildRow).join("") : ""}` : ""}</ul>` : `<p class="muted">Type <code>claude</code> in a terminal. Sessions show up here as soon as Claude does something.</p>`}
+    ${earlierSection()}
     ${sideSection()}
     ${all.length ? (finderOpen || fileResults != null ? fileFinder() : `<p class="finder-link"><button class="link" data-act="openFinder">Who changed a file?</button></p>`) : ""}
   </section>`;
+}
+
+/** Sessions that finished earlier today, with whether their last change was proven. */
+function earlierSection(): string {
+  const e = P!.earlier ?? [];
+  if (!e.length) return "";
+  const proof = (p: string | null, files: number) => p === "verified" ? `<span class="ok-text">✓ tests passed</span>` : p === "failing" ? `<span class="bad-text">✗ tests failing</span>` : p === "unverified" ? `<span class="warn-text">${files} file${files === 1 ? "" : "s"} changed, not tested</span>` : "";
+  return `<div class="earlier"><h3 class="group-h">Earlier today</h3><ul>${e.map((x) => `<li><span class="e-name">${esc(x.folder)}</span> <span class="muted small">${new Date(x.endedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>${x.task ? ` <span class="muted small" title="${esc(x.task)}">· “${esc(clip(x.task, 60))}”</span>` : ""}${proof(x.proof, x.files) ? ` <span class="small">· ${proof(x.proof, x.files)}</span>` : ""}</li>`).join("")}</ul></div>`;
 }
 
 function sideSection(): string {

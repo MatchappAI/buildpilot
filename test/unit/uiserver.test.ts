@@ -70,4 +70,15 @@ describe("standalone app server", () => {
     expect((await post({ type: "resumeBuild", id: "abcdef12-0000", cwd: other })).flash).toMatch(/Can't resume/);
     expect(await post({ type: "startFresh", cwd: other })).toBeNull();
   });
+
+  it("undo is refused for a file a session only READ, allowed for one it edited", async () => {
+    const post = async (body: unknown) => JSON.parse((await req("/api/msg", { method: "POST", body })).body).result;
+    const root = engine.currentProject!.root;
+    const f = path.join(root, "a.txt");
+    (engine as unknown as { ingestor: { ingestRaw(r: string, ts: number): unknown } }).ingestor.ingestRaw(JSON.stringify({ session_id: "rd1", cwd: root, hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "r1", tool_input: { file_path: f } }), Date.now());
+    expect((await post({ type: "undoFile", path: f })).flash).toMatch(/only puts back files a Claude session changed/);
+    (engine as unknown as { ingestor: { ingestRaw(r: string, ts: number): unknown } }).ingestor.ingestRaw(JSON.stringify({ session_id: "rd1", cwd: root, hook_event_name: "PostToolUse", tool_name: "Edit", tool_use_id: "e1", tool_input: { file_path: f } }), Date.now() + 10);
+    expect((await post({ type: "undoFile", path: f })).flash).toMatch(/Put back the last saved version/);
+    expect((await post({ type: "whoChanged", query: "a.t" })).files.length).toBe(1);
+  });
 });

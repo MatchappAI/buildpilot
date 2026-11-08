@@ -593,7 +593,7 @@ export class Engine extends EventEmitter {
   fileHistory(query: string, limit = 8): { sessionId: string; cwd: string; path: string; lastTs: number; edits: number }[] {
     const q = query.trim();
     if (!q) return [];
-    const like = `%${q.replace(/[%_]/g, (c) => `\\${c}`)}`;
+    const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`; // "add" finds add.js, src/add.ts …
     const rows = this.store.all<{ session_id: string; file_path: string; last: number; n: number; cwd: string }>(
       `SELECT e.session_id, e.file_path, MAX(e.ts) AS last, COUNT(*) AS n, s.cwd FROM events e JOIN sessions s ON s.id = e.session_id
        WHERE e.file_path LIKE ? ESCAPE '\\' AND e.hook_event = 'PostToolUse' AND (e.summary LIKE '✓ Edit %' OR e.summary LIKE '✓ Write %')

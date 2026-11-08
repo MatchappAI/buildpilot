@@ -184,3 +184,14 @@ describe("trust: a session keeps the folder it started in", () => {
     expect(session(store).cwd).toBe("/p/app");
   });
 });
+
+import { claimAlert } from "../../src/core/alerts";
+describe("trust: one notification per moment across apps", () => {
+  it("the first app to claim an alert shows it; window/VS Code/widget keys for the same moment collide", () => {
+    const home = tmpDir();
+    expect(claimAlert(home, "need:s1:1000")).toBe(true);
+    expect(claimAlert(home, "need:s1:1000")).toBe(false);
+    expect(claimAlert(home, "approve:s1:1000")).toBe(false); // engine's key for the same approval
+    expect(claimAlert(home, "need:s1:2000")).toBe(true); // a new moment
+  });
+});

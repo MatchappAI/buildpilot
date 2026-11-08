@@ -199,7 +199,7 @@ async function main(): Promise<void> {
     const sub = rest[0] ?? "status";
     if (sub === "install") {
       const r = installStatusline(file);
-      console.log(json ? JSON.stringify(r) : r.changed ? `Exact context % on.${r.chained ? " Your existing status line keeps showing." : ""} New or resumed Claude Code sessions will report it.` : "Already on.");
+      console.log(json ? JSON.stringify(r) : r.changed ? `Chat % full and plan limits on.${r.chained ? " Your own status line keeps showing." : ""} New or resumed Claude Code sessions will report them.` : "Already on.");
     } else if (sub === "uninstall") {
       const r = uninstallStatusline(file);
       console.log(json ? JSON.stringify(r) : r.changed ? "Status line restored to what you had before." : "Wasn't on. Nothing changed.");
@@ -280,7 +280,7 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     const name = (b: (typeof w.sessions)[number]) => b.name ?? b.folder;
     const out: string[] = [];
     const projects = new Set([...w.sessions.map((b) => b.folder), ...finished.map((f) => folderLabel(f.cwd))]);
-    out.push(`Today · ${projects.size} project${projects.size === 1 ? "" : "s"} · ${w.sessions.length} open session${w.sessions.length === 1 ? "" : "s"}${w.fiveHourPct != null ? ` · 5-hour limit ${Math.round(w.fiveHourPct)}%` : ""}${w.sevenDayPct != null ? ` · week ${Math.round(w.sevenDayPct)}%` : ""}`);
+    out.push(`Today · ${projects.size} project${projects.size === 1 ? "" : "s"} · ${w.sessions.length ? `${w.sessions.length} open session${w.sessions.length === 1 ? "" : "s"}` : "no open sessions"}${w.fiveHourPct != null ? ` · 5-hour limit ${Math.round(w.fiveHourPct)}%` : ""}${w.sevenDayPct != null ? ` · week ${Math.round(w.sevenDayPct)}%` : ""}`);
     const needs = w.sessions.filter((b) => b.needsYou);
     const blocked = w.sessions.filter((b) => !b.needsYou && (b.stopped || b.status === "failed" || b.maybeStuck));
     const working = w.sessions.filter((b) => b.status === "running" && !b.maybeStuck);
@@ -298,7 +298,7 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     ]);
     section("Finished turns today", finished.slice(0, 8).map((f) => `${folderLabel(f.cwd)}: ${f.n} turn${f.n === 1 ? "" : "s"}`));
     const next = needs[0] ? `Go to ${name(needs[0])} (bp go)` : failing[0] ? `Ask ${name(failing[0])} to fix the failing tests` : blocked[0] ? `Check ${name(blocked[0])} (bp go ${name(blocked[0])})` : unproven[0] ? `Ask ${name(unproven[0])} to run the tests` : w.sessions.find((b) => (b.contextPct ?? 0) >= 70) ? `Start a fresh chat in ${name(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!)} (it's ${Math.round(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!.contextPct!)}% full)` : null;
-    out.push("", next ? `Next: ${next}` : w.sessions.length ? "Nothing needs you right now." : "No Claude sessions today yet.");
+    out.push("", next ? `Next: ${next}` : w.sessions.length || finished.length ? "Nothing needs you right now." : "No Claude sessions today yet.");
     console.log(out.join("\n"));
     return;
   }
