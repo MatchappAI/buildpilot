@@ -71,7 +71,7 @@ async function main(): Promise<void> {
       console.log(json ? JSON.stringify(r) : r.removed.length ? "BuildPilot Bar removed (moved to the Trash)." : "BuildPilot Bar wasn't installed.");
     } else if (sub === "status") {
       const st = widgetStatus();
-      console.log(json ? JSON.stringify(st) : !st.supported ? "The menu-bar widget is macOS only." : st.installed ? `Installed (${st.appPath}), ${st.running ? "running" : "not running"}${st.startAtLogin ? ", starts at login" : ""}.` : "Not installed. Install: VS Code → BuildPilot → Connect → Menu-bar widget.");
+      console.log(json ? JSON.stringify(st) : !st.supported ? "The menu-bar widget is macOS only." : st.installed ? `Installed (${st.appPath}), ${st.running ? "running" : "not running"}${st.startAtLogin ? ", starts at login" : ""}.` : "Not installed. Install: bp bar install");
     } else return usage(`Unknown option "${sub}". Use: bp bar status | install | uninstall`);
     return;
   }
@@ -222,11 +222,13 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === "help" || cmd === "--help") {
-    console.log(`BuildPilot: mission control for Claude Code
+    console.log(`BuildPilot: your Claude Code companion
 
 Everyday
   bp ui                     open BuildPilot in its own window
-  bp limits                 your builds, chat % full, plan limits + forecast, tips
+  bp today                  your day: needs you, stuck, check before you trust it, next step
+  bp doctor [--fix]         is BuildPilot set up right? (--fix repairs the safe things)
+  bp limits                 your sessions, chat % full, plan limits + forecast, tips
   bp new "<name>"           start another build in its own copy of this project (--no-env: don't copy .env files)
   bp review · bp merge <name>  see what a side build changed · bring it into your project
   bp builds · bp done <name>  list extra builds · remove a finished one (branch kept)

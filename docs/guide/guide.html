@@ -62,11 +62,11 @@
   <div>
     <div class="brand"><img src="../../media/icon.png" alt=""><b>BUILDPILOT</b></div>
     <div style="height: 1.1in"></div>
-    <div class="eyebrow">Start here · version 0.5</div>
-    <h1>One calm page for<br>building with Claude Code</h1>
-    <p class="lede">See every Claude build, what needs you, how full each chat is, your plan limits and when you'll run out, and tips that fix things in one click. Everything stays on your computer.</p>
+    <div class="eyebrow">Start here · version 0.12</div>
+    <h1>Your Claude Code<br>companion</h1>
+    <p class="lede">Know what Claude is doing. Know when it needs you. Know what to do next. Every session across your projects, what's proven vs just "finished", risky steps worth a look, how full each chat is, and your plan limits. Everything stays on your computer.</p>
     <div class="three">
-      <div><div class="n">1 · Builds</div><div class="q">What needs me?</div><div class="a">Every Claude chat across your projects, the one waiting for you first.</div></div>
+      <div><div class="n">1 · Sessions</div><div class="q">What needs me?</div><div class="a">Every Claude session across your projects, the one waiting for you first, and whether its work is proven.</div></div>
       <div><div class="n">2 · Limits</div><div class="q">Will I run out?</div><div class="a">5-hour and weekly use, when it resets, and when you'll run out at your pace.</div></div>
       <div><div class="n">3 · Next</div><div class="q">What should I do?</div><div class="a">Tips with one button, and a box that turns plain words into an expert prompt.</div></div>
     </div>
@@ -78,7 +78,7 @@
 <div class="page">
   <div class="eyebrow">Your setup today</div>
   <h2>It's installed and connected on this Mac</h2>
-  <div class="callout ok"><b>Ready to use</b>BuildPilot 0.5.0 is connected to Claude Code on this Mac, with your owner license (Pro, no limits). Double-click <b>BuildPilot</b> on your Desktop.</div>
+  <div class="callout ok"><b>Ready to use</b>BuildPilot 0.12.0 is connected to Claude Code on this Mac, with your owner license (Pro, no limits). Double-click <b>BuildPilot</b> on your Desktop.</div>
   <ol class="steps">
     <li><b>Double-click BuildPilot on your Desktop.</b> BuildPilot opens in its own window for the project you were last building. You don't need VS Code. You can also type <code>bp ui</code> in a terminal, or <code>/bp-ui</code> in Claude Code.</li>
     <li>Type <code>claude</code> in the terminal. Your build appears on the page as soon as Claude does something.</li>
@@ -91,7 +91,7 @@
   <h3>Inside Claude Code (any editor, or none)</h3>
   <pre>/plugin marketplace add MatchappAI/buildpilot
 /plugin install buildpilot@buildpilot</pre>
-  <p class="small">Then <code>/bp</code> shows your builds, limits and tips. Also <code>/bp-connect</code>, <code>/bp-new</code>, <code>/bp-prompt</code> and <code>/bp-license</code>.</p>
+  <p class="small">Then <code>/bp</code> shows your sessions, limits and tips; <code>/bp-today</code> your day; <code>/bp-doctor</code> checks the setup. Also <code>/bp-connect</code>, <code>/bp-new</code>, <code>/bp-prompt</code> and <code>/bp-license</code>.</p>
   <h3>What Connect changes</h3>
   <table style="font-size: 9pt">
     <tr><th>Where</th><th>What</th><th>Undo</th></tr>
@@ -102,19 +102,22 @@
 
 <!-- THE PAGE -->
 <div class="page">
-  <div class="eyebrow">The page</div>
+  <div class="eyebrow">The window</div>
   <h2>Everything on one screen</h2>
+  <img class="shot" src="img/v12-window.png" alt="BuildPilot window with three sessions, plan limits and tips" style="max-height:3.6in">
   <div class="split">
-    <div><img class="shot" src="img/v05-3-parallel-needs-you.png" alt="BuildPilot page with three builds"><div class="cap">Three builds, one waiting for you</div></div>
     <div>
-      <h3>Builds</h3>
-      <p>Each Claude chat you have running, the one that needs you first. <b>Review in terminal</b> opens its terminal. Nothing is approved until you approve it there. <b>Open terminal</b> jumps to any build.</p>
-      <p><b>chat 46% full</b> means how much of this chat Claude can still keep in mind. Near 100% it starts forgetting details, so start a fresh chat.</p>
-      <h3>What each build is doing</h3>
-      <p>Each row says what Claude is doing right now ("Running npm test · 4 min") and shows a red chip if it hit errors. Click the chip for the error lines and <b>Copy for Claude</b>. Click a build's name to see its recent steps and <b>where the tokens went</b>. Name a build with the pencil. Codex sessions show up too.</p>
-      <h3>+ New build</h3>
-      <p>Starts another Claude in its own copy of the project, so two builds can't undo each other's work. It copies your <code>.env</code> files and installs packages. Two builds use your limit about twice as fast. When it's done it shows under <b>Side builds</b>: <b>Review</b> shows each changed file before ↔ after, and <b>Merge</b> brings the work into your main project. If both builds changed the same lines, nothing changes and you get a ready "fix it" prompt for Claude. Then <b>Remove</b> the folder (its branch is kept).</p>
-      <p class="small">No Git yet? BuildPilot offers <b>Turn on undo</b> first, which sets up Git and a first save point in one click.</p>
+      <h3>Sessions</h3>
+      <p>Every Claude Code session, the one that needs you first: what it's doing now ("Running tests · 4 min"), what you asked, and <b>Go to tab</b> to jump to its terminal. <b>chat 46% full</b> turns amber at 70% (with <b>Start fresh</b>) and red at 90%.</p>
+      <h3>Finished vs verified</h3>
+      <p>"Claude finished" isn't proof. Each request shows steps, files changed and <b>✓ tests passed after the last change</b>, <b>✗ tests failing</b> or <b>not tested yet</b>. When Claude keeps a checklist you see <b>Step 3 of 7</b>. <b>Earlier today</b> lists what finished.</p>
+    </div>
+    <div>
+      <h3>Worth a look</h3>
+      <p>An amber line when BuildPilot saw something risky: a force-push, <code>git reset --hard</code>, a deleted folder, an edited <code>.env</code>, or tests that were failing, got edited, then passed.</p>
+      <h3>+ New side build</h3>
+      <p>Another Claude in its own copy of the project, so sessions can't undo each other's work. <b>Review</b> shows each changed file; <b>Merge</b> brings it in (on a conflict nothing changes and you get a fix prompt).</p>
+      <p class="small">Keys: <b>j / k</b> move between sessions, <b>g</b> goes to its tab, <b>/</b> jumps to the prompt box.</p>
     </div>
   </div>
 </div>
@@ -181,7 +184,10 @@
 <div class="page" style="break-after: auto">
   <div class="eyebrow">Terminal</div>
   <h2>The same in your terminal</h2>
-  <pre>bp limits                  builds, chat % full, plan limits + forecast, tips
+  <pre>bp ui                      the BuildPilot window
+bp today                   your day: needs you, stuck, check before you trust it, next step
+bp doctor [--fix]          is BuildPilot set up right? (--fix repairs the safe things)
+bp limits                  sessions, chat % full, plan limits + forecast, tips
 bp new "checkout"          another build in its own copy (opens a tmux window in tmux)
 bp review · bp merge NAME  see what a side build changed · bring it in
 bp go [NAME]               jump to the build that needs you (Terminal/iTerm/tmux)
