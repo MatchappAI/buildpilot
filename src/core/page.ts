@@ -54,6 +54,36 @@ export interface PageData {
 
 const DAY = 86_400_000;
 
+/**
+ * Per-session cost already spent before today (so "today" means today). Stored per day in cost-baselines.json:
+ * a session that started before midnight gets the cost we first saw today as its baseline; one that started today gets 0.
+ */
+export function costBaselines(home: string, midnight: number, seen: { id: string; cost: number; startedToday: boolean }[]): Record<string, number> {
+  const f = path.join(home, "cost-baselines.json");
+  let d: { day: number; base: Record<string, number> } = { day: midnight, base: {} };
+  try {
+    const j = JSON.parse(fs.readFileSync(f, "utf8"));
+    if (j && j.day === midnight && j.base && typeof j.base === "object") d = j;
+  } catch {
+    /* first run today */
+  }
+  let changed = false;
+  for (const s of seen) {
+    if (d.base[s.id] === undefined) {
+      d.base[s.id] = s.startedToday ? 0 : s.cost;
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      fs.writeFileSync(f, JSON.stringify(d), { mode: 0o600 });
+    } catch {
+      /* read-only home: today's numbers fall back to totals next time */
+    }
+  }
+  return d.base;
+}
+
 /** Recent status-line snapshots across every folder (limits are account-wide). */
 export function recentStatuses(home: string, now: number, maxAgeMs = 6 * 3600_000): LiveStatus[] {
   const dir = path.join(home, "status");
@@ -223,10 +253,15 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
   const limits: Limits = { week: wk.week, weekFullAt: wk.weekFullAt, codex: cxLim, fiveHourPct: five.pct, fiveHourResetsAt: five.resetsAt, sevenDayPct: seven.pct, sevenDayResetsAt: seven.resetsAt, fullAt: forecast, forecastLocked: false, accuracy: accuracyText(samples.history), basisMin: samples.samples.length >= 2 ? Math.round((samples.samples[samples.samples.length - 1]![0] - samples.samples[0]![0]) / 60_000) : null };
   const midnight = new Date(now).setHours(0, 0, 0, 0);
   // Every build that ran today (not just the last few hours), so shares add up to the whole day.
-  const today = recentStatuses(engine.home, now, Math.max(1, now - midnight)).filter((s) => s.costUsd != null);
-  const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd!, 0) : null;
+  const todayRaw = recentStatuses(engine.home, now, Math.max(1, now - midnight)).filter((s) => s.costUsd != null);
+  // Claude Code reports each session's cost since it started. Sessions that began before midnight only count what
+  // they added today (measured from the first time we saw them today).
+  const startedAt = new Map(engine.store.all<{ id: string; started_at: number }>("SELECT id, started_at FROM sessions WHERE last_event_at > ?", [midnight]).map((r) => [r.id, Number(r.started_at)]));
+  const base = costBaselines(engine.home, midnight, todayRaw.map((s) => ({ id: s.sessionId, cost: s.costUsd!, startedToday: (startedAt.get(s.sessionId) ?? now) >= midnight })));
+  const today = todayRaw.map((s) => ({ ...s, costUsd: Math.max(0, s.costUsd! - (base[s.sessionId] ?? 0)) }));
+  const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd, 0) : null;
   // Share of today's usage per build, from Claude Code's own per-session estimate (a proxy for limit use).
-  const costById = new Map(today.map((s) => [s.sessionId, s.costUsd!]));
+  const costById = new Map(today.map((s) => [s.sessionId, s.costUsd]));
   const total = [...costById.values()].reduce((a, b) => a + b, 0);
   const tPaths = new Map(engine.store.all<{ id: string; transcript_path: string | null }>("SELECT id, transcript_path FROM sessions WHERE last_event_at > ?", [now - 12 * 3600_000]).map((r) => [r.id, r.transcript_path]));
   const tokensFor = (id: string): BuildTokens | null => {

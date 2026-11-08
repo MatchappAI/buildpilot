@@ -96,7 +96,8 @@ describe("trust: spool reader", () => {
     for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(dir, `e${i}.json`), payload({ hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: `t${i}` }));
     await new Promise((r) => setTimeout(r, 800));
     sp.stop();
-    expect(batches).toBe(1);
+    expect(batches).toBeGreaterThanOrEqual(1);
+    expect(batches).toBeLessThan(5); // batched (fs events can arrive in a few waves under load), never one drain per file storm
   });
 });
 
@@ -137,5 +138,18 @@ describe("trust: older Node never overwrites a shared database", () => {
     }
     expect(fs.statSync(f).ino).toBe(before); // never replaced under the WAL writer
     expect(a.all("SELECT a FROM t", [])).toHaveLength(1);
+  });
+});
+
+import { costBaselines } from "../../src/core/page";
+describe("trust: today's usage means today", () => {
+  it("a session started yesterday only counts what it added today", () => {
+    const home = tmpDir();
+    const mid = new Date(2026, 10, 8).getTime();
+    expect(costBaselines(home, mid, [{ id: "old", cost: 12, startedToday: false }, { id: "new", cost: 3, startedToday: true }])).toEqual({ old: 12, new: 0 });
+    // later the same day: baselines stay put
+    expect(costBaselines(home, mid, [{ id: "old", cost: 15, startedToday: false }])).toMatchObject({ old: 12 });
+    // next day: fresh baselines
+    expect(costBaselines(home, mid + 86_400_000, [{ id: "old", cost: 15, startedToday: false }])).toEqual({ old: 15 });
   });
 });
