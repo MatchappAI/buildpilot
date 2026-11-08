@@ -16,6 +16,14 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, "[REDACTED JWT]"],
   [/(postgres(ql)?|mysql|mongodb(\+srv)?|redis|amqp):\/\/[^:\s/]+:[^@\s]+@/gi, "$1://[REDACTED CREDENTIALS]@"],
   [/(Authorization:\s*(Bearer|Basic)\s+)[^\s"']+/gi, "$1[REDACTED]"],
+  // Any URL with a user:password part (https://user:pass@host, git remotes, etc.)
+  [/\b([a-z][a-z0-9+.-]*):\/\/[^:\s/@]+:[^@\s]+@/gi, "$1://[REDACTED CREDENTIALS]@"],
+  // Header-style keys: x-api-key: ..., api-key: ..., x-auth-token: ...
+  [/\b((x-)?(api|auth|access)[-_]?(key|token)|x-goog-api-key|private-token)(\s*[:=]\s*)["']?[^\s"']{6,}/gi, "$1$5[REDACTED]"],
+  // Command-line passwords: --password foo, --password=foo, --token foo, --api-key foo
+  [/(--(password|passwd|pass|token|secret|api-key|apikey|auth-token)(=|\s+))("[^"]*"|'[^']*'|[^\s"']+)/gi, "$1[REDACTED]"],
+  // mysql/mariadb style -pSecret (no space)
+  [/(\b(mysql|mysqldump|mariadb|mysqladmin)\b[^\n]*?\s-p)([^\s-][^\s]*)/gi, "$1[REDACTED]"],
   // KEY=value style assignments where the key name looks secret
   [
     /\b([A-Z0-9_]*(SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|ACCESS_KEY|CLIENT_SECRET)[A-Z0-9_]*)\s*[=:]\s*["']?[^\s"'`,;]{4,}["']?/gi,

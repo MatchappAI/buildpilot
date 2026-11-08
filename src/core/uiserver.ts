@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
@@ -12,7 +12,7 @@ import { GoalType } from "./types";
 import { shellQuote } from "./prompts";
 import { findBuild } from "./termfind";
 import { setBuildName } from "./glance";
-import { alertsFor, AlertMemory } from "./alerts";
+import { alertsFor, AlertMemory, claimAlert } from "./alerts";
 
 /**
  * BuildPilot as its own app (no VS Code): a private local web server that serves the same one-page UI.
@@ -22,6 +22,12 @@ import { alertsFor, AlertMemory } from "./alerts";
  * - Terminals open in the user's Terminal app (macOS), never by building shell strings from untrusted input:
  *   folders and prompt files are passed as AppleScript arguments and shell-quoted.
  */
+function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
 export interface UiServerOptions { port?: number; token?: string; media: string; idleExitMs?: number }
 
 const MIME: Record<string, string> = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".ttf": "font/ttf" };
@@ -93,10 +99,36 @@ export class UiServer {
     this.token = opts.token ?? randomBytes(16).toString("hex");
   }
 
-  get url(): string {
+  private launchCodes = new Map<string, number>();
+
+  get port(): number | undefined {
     const a = this.server?.address();
-    const port = a && typeof a === "object" ? a.port : this.opts.port;
-    return `http://127.0.0.1:${port}/?t=${this.token}`;
+    return a && typeof a === "object" ? a.port : this.opts.port;
+  }
+
+  /** Address with a one-time launch code (valid 2 minutes, single use). Safe to pass on a command line or keep in history. */
+  get url(): string {
+    return `http://127.0.0.1:${this.port}/?c=${this.issueLaunchCode()}`;
+  }
+
+  issueLaunchCode(): string {
+    const now = Date.now();
+    for (const [c, exp] of this.launchCodes) if (exp < now) this.launchCodes.delete(c);
+    const code = randomBytes(12).toString("hex");
+    this.launchCodes.set(code, now + 2 * 60_000);
+    return code;
+  }
+
+  private get cookieName(): string {
+    return `bp_${this.port}`;
+  }
+
+  /** Header (page scripts, CLI) or the session cookie set after a launch code. The long-lived token never goes in a URL. */
+  private authed(req: http.IncomingMessage): boolean {
+    const h = req.headers["x-bp-token"];
+    if (typeof h === "string" && safeEqual(h, this.token)) return true;
+    const cookie = (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${this.cookieName}=`));
+    return !!cookie && safeEqual(cookie.slice(this.cookieName.length + 1), this.token);
   }
 
   async start(): Promise<void> {
@@ -124,7 +156,7 @@ export class UiServer {
     if (this.uiPrefs().alerts === false || process.platform !== "darwin") return;
     try {
       const pd = pageData(this.engine, this.engine.snapshot());
-      for (const a of alertsFor(pd, this.memory, Date.now())) notify(a.title, a.body);
+      for (const a of alertsFor(pd, this.memory, Date.now())) if (claimAlert(this.engine.home, a.key)) notify(a.title, a.body);
     } catch {
       /* never let alerts break the window */
     }
@@ -175,7 +207,16 @@ export class UiServer {
         if (!fs.existsSync(f)) return this.send(res, 404, "not found", "text/plain");
         return this.send(res, 200, fs.readFileSync(f), MIME[path.extname(f)] ?? "application/octet-stream");
       }
-      if ((url.searchParams.get("t") ?? req.headers["x-bp-token"]) !== this.token) return this.send(res, 401, { error: "missing or wrong token" });
+      const code = url.searchParams.get("c");
+      if (req.method === "GET" && url.pathname === "/" && code) {
+        const exp = this.launchCodes.get(code);
+        this.launchCodes.delete(code); // single use, valid or not
+        if (!exp || exp < Date.now()) return this.send(res, 401, "This BuildPilot link has expired. Run bp ui again.", "text/plain; charset=utf-8");
+        res.writeHead(302, { location: "/", "set-cookie": `${this.cookieName}=${this.token}; HttpOnly; SameSite=Strict; Path=/`, "cache-control": "no-store" });
+        return void res.end();
+      }
+      if (!this.authed(req)) return this.send(res, 401, { error: "missing or wrong token" });
+      if (req.method === "POST" && url.pathname === "/api/launch") return this.send(res, 200, { code: this.issueLaunchCode() });
       this.lastSeen = Date.now();
       if (req.method === "GET" && url.pathname === "/") return this.send(res, 200, this.html(), "text/html; charset=utf-8");
       if (req.method === "GET" && url.pathname === "/api/state") return this.send(res, 200, this.statePayload());
@@ -190,6 +231,30 @@ export class UiServer {
     } catch (e) {
       return this.send(res, 500, { error: (e as Error).message });
     }
+  }
+
+  // ---- the page is trusted to ask, not to name arbitrary paths: every folder/file must be one BuildPilot already knows ----
+
+  /** A folder some Claude session worked in (optionally that exact session), or the current project. */
+  private knownFolder(dir: string, sessionId?: string): boolean {
+    if (!dir) return false;
+    const abs = path.resolve(dir);
+    if (this.engine.currentProject && path.resolve(this.engine.currentProject.root) === abs) return true;
+    return sessionId
+      ? !!this.engine.store.get("SELECT 1 AS x FROM sessions WHERE id = ? AND cwd = ?", [sessionId, abs])
+      : !!this.engine.store.get("SELECT 1 AS x FROM sessions WHERE cwd = ? LIMIT 1", [abs]);
+  }
+
+  /** A file a Claude session edited (the "who changed this file" list). */
+  private knownEditedFile(file: string): boolean {
+    return !!file && !!this.engine.store.get("SELECT 1 AS x FROM events WHERE file_path = ? LIMIT 1", [path.resolve(file)]);
+  }
+
+  /** One of the current project's side builds (git worktrees made by + New build). */
+  private async knownBuild(dir: string): Promise<boolean> {
+    if (!dir) return false;
+    const abs = path.resolve(dir);
+    return (await this.engine.extraBuilds()).some((b) => path.resolve(b.dir) === abs);
   }
 
   /** The same messages the VS Code extension handles, implemented without VS Code. Confirmation happens in the page. */
@@ -218,6 +283,7 @@ export class UiServer {
         return { flash: "Claude is starting in Terminal" };
       }
       case "openBuild": {
+        if (!this.knownFolder(str("cwd"))) return { flash: "BuildPilot doesn't know that folder" };
         const r = await findBuild(str("cwd"));
         return r.found ? { flash: `Switched to it in ${r.how}` } : { show: `${r.how}\n\nSwitch to that window to see what Claude is asking.` };
       }
@@ -234,6 +300,7 @@ export class UiServer {
       }
       case "undoFile": {
         try {
+          if (!this.knownEditedFile(str("path"))) return { flash: "BuildPilot only puts back files a Claude session changed" };
           const r = await eng.undoFile(str("path"));
           return { flash: `Put back the last saved version. (Safety save point ${r.safety.slice(0, 8)} has the version you just replaced.)` };
         } catch (e) {
@@ -244,13 +311,13 @@ export class UiServer {
       case "resumeBuild": {
         const id = str("id");
         const cwd = str("cwd");
-        if (!/^[A-Za-z0-9-]{8,64}$/.test(id) || !fs.existsSync(cwd)) return { flash: "Can't resume that one" };
+        if (!/^[A-Za-z0-9-]{8,64}$/.test(id) || !fs.existsSync(cwd) || !this.knownFolder(cwd, id)) return { flash: "Can't resume that one" };
         await openTerminal(cwd, `claude --resume ${id}`);
         return { flash: "Resuming in Terminal" };
       }
       case "startFresh": {
         const cwd = str("cwd") || root;
-        if (!cwd || !fs.existsSync(cwd)) return null;
+        if (!cwd || !fs.existsSync(cwd) || !this.knownFolder(cwd)) return null;
         await copyText(eng.handoff());
         await openTerminal(cwd, "claude");
         return { flash: "Summary copied. Paste it into the new Claude (Cmd+V)" };
@@ -303,11 +370,13 @@ export class UiServer {
         return { flash: `New build ${path.basename(w.dir)} started in Terminal` };
       }
       case "reviewBuild": {
+        if (!(await this.knownBuild(str("dir")))) return { flash: "That isn't one of this project's side builds" };
         const c = await eng.buildChanges(str("dir"), str("branch"));
         return { show: c.files.length ? `${path.basename(str("dir"))}: ${c.files.length} file${c.files.length === 1 ? "" : "s"}${c.unsaved ? ` (${c.unsaved} not saved yet)` : ""}\n\n${c.files.map((f) => `${f.status === "A" ? "added  " : f.status === "D" ? "deleted" : "changed"}  ${f.path}`).join("\n")}\n\nFull diff: git -C ${shellQuote(str("dir"))} diff ${c.base ?? "HEAD"}` : "No changes yet." };
       }
       case "mergeBuild": {
         const dir = str("dir");
+        if (!(await this.knownBuild(dir))) return { flash: "That isn't one of this project's side builds" };
         const c = await eng.buildChanges(dir, str("branch"));
         if (!c.files.length) return { flash: "Nothing to merge yet" };
         let tests = "";
@@ -330,6 +399,7 @@ export class UiServer {
         return { flash: r.message };
       }
       case "removeBuild": {
+        if (!(await this.knownBuild(str("dir")))) return { flash: "That isn't one of this project's side builds" };
         try { await eng.removeBuild(str("dir")); } catch (e) { return { flash: (e as Error).message }; }
         void this.refreshSide();
         return { flash: "Removed (its branch is kept)" };

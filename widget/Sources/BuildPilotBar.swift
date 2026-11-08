@@ -1,6 +1,6 @@
 // BuildPilot Bar: a tiny macOS menu-bar companion for BuildPilot.
 // It never talks to the network and never changes anything: it runs BuildPilot's own CLI (`cli.js widget`),
-// which reads the local database in ~/.buildpilot, and shows the result. Clicking a session opens it in VS Code.
+// which reads the local database in ~/.buildpilot, and shows the result. Clicking a session brings its terminal tab forward.
 
 import AppKit
 import SwiftUI
@@ -149,8 +149,8 @@ final class Model: ObservableObject {
     }
 
     static func runWidget() -> Result<WidgetData, RunError> {
-        guard let r = runner() else { return .failure(RunError(message: "Node.js or VS Code wasn't found. Install BuildPilot from VS Code first.")) }
-        guard FileManager.default.fileExists(atPath: r.cli) else { return .failure(RunError(message: "BuildPilot's engine isn't installed yet. In VS Code: BuildPilot → Connect → Menu-bar widget.")) }
+        guard let r = runner() else { return .failure(RunError(message: "BuildPilot needs Node.js 22.13 or newer. Install it from nodejs.org, then reopen BuildPilot Bar.")) }
+        guard FileManager.default.fileExists(atPath: r.cli) else { return .failure(RunError(message: "BuildPilot isn't set up yet. In Claude Code, run /buildpilot:bp-connect (or bp bar install in a terminal).")) }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: r.exe)
         p.arguments = [r.cli, "widget"]
@@ -172,7 +172,7 @@ final class Model: ObservableObject {
         // The CLI may print warnings first; the JSON is the last line.
         let line = String(data: data, encoding: .utf8)?.split(separator: "\n").last.map(String.init) ?? ""
         guard let json = line.data(using: .utf8), let d = try? JSONDecoder().decode(WidgetData.self, from: json) else {
-            return .failure(RunError(message: "Unexpected answer from BuildPilot's engine. Update BuildPilot in VS Code."))
+            return .failure(RunError(message: "Unexpected answer from BuildPilot. Update it (claude plugin update buildpilot), then reopen BuildPilot Bar."))
         }
         return .success(d)
     }
@@ -185,6 +185,8 @@ final class Model: ObservableObject {
         if firstLoad { firstLoad = false; return }
         guard notify else { return }
         for s in d.sessions where fresh.contains(s.id) {
+            // Same claim file the BuildPilot window and VS Code use, so one moment = one notification.
+            guard claimAlert("need:\(s.id):\(Int(s.lastEventAt))") else { continue }
             let c = UNMutableNotificationContent()
             c.title = "Claude \(s.word) in \(s.folder)"
             c.body = s.reason
@@ -195,13 +197,40 @@ final class Model: ObservableObject {
     }
 }
 
+/// Exclusive-create a claim file in ~/.buildpilot/alerts (see src/core/alerts.ts). false = another BuildPilot app already showed it.
+func claimAlert(_ key: String) -> Bool {
+    let home = ProcessInfo.processInfo.environment["BUILDPILOT_HOME"] ?? (NSHomeDirectory() + "/.buildpilot")
+    let dir = home + "/alerts"
+    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    let safe = String(key.replacingOccurrences(of: "approve:", with: "need:").map { $0.isLetter || $0.isNumber || "._-".contains($0) ? $0 : "_" }.prefix(150))
+    let fd = open(dir + "/" + safe, O_CREAT | O_EXCL | O_WRONLY, 0o600)
+    if fd >= 0 { close(fd); return true }
+    return errno != EEXIST
+}
+
 // MARK: - Actions
 
 enum Open {
-    static func vscode(_ folder: String?) {
-        var comps = URLComponents(string: "vscode://\(extensionId)/open")!
-        if let folder { comps.queryItems = [URLQueryItem(name: "folder", value: folder)] }
-        if let url = comps.url { NSWorkspace.shared.open(url) }
+    /// Runs BuildPilot's CLI in the background (no window of its own) and hands back the exit code.
+    static func bp(_ args: [String], done: ((Int32) -> Void)? = nil) {
+        guard let r = Model.runner(), FileManager.default.fileExists(atPath: r.cli) else { done?(1); return }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: r.exe)
+        p.arguments = [r.cli] + args
+        p.environment = r.env
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        p.terminationHandler = { pr in DispatchQueue.main.async { done?(pr.terminationStatus) } }
+        do { try p.run() } catch { done?(1) }
+    }
+
+    /// The BuildPilot window (bp ui).
+    static func window() { bp(["ui"]) }
+
+    /// Bring this session's terminal tab forward; if it can't be found, open Terminal in its folder.
+    static func session(_ folder: String?) {
+        guard let folder else { window(); return }
+        bp(["jump", folder]) { code in if code == 3 { terminal(folder) } }
     }
 
     static func terminal(_ folder: String) {
@@ -255,7 +284,7 @@ struct SessionRow: View {
     let s: WidgetSession
     @State private var hover = false
     var body: some View {
-        Button { Open.vscode(s.cwd) } label: {
+        Button { Open.session(s.cwd) } label: {
             HStack(alignment: .top, spacing: 8) {
                 StatusDot(status: s.status).padding(.top, 5)
                 VStack(alignment: .leading, spacing: 2) {
@@ -266,8 +295,8 @@ struct SessionRow: View {
                             .foregroundStyle(s.needsYou ? Color.orange : Color.secondary)
                         Spacer(minLength: 4)
                         if let c = s.contextPct {
-                            Text("context \(Int(c.rounded()))%").font(.system(size: 11)).monospacedDigit()
-                                .foregroundStyle(c >= 80 ? Color.red : Color.secondary)
+                            Text("chat \(Int(c.rounded()))% full").font(.system(size: 11)).monospacedDigit()
+                                .foregroundStyle(c >= 90 ? Color.red : c >= 70 ? Color.orange : Color.secondary)
                         }
                     }
                     if s.needsYou {
@@ -284,14 +313,15 @@ struct SessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
-        .help("Open \(s.folder) in BuildPilot (VS Code)")
+        .help("Go to \(s.folder)'s terminal")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(s.folder), \(s.word). \(s.needsYou ? s.reason : (s.task ?? ""))\(s.contextPct.map { ". Context \(Int($0.rounded())) percent" } ?? ""). \(ago(s.lastEventAt))")
+        .accessibilityLabel("\(s.folder), \(s.word). \(s.needsYou ? s.reason : (s.task ?? ""))\(s.contextPct.map { ". Chat \(Int($0.rounded())) percent full" } ?? ""). \(ago(s.lastEventAt))")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction { Open.vscode(s.cwd) }
-        .accessibilityHint("Opens this project in BuildPilot in VS Code")
+        .accessibilityAction { Open.session(s.cwd) }
+        .accessibilityHint("Brings this session's terminal tab forward")
         .contextMenu {
-            Button("Open in VS Code") { Open.vscode(s.cwd) }
+            Button("Go to its terminal") { Open.session(s.cwd) }
+            Button("Open BuildPilot") { Open.window() }
             Button("Open in Terminal") { Open.terminal(s.cwd) }
             Button("Copy folder path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(s.cwd, forType: .string) }
         }
@@ -379,8 +409,8 @@ struct Panel: View {
 
             Divider()
             HStack(spacing: 10) {
-                Button("Open BuildPilot") { Open.vscode(nil) }.keyboardShortcut("o")
-                    .accessibilityLabel(Text("Open BuildPilot in VS Code"))
+                Button("Open BuildPilot") { Open.window() }.keyboardShortcut("o")
+                    .accessibilityLabel(Text("Open the BuildPilot window"))
                 Spacer()
                 if isSnapshot { Image(systemName: "gearshape").foregroundStyle(.secondary) } else { Menu {
                     Toggle("Notify me when Claude needs me", isOn: $m.notify)
@@ -418,7 +448,8 @@ struct BarLabel: View {
         let needs = m.data?.needs ?? 0
         let working = m.data?.working ?? 0
         HStack(spacing: 3) {
-            Image(systemName: needs > 0 ? "exclamationmark.circle.fill" : working > 0 ? "safari.fill" : "safari")
+            // BuildPilot's mark is a gauge; Safari's compass was confusing next to the real Safari.
+            Image(systemName: needs > 0 ? "exclamationmark.circle.fill" : working > 0 ? "gauge.with.dots.needle.67percent" : "gauge.with.dots.needle.33percent")
             if needs > 0 { Text("\(needs)") } else if working > 0 { Text("\(working)") }
         }
         .accessibilityLabel(needs > 0 ? "BuildPilot: \(needs) need\(needs == 1 ? "s" : "") you, \(working) working" : "BuildPilot: \(working) working")
@@ -461,7 +492,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         done([.banner, .sound])
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void) {
-        Open.vscode(response.notification.request.content.userInfo["cwd"] as? String)
+        Open.session(response.notification.request.content.userInfo["cwd"] as? String)
         done()
     }
 }

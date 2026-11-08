@@ -1,4 +1,44 @@
+import * as fs from "fs";
+import * as path from "path";
 import type { PageData } from "./page";
+
+/**
+ * Cross-app de-duplication. The window, VS Code and the menu-bar widget each watch the same sessions; the first one to
+ * claim an alert shows it, the others stay quiet. A claim is an exclusively-created file (atomic across processes),
+ * named from the alert key, in ~/.buildpilot/alerts. The Swift widget uses the same naming.
+ * "approve:<id>:<ts>" (engine) and "need:<id>:<ts>" (page) are the same moment, so they share one claim.
+ */
+export function alertClaimName(key: string): string {
+  return key.replace(/^approve:/, "need:").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 150);
+}
+
+export function claimAlert(home: string, key: string, now = Date.now()): boolean {
+  const dir = path.join(home, "alerts");
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const f = path.join(dir, alertClaimName(key));
+    try {
+      fs.closeSync(fs.openSync(f, "wx", 0o600));
+      if (Math.random() < 0.05) sweep(dir, now); // keep the folder small
+      return true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") return true; // can't coordinate: better a duplicate than a missed alert
+      return false;
+    }
+  } catch {
+    return true;
+  }
+}
+
+function sweep(dir: string, now: number): void {
+  for (const f of fs.readdirSync(dir)) {
+    try {
+      if (now - fs.statSync(path.join(dir, f)).mtimeMs > 2 * 86400_000) fs.unlinkSync(path.join(dir, f));
+    } catch {
+      /* gone */
+    }
+  }
+}
 
 /**
  * Which notifications to send now, each at most once. Pure: give it the page data and a memory object.

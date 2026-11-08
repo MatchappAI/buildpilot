@@ -18,7 +18,7 @@ import { GoalType } from "../core/types";
 import { BuildPilotPanel, WebviewMessage } from "./sidebar";
 import { pageData } from "../core/page";
 import { setBuildName } from "../core/glance";
-import { alertsFor, AlertMemory } from "../core/alerts";
+import { alertsFor, AlertMemory, claimAlert } from "../core/alerts";
 import { count, setConsent, shouldAsk } from "../core/counts";
 
 let engine: Engine | null = null;
@@ -55,7 +55,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const pd = pageData(eng, st);
         sidebar.post({ type: "state", state: st, settings: uiSettings(), page: { ...pd, side } });
         limitAlert(pd);
-        if (cfg().get<string>("notifications", "important") !== "off") for (const a of alertsFor(pd, alertMem, Date.now())) if (!a.key.startsWith("80:") && !a.key.startsWith("30:") && !a.key.startsWith("need:")) void vscode.window.showWarningMessage(`BuildPilot: ${a.title}. ${a.body}`, "Open BuildPilot").then((c) => c && sidebar.show());
+        if (cfg().get<string>("notifications", "important") !== "off") for (const a of alertsFor(pd, alertMem, Date.now())) if (!a.key.startsWith("80:") && !a.key.startsWith("30:") && !a.key.startsWith("need:") && claimAlert(eng.home, a.key)) void vscode.window.showWarningMessage(`BuildPilot: ${a.title}. ${a.body}`, "Open BuildPilot").then((c) => c && sidebar.show());
         updateStatus(st);
         if (Date.now() - sideAt > 5000) void refreshSide();
       }
@@ -168,7 +168,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
   const onAlert = async (a: Alert) => {
     log(`alert: ${a.title} - ${a.message}`);
     const mode = cfg().get<string>("notifications", "important");
-    if (mode !== "off" && a.level !== "info") {
+    if (mode !== "off" && a.level !== "info" && claimAlert(eng.home, a.key)) {
       const fn = a.level === "error" ? vscode.window.showErrorMessage : vscode.window.showWarningMessage;
       void fn(`BuildPilot: ${a.title}`, "Show").then((c) => c && vscode.commands.executeCommand("buildpilot.focus"));
     }

@@ -91,13 +91,17 @@ describe("trust: spool reader", () => {
     const { ing } = await ingestor();
     const dir = tmpDir();
     let batches = 0;
-    const sp = new SpoolReader(dir, ing, () => batches++);
+    let total = 0;
+    const sp = new SpoolReader(dir, ing, (n) => {
+      batches++;
+      total += n;
+    });
     sp.start();
-    for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(dir, `e${i}.json`), payload({ hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: `t${i}` }));
-    await new Promise((r) => setTimeout(r, 800));
+    for (let i = 0; i < 20; i++) fs.writeFileSync(path.join(dir, `e${i}.json`), payload({ hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: `t${i}` }));
+    for (let w = 0; w < 40 && total < 20; w++) await new Promise((r) => setTimeout(r, 100));
     sp.stop();
-    expect(batches).toBeGreaterThanOrEqual(1);
-    expect(batches).toBeLessThan(5); // batched (fs events can arrive in a few waves under load), never one drain per file storm
+    expect(total).toBe(20);
+    expect(batches).toBeLessThan(5); // batched, never one pass per file
   });
 });
 
@@ -151,5 +155,23 @@ describe("trust: today's usage means today", () => {
     expect(costBaselines(home, mid, [{ id: "old", cost: 15, startedToday: false }])).toMatchObject({ old: 12 });
     // next day: fresh baselines
     expect(costBaselines(home, mid + 86_400_000, [{ id: "old", cost: 15, startedToday: false }])).toEqual({ old: 15 });
+  });
+});
+
+import { redact } from "../../src/core/redact";
+describe("trust: redaction covers common command-line secrets", () => {
+  it.each([
+    ["git clone https://bob:hunter22@github.com/x/y", "hunter22"],
+    ["curl -H 'x-api-key: abcdef123456' https://api.x", "abcdef123456"],
+    ["curl -H \"X-Auth-Token: zzzz99998888\"", "zzzz99998888"],
+    ["psql --password s3cretpw", "s3cretpw"],
+    ["tool --token=tok_abcdef", "tok_abcdef"],
+    ["mysql -u root -pSuperSecret db", "SuperSecret"],
+  ])("%s", (input, secret) => {
+    expect(redact(input)).not.toContain(secret);
+  });
+  it("leaves ordinary commands alone", () => {
+    expect(redact("npm run test -- --watch")).toBe("npm run test -- --watch");
+    expect(redact("ls -p src")).toBe("ls -p src");
   });
 });

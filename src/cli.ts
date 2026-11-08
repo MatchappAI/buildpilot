@@ -109,7 +109,18 @@ async function main(): Promise<void> {
       for (let i = 0; i < 50 && !(s = alive()); i++) await new Promise((r) => setTimeout(r, 100));
       if (!s) { console.error("BuildPilot couldn't start its window. Try: bp ui again."); process.exitCode = 1; return; }
     }
-    const url = `http://127.0.0.1:${s.port}/?t=${s.token}`;
+    // Ask the running server for a one-time launch code, so the long-lived token never appears in a URL,
+    // the browser history or the process list. (Servers from before 0.12 don't know codes: old style.)
+    let url = `http://127.0.0.1:${s.port}/?t=${s.token}`;
+    for (let i = 0; i < 10; i++) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${s.port}/api/launch`, { method: "POST", headers: { "x-bp-token": s.token } });
+        if (r.ok) url = `http://127.0.0.1:${s.port}/?c=${((await r.json()) as { code: string }).code}`;
+        break; // 404 = older server: keep the old-style address
+      } catch {
+        await new Promise((res) => setTimeout(res, 200)); // still starting up
+      }
+    }
     if (rest.includes("--print")) { console.log(url); return; }
     const chrome = ["/Applications/Google Chrome.app", "/Applications/Microsoft Edge.app", "/Applications/Brave Browser.app"].find((p) => fs.existsSync(p));
     if (process.platform === "darwin" && chrome) execFile("open", ["-na", chrome, "--args", `--app=${url}`, "--window-size=780,1000"], () => {});
@@ -244,6 +255,17 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     if (L.fullAt) bits.push(`out ~${new Date(L.fullAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
     if (p.plan.sellable && p.plan.trialDaysLeft != null && p.plan.trialDaysLeft <= 3) bits.push(`trial ${p.plan.trialDaysLeft}d`);
     process.stdout.write(bits.join(" "));
+    return;
+  }
+  if (cmd === "jump") {
+    // For the menu-bar widget and notifications: bring a session's Terminal/iTerm tab (or tmux pane) forward.
+    // Exit 3 = its tab wasn't found (the caller can open a Terminal in that folder instead).
+    const cwd = rest[0] ? path.resolve(rest[0]) : "";
+    if (!cwd || !fs.existsSync(cwd)) { process.exitCode = 2; return; }
+    const { findBuild } = await import("./core/termfind");
+    const r = await findBuild(cwd);
+    console.log(r.how);
+    if (!r.found) process.exitCode = 3;
     return;
   }
   if (cmd === "go") {

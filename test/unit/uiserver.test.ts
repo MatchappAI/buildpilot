@@ -42,7 +42,7 @@ describe("standalone app server", () => {
   });
 
   it("serves the page and live state", async () => {
-    const page = await req(`/?t=${srv.token}`, { token: null });
+    const page = await req(`/`);
     expect(page.code).toBe(200);
     expect(page.body).toContain("/media/webview.js");
     const st = JSON.parse((await req("/api/state")).body);
@@ -58,5 +58,16 @@ describe("standalone app server", () => {
     expect(more.result.show).toMatch(/bp audit/);
     const projects = JSON.parse((await req("/api/msg", { method: "POST", body: { type: "projects" } })).body);
     expect(projects.result.length).toBeGreaterThan(0);
+  });
+
+  it("refuses folders and files BuildPilot doesn't know (the page can't name arbitrary paths)", async () => {
+    const post = async (body: unknown) => JSON.parse((await req("/api/msg", { method: "POST", body })).body).result;
+    const other = makeRepo({ "secret.txt": "keep me" });
+    expect((await post({ type: "undoFile", path: path.join(other, "secret.txt") })).flash).toMatch(/only puts back files a Claude session changed/);
+    expect((await post({ type: "removeBuild", dir: other })).flash).toMatch(/isn't one of this project's side builds/);
+    expect((await post({ type: "mergeBuild", dir: other, branch: "main" })).flash).toMatch(/isn't one of this project's side builds/);
+    expect((await post({ type: "reviewBuild", dir: other, branch: "main" })).flash).toMatch(/isn't one of this project's side builds/);
+    expect((await post({ type: "resumeBuild", id: "abcdef12-0000", cwd: other })).flash).toMatch(/Can't resume/);
+    expect(await post({ type: "startFresh", cwd: other })).toBeNull();
   });
 });
