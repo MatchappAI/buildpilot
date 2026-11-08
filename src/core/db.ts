@@ -211,6 +211,11 @@ export class Store {
     return this.b.kind;
   }
 
+  /** True when this process can only read (older Node next to a shared WAL database): nothing it writes is kept. */
+  get readOnly(): boolean {
+    return this.b instanceof SqlJsBackend && this.b.readOnly;
+  }
+
   /** file = null -> in-memory (tests). Corrupt files are kept aside (never deleted) and a fresh DB is created. */
   static async open(file: string | null): Promise<Store> {
     if (file) fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });

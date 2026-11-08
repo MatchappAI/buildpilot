@@ -244,8 +244,9 @@ function buildSub(x: Build): string {
   if (x.stopped) return `<span class="warn-text">Stopped mid-task</span> · ${esc(clip(x.task, 60))}`;
   if (x.maybeStuck) return x.now && x.now !== "Thinking" ? `<span class="warn-text">${esc(x.now)}${dur(x.nowSince)}, may be stuck</span>` : `<span class="warn-text">Quiet for ${Math.round((Date.now() - x.lastEventAt) / 60_000)} min, may be stuck</span>`;
   if (x.now) return `<b class="nowtxt" title="${esc(x.nowFull ?? x.now)}">${esc(x.now)}</b>${dur(x.nowSince)}`;
-  if (x.finishedAt && x.turnMs && Date.now() - x.finishedAt < 15 * 60_000) return `<span class="ok-text">Finished · your turn</span> · ${esc(clip(x.task, 50))}`;
-  return `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
+  if (x.finishedAt && x.turnMs && Date.now() - x.finishedAt < 15 * 60_000) return `<span class="ok-text">Finished · your turn</span>${x.turnMs >= 60_000 ? ` <span class="muted">after ${Math.round(x.turnMs / 60_000)} min</span>` : ""}`;
+  // The task has its own line under this one, so this line says the state, never the task again.
+  return x.task ? `${STATUS_WORD[x.status] ?? x.word} · ${ago(x.lastEventAt)}` : `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
 }
 
 /** "Step 3 of 7 · Adding login" from Claude's own checklist, else what this request has done so far and whether it's proven. */
@@ -276,11 +277,11 @@ function buildRow(x: Build): string {
       <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" aria-controls="d-${esc(x.id)}" title="Show what it did and where the tokens went"><span class="chev" aria-hidden="true">${expanded.has(x.id) ? "▾" : "▸"}</span>${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this session" aria-label="Name this session">✎</button>` : ""}${chips}</div>
       <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
       ${progressLine(x)}
-      ${x.task && x.agent !== "codex" && !x.stopped && !(x.finishedAt && Date.now() - x.finishedAt < 15 * 60_000) ? `<div class="b-task" title="${esc(x.task.slice(0, 600))}">“${esc(clip(x.task, 110))}”</div>` : ""}
-      ${(x.risks ?? []).length ? `<div class="b-risk" role="note"><span aria-hidden="true">⚠</span> ${esc(x.risks![0]!)}${x.risks!.length > 1 ? ` <span class="muted">+${x.risks!.length - 1} more</span>` : ""}</div>` : ""}
+      ${x.task && x.agent !== "codex" && !x.stopped ? `<div class="b-task" title="${esc(x.task.slice(0, 600))}">“${esc(clip(x.task, 110))}”</div>` : ""}
+      ${(x.risks ?? []).length ? `<div class="b-risk" role="note"><span aria-hidden="true">⚠</span> ${esc(x.risks![0]!)}${x.risks!.length > 1 ? ` <span class="muted">+${x.risks!.length - 1} more</span>` : ""} <button class="link small" data-act="dismissRisk" data-id="${esc(x.id)}" title="Hide this until something new happens">Looks fine</button></div>` : ""}
       ${errPanel}
     </div>
-    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${toneChat(x.contextPct)}" title="How full this chat is. From 70% Claude starts to lose details; a fresh chat with a summary keeps it sharp.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this build today">~$${x.costUsd.toFixed(2)}</span>` : x.share != null && x.share >= 1 ? `<span class="share" title="This build's share of all your Claude Code usage today, from Claude Code's own cost estimate">${x.share}% of today's use</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
+    <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${toneChat(x.contextPct)}" title="How full this chat is. From 70% Claude starts to lose details; a fresh chat with a summary keeps it sharp.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this session today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null && x.share >= 1 ? `<span class="share" title="This session's share of all your Claude Code usage today (from Claude Code's own cost estimate). Not the same as how full its chat is.">${x.share}% of your usage today</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
     <div class="b-act">${x.agent === "codex" ? `<span class="muted small" title="Codex has no hooks, so BuildPilot can only read its logs">read-only</span>` : buildButton(x)}</div>
     ${expanded.has(x.id) ? buildDetails(x) : ""}
   </li>`;
@@ -293,7 +294,10 @@ function buildDetails(x: Build): string {
         <p class="small">${t.baseline != null ? `Started at <b>${kTok(t.baseline)}</b> before your first message` : "Start size unknown"} · chat now ${t.context != null ? `<b>${kTok(t.context)}</b>` : "unknown"} · ${t.inputTotal ? `sent ≈${kTok(t.inputTotal)} in total · ` : ""}Claude wrote ${kTok(t.output)} · ${t.turns} repl${t.turns === 1 ? "y" : "ies"}${t.models.length ? ` · ${t.models.map(([m, n]) => `${esc(shortModel(m))}${t.models.length > 1 ? ` ×${n}` : ""}`).join(", ")}` : ""}${t.subagents ? ` · ${t.subagents} subagent${t.subagents === 1 ? "" : "s"}` : ""}${t.compactions ? ` · compacted ${t.compactions}×` : ""}</p>
         ${t.top ? (t.top.length ? `<ul class="toklist">${t.top.map((i) => `<li><span>${esc(i.label)}</span><span class="muted">≈${kTok(i.tokens)}</span></li>`).join("")}</ul><p class="muted tiny">Biggest things pulled into the chat (≈ estimated from size). They're re-sent with every message until a fresh chat.</p>` : `<p class="muted tiny">No large tool output yet.</p>`) : P!.plan.sellable ? `<p class="small"><a href="#" data-act="upgrade">See exactly what used them · Pro</a></p>` : ""}
       </div>`
-    : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this build has a transcript BuildPilot can read.</p>`;
+    : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this session has a chat transcript BuildPilot can read.</p>`;
+  const t2 = x.turn;
+  const now = x.needsYou ? `Waiting for your OK: ${x.waitingFor ?? x.reason}` : x.now ?? (x.finishedAt ? "Finished its last reply" : STATUS_WORD[x.status] ?? x.word);
+  const facts = `<div class="d-head">This request</div><p class="small">${esc(now)}${t2 ? ` · ${t2.steps} step${t2.steps === 1 ? "" : "s"} · ${t2.files} file${t2.files === 1 ? "" : "s"} changed${t2.proof === "verified" ? " · tests passed after the last change" : t2.proof === "failing" ? " · tests failing" : t2.proof === "unverified" ? " · not tested yet" : ""}` : ""}</p>${x.task ? `<p class="muted small">You asked: “${esc(clip(x.task, 300))}”</p>` : ""}`;
   // Repeated steps in a row ("Looked through files" ×7) collapse into one line.
   const steps: { ts: number; text: string; error: boolean; full?: string; n: number }[] = [];
   for (const e of x.timeline ?? []) {
@@ -306,7 +310,7 @@ function buildDetails(x: Build): string {
   const tl = steps.length
     ? `${risks}${list}<div class="d-head">Recent steps</div><ol class="timeline">${steps.map((e) => `<li class="${e.error ? "bad" : ""}" title="${esc(e.full ?? e.text)}"><span class="muted t">${new Date(e.ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span><span class="x">${esc(e.text)}${e.n > 1 ? ` <span class="muted">×${e.n}</span>` : ""}</span></li>`).join("")}</ol>`
     : `${risks}${list}`;
-  return `<div class="details" id="d-${esc(x.id)}">${tok}${tl}</div>`;
+  return `<div class="details" id="d-${esc(x.id)}">${facts}${tl}${tok}</div>`;
 }
 
 function fileFinder(): string {
@@ -323,7 +327,7 @@ function buildsSection(): string {
   const quiet = all.filter(isQuiet);
   const summary = !all.length
     ? "No Claude sessions running"
-    : `${active.length} session${active.length === 1 ? "" : "s"}${P!.working ? ` · ${P!.working} working` : ""}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}`;
+    : `${active.length} session${active.length === 1 ? "" : "s"}${P!.needs ? ` · <b class="need">${P!.needs} need${P!.needs === 1 ? "s" : ""} you</b>` : ""}${P!.yourTurn ? ` · ${P!.yourTurn} your turn` : ""}${P!.working ? ` · ${P!.working} working` : ""}`;
   // Group by project when a project has 2+ builds; most urgent group first.
   const groups = new Map<string, Build[]>();
   for (const x of active) groups.set(x.folder, [...(groups.get(x.folder) ?? []), x]);
@@ -395,12 +399,13 @@ function limitsSection(): string {
   const fiveRight = L.fiveHourPct == null ? "unknown" : `${Math.round(L.fiveHourPct)}% used${L.fiveHourResetsAt ? ` · back to 0% at ${clock(L.fiveHourResetsAt)}` : ""}`;
   const weekRight = L.sevenDayPct == null ? "unknown" : `${Math.round(L.sevenDayPct)}% used${L.sevenDayResetsAt ? ` · resets ${weekday(L.sevenDayResetsAt)}` : ""}`;
   let forecast = "";
-  if (L.fullAt && (L.fiveHourPct ?? 0) < 80) {
+  // A forecast from a couple of minutes of data isn't credible; wait for 10+ minutes of samples.
+  if (L.fullAt && (L.fiveHourPct ?? 0) < 80 && (L.basisMin == null || L.basisMin >= 10)) {
     const gap = L.fiveHourResetsAt && L.fiveHourResetsAt > L.fullAt ? Math.round((L.fiveHourResetsAt - L.fullAt) / 60_000) : 0;
     const urgent = L.fullAt - Date.now() < 3600_000;
     forecast = `<p class="forecast ${urgent ? "urgent" : ""}" title="${L.basisMin ? `Based on your usage over the last ${L.basisMin} min.` : ""}">At this pace you'll run out around <b>${clock(L.fullAt)}</b>${gap > 0 ? `, then wait ${gap >= 60 ? `${Math.floor(gap / 60)} h ${gap % 60} min` : `${gap} min`} until it's back` : ""} <span class="muted small">(estimate${L.basisMin ? ` from your last ${L.basisMin} min` : ""}).${L.accuracy ? ` ${esc(L.accuracy)}` : ""}</span></p>`;
   }
-  return `<section class="block" aria-label="Plan limits"><h2 class="label">Plan limits</h2>${forecast}${bar("Next 5 hours", L.fiveHourPct, fiveRight)}${bar("This week", L.sevenDayPct, weekRight)}${(L.week ?? []).length > 1 ? `<p class="small weekline">This week: ${(L.week ?? []).map((d) => `${esc(d.day)} ${Math.round(d.pct)}%`).join(" → ")}</p>` : ""}${L.weekFullAt ? `<p class="small warn-text">At this pace your week runs out ${weekday(L.weekFullAt)}.</p>` : ""}${L.codex && (L.codex.primaryPct != null || L.codex.secondaryPct != null) ? `<p class="small">Codex: ${L.codex.primaryPct != null ? `${Math.round(L.codex.primaryPct)}% of its short limit` : ""}${L.codex.secondaryPct != null ? ` · ${Math.round(L.codex.secondaryPct)}% weekly` : ""}</p>` : ""}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
+  return `<section class="block" aria-label="Plan limits"><h2 class="label">Plan limits</h2>${forecast}${bar("5-hour limit", L.fiveHourPct, fiveRight)}${bar("Weekly limit", L.sevenDayPct, weekRight)}${(L.week ?? []).length > 1 ? `<p class="small weekline">This week: ${(L.week ?? []).map((d) => `${esc(d.day)} ${Math.round(d.pct)}%`).join(" → ")}</p>` : ""}${L.weekFullAt ? `<p class="small warn-text">At this pace your week runs out ${weekday(L.weekFullAt)}.</p>` : ""}${L.codex && (L.codex.primaryPct != null || L.codex.secondaryPct != null) ? `<p class="small">Codex: ${L.codex.primaryPct != null ? `${Math.round(L.codex.primaryPct)}% of its short limit` : ""}${L.codex.secondaryPct != null ? ` · ${Math.round(L.codex.secondaryPct)}% weekly` : ""}</p>` : ""}<p class="muted tiny">From Claude Code. The 5-hour window refills on its own; Claude pauses if it reaches 100%.</p></section>`;
 }
 
 function tipsSection(): string {
@@ -481,6 +486,7 @@ async function act(el: HTMLElement): Promise<void> {
     case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
     case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id });
     case "resumeBuild": return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
+    case "dismissRisk": await call("dismissRisk", { id: el.dataset.id }); return;
     case "toggleBuild": { const id = el.dataset.id!; if (expanded.has(id)) expanded.delete(id); else expanded.add(id); return render(); }
     case "toggleErrors": { const id = el.dataset.id!; if (errOpen.has(id)) errOpen.delete(id); else errOpen.add(id); return render(); }
     case "toggleQuiet": showQuiet = !showQuiet; return render();

@@ -115,7 +115,9 @@ describe("alerts", () => {
     const mem: AlertMemory = { sent: {} };
     const b = { id: "s1", folder: "shop", cwd: "/p", status: "awaiting_approval" as const, word: "", reason: "", task: null, contextPct: null, lastEventAt: NOW, needsYou: true, next: null, waitingFor: "Run: npm i", share: null };
     expect(alertsFor(page({ builds: [b] }), mem, NOW)).toEqual([]); // seeded
-    const hot = page({ limits: { ...page().limits, fiveHourPct: 85 }, builds: [{ ...b, lastEventAt: NOW + 1 }] });
+    // A NEW request (same request again within the hour is the same moment: no repeat).
+    const hot = page({ limits: { ...page().limits, fiveHourPct: 85 }, builds: [{ ...b, lastEventAt: NOW + 1, waitingFor: "Run: npm i stripe" }] });
+    expect(alertsFor(page({ builds: [{ ...b, lastEventAt: NOW + 5 }] }), { sent: { ...mem.sent }, seeded: true }, NOW + 500)).toEqual([]);
     const a = alertsFor(hot, mem, NOW + 1000);
     expect(a.map((x) => x.key.split(":")[0]).sort()).toEqual(["80", "need"]);
     expect(a.find((x) => x.key.startsWith("need"))!.body).toMatch(/npm i/);

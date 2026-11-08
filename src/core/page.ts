@@ -45,6 +45,8 @@ export interface PageData {
   /** Sessions that ended earlier today (not shown as builds), with what their last request proved. */
   earlier?: { id: string; folder: string; cwd: string; task: string | null; endedAt: number; proof: "verified" | "failing" | "unverified" | null; files: number }[];
   needs: number;
+  /** Finished in the last 2 hours and waiting for your next message (same rule as the terminal and widget). */
+  yourTurn?: number;
   working: number;
   billing: Billing;
   limits: Limits;
@@ -91,7 +93,9 @@ export function costBaselines(home: string, midnight: number, seen: { id: string
   }
   if (changed) {
     try {
-      fs.writeFileSync(f, JSON.stringify(d), { mode: 0o600 });
+      const tmp = `${f}.${process.pid}.tmp`; // atomic: several BuildPilot processes may write this
+      fs.writeFileSync(tmp, JSON.stringify(d), { mode: 0o600 });
+      fs.renameSync(tmp, f);
     } catch {
       /* read-only home: today's numbers fall back to totals next time */
     }
@@ -272,7 +276,8 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
   // Claude Code reports each session's cost since it started. Sessions that began before midnight only count what
   // they added today (measured from the first time we saw them today).
   const startedAt = new Map(engine.store.all<{ id: string; started_at: number }>("SELECT id, started_at FROM sessions WHERE last_event_at > ?", [midnight]).map((r) => [r.id, Number(r.started_at)]));
-  const base = costBaselines(engine.home, midnight, todayRaw.map((s) => ({ id: s.sessionId, cost: s.costUsd!, startedToday: (startedAt.get(s.sessionId) ?? now) >= midnight })));
+  // Unknown start (no events today) = assume it started earlier, so yesterday's spend never counts as today's.
+  const base = costBaselines(engine.home, midnight, todayRaw.map((s) => ({ id: s.sessionId, cost: s.costUsd!, startedToday: (startedAt.get(s.sessionId) ?? 0) >= midnight })));
   const today = todayRaw.map((s) => ({ ...s, costUsd: Math.max(0, s.costUsd! - (base[s.sessionId] ?? 0)) }));
   const costTodayUsd = today.length ? today.reduce((a, s) => a + s.costUsd, 0) : null;
   // Share of today's usage per build, from Claude Code's own per-session estimate (a proxy for limit use).
@@ -307,6 +312,7 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     connected: !!st?.hooks.installed || pluginConnected(),
     builds,
     needs: w.needs,
+    yourTurn: w.yourTurn ?? 0,
     working: w.working + cx.filter((c) => c.status === "running").length,
     billing,
     limits,

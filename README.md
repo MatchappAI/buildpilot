@@ -54,7 +54,7 @@ BuildPilot is a helper for **Claude Code**. You don't need VS Code or any other 
 |---|---|
 | Builds and what needs you · chat % full · plan limits, reset times **and when you'll run out** · limit alerts · tips with one-click fixes · Start fresh chat · Turn on undo · terminal, plugin and menu bar · 20 prompts · 2 builds at once, with Review & Merge | As many builds at once as you like, each reviewed and merged from the page · your tests run automatically before every merge · which build is using your limit · unlimited prompts |
 
-Everyone gets a **14-day Pro trial**. Nothing is ever blocked before Pro is on sale. Pro is separate from your Claude plan. After checkout, the thank-you page shows your key. Paste it with **BuildPilot: Enter License Key** or `bp license <key>`.
+Everyone gets a **14-day Pro trial**. Nothing is ever blocked before Pro is on sale. Pro is separate from your Claude plan. After checkout, the thank-you page shows your key. Paste it with `/bp-license <key>` in Claude Code or `bp license <key>` in a terminal.
 
 ## Privacy, in one paragraph
 

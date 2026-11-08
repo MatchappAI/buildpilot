@@ -11,7 +11,7 @@ import { worktrees, run } from "./git";
 import { GoalType } from "./types";
 import { shellQuote } from "./prompts";
 import { findBuild } from "./termfind";
-import { setBuildName } from "./glance";
+import { dismissRisks, setBuildName, widgetData } from "./glance";
 import { alertsFor, AlertMemory, claimAlert } from "./alerts";
 
 /**
@@ -22,6 +22,19 @@ import { alertsFor, AlertMemory, claimAlert } from "./alerts";
  * - Terminals open in the user's Terminal app (macOS), never by building shell strings from untrusted input:
  *   folders and prompt files are passed as AppleScript arguments and shell-quoted.
  */
+/** A handoff built from what BuildPilot saw in one session (for a session outside the selected project). */
+export function sessionHandoff(b: { task: string | null; checklist?: { items: { title: string; status: string }[] } | null; turn?: { files: number; proof: string | null } | null; timeline?: { text: string }[] } | null, cwd: string): string {
+  const lines = [`Continue the work from my previous Claude session in ${cwd}.`];
+  if (b?.task) lines.push(`My last request was: "${b.task}"`);
+  const open = (b?.checklist?.items ?? []).filter((i) => i.status !== "completed").map((i) => `- ${i.title}`);
+  if (open.length) lines.push("Still to do from its checklist:", ...open);
+  if (b?.turn?.files) lines.push(b.turn.proof === "verified" ? "Its last changes passed the tests." : b.turn.proof === "failing" ? "Its last changes left the tests failing: fix those first." : "Its last changes haven't been tested yet: run the tests first.");
+  const steps = (b?.timeline ?? []).slice(0, 6).map((t) => `- ${t.text}`);
+  if (steps.length) lines.push("Its most recent steps:", ...steps);
+  lines.push("Read the project's CLAUDE.md and git status/diff to catch up, then tell me in two lines where things stand before changing anything.");
+  return lines.join("\n");
+}
+
 function safeEqual(a: string, b: string): boolean {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
@@ -124,11 +137,28 @@ export class UiServer {
   }
 
   /** Header (page scripts, CLI) or the session cookie set after a launch code. The long-lived token never goes in a URL. */
+  /** Browser sessions opened through a one-time launch code. The cookie carries one of these, never the token. */
+  private sessions = new Set<string>();
+
+  /**
+   * GET may use the session cookie (opening the page). Anything that DOES something (POST) needs the x-bp-token
+   * header, which only this page's own script has (it's embedded in the page, readable only same-origin), so another
+   * local site can't drive BuildPilot even though browsers share cookies across 127.0.0.1 ports.
+   */
   private authed(req: http.IncomingMessage): boolean {
     const h = req.headers["x-bp-token"];
     if (typeof h === "string" && safeEqual(h, this.token)) return true;
+    if (req.method !== "GET") return false;
     const cookie = (req.headers.cookie ?? "").split(/;\s*/).find((c) => c.startsWith(`${this.cookieName}=`));
-    return !!cookie && safeEqual(cookie.slice(this.cookieName.length + 1), this.token);
+    const v = cookie?.slice(this.cookieName.length + 1) ?? "";
+    return !!v && [...this.sessions].some((n) => safeEqual(v, n));
+  }
+
+  /** A browser request from any other origin (another local dev server, a web page) is refused outright. */
+  private foreignOrigin(req: http.IncomingMessage): boolean {
+    const o = req.headers.origin;
+    if (!o || o === "null" && req.method === "GET") return false;
+    return o !== `http://127.0.0.1:${this.port}` && o !== `http://localhost:${this.port}`;
   }
 
   async start(): Promise<void> {
@@ -193,7 +223,7 @@ export class UiServer {
   }
 
   private send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8"): void {
-    res.writeHead(code, { "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+    res.writeHead(code, { "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'", "referrer-policy": "no-referrer" });
     res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body));
   }
 
@@ -212,9 +242,13 @@ export class UiServer {
         const exp = this.launchCodes.get(code);
         this.launchCodes.delete(code); // single use, valid or not
         if (!exp || exp < Date.now()) return this.send(res, 401, "This BuildPilot link has expired. Run bp ui again.", "text/plain; charset=utf-8");
-        res.writeHead(302, { location: "/", "set-cookie": `${this.cookieName}=${this.token}; HttpOnly; SameSite=Strict; Path=/`, "cache-control": "no-store" });
+        const nonce = randomBytes(18).toString("hex");
+        this.sessions.add(nonce);
+        if (this.sessions.size > 20) this.sessions.delete(this.sessions.values().next().value as string);
+        res.writeHead(302, { location: "/", "set-cookie": `${this.cookieName}=${nonce}; HttpOnly; SameSite=Strict; Path=/`, "cache-control": "no-store" });
         return void res.end();
       }
+      if (this.foreignOrigin(req)) return this.send(res, 403, { error: "forbidden origin" });
       if (!this.authed(req)) return this.send(res, 401, { error: "missing or wrong token" });
       if (req.method === "POST" && url.pathname === "/api/launch") return this.send(res, 200, { code: this.issueLaunchCode() });
       this.lastSeen = Date.now();
@@ -294,6 +328,13 @@ export class UiServer {
         setBuildName(eng, id, str("name"));
         return { flash: str("name").trim() ? "Renamed" : "Name cleared" };
       }
+      case "dismissRisk": {
+        const id = str("id");
+        const b = widgetData(eng).sessions.find((x) => x.id === id);
+        if (!b) return null;
+        dismissRisks(eng, id, b.risks ?? []);
+        return { flash: "Hidden. New warnings for this session will still show" };
+      }
       case "hideIdle": return { flash: `Hid ${eng.hideIdle()} idle build(s). Their history is kept.` };
       case "whoChanged": {
         const rows = eng.fileHistory(str("query"));
@@ -319,7 +360,9 @@ export class UiServer {
       case "startFresh": {
         const cwd = str("cwd") || root;
         if (!cwd || !fs.existsSync(cwd) || !this.knownFolder(cwd)) return null;
-        await copyText(eng.handoff());
+        // The summary must be for the session being restarted, which may be in another project than the one selected.
+        const sameProject = !!root && path.resolve(cwd).startsWith(path.resolve(root));
+        await copyText(sameProject ? eng.handoff() : sessionHandoff(widgetData(eng).sessions.find((b) => b.cwd === cwd) ?? null, cwd));
         await openTerminal(cwd, "claude");
         return { flash: "Summary copied. Paste it into the new Claude (Cmd+V)" };
       }
@@ -389,7 +432,9 @@ export class UiServer {
           tests = t.code === 0 ? " Its tests passed." : "";
         }
         if (c.unsaved) await eng.saveBuild(dir, `Work from ${path.basename(dir)} (saved by BuildPilot before merging)`);
-        const r = await eng.mergeBuild(str("branch"));
+        const branch = (await eng.extraBuilds()).find((b) => path.resolve(b.dir) === path.resolve(dir))?.branch;
+        if (!branch) return { flash: "That isn't one of this project's side builds" };
+        const r = await eng.mergeBuild(branch);
         void this.refreshSide();
         if (r.merged) return { flash: `${r.message}${tests}` };
         if (r.conflicts.length) {

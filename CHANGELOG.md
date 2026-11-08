@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.1: second review round
+**Security**
+- Another local site (any dev server on 127.0.0.1) could drive the window, because browsers share cookies across local ports. Now every action needs the page's own key in a header (the cookie only opens the page and holds a session nonce, never the key), other origins are refused, and the page can't be framed. The launcher never falls back to a key in the URL.
+**Status you can trust**
+- Auto-compaction no longer flips a working session to "your turn" or moves its folder. After you approve a helper's request the session goes back to "working" (and stops re-notifying: approval alerts are keyed by what's being asked). A session with no start event still gets its folder.
+- Checklist follows the task tools end to end (ids attached on TaskCreated; deleted tasks removed).
+- "Tests passed" only for real test runs: not `cat jest.config.js`, not `npm test | tail` (the pipe's exit code isn't the tests').
+- Risk warnings judge the program that runs: no more warnings for quoted text, branch names or `grep "DROP TABLE"`; every `rm -rf` target is checked; `$HOME` is caught; variables aren't guessed. "Looks fine" hides a session's warnings.
+- Older Node (read-only) leaves events for a process that can record them. `bp doctor` without --fix only reads. VS Code toasts no longer swallow the Mac notification. Start fresh copies the summary of the session being restarted. Merge uses the side build's own branch. Today's cost never counts yesterday's spend; the baseline file is written atomically. Failing scripts (`node x.js`, `python x.py`) count as errors again.
+**One answer everywhere**
+- Needs you · your turn · working, in the same words in the window header, `bp glance`, `bp today` (new "Your turn" section) and the menu bar. Housekeeping tips never pose as the next step. "5-hour limit" / "Weekly limit" everywhere; calm bars until 80%; no forecast from under 10 minutes of data.
+- Window: details always show what's known (this request, steps, proof), clearer chevron, fixed action column, "of your usage today", status line never repeats the task. Help regrouped (everyday · side builds · setup), aligned `bp sessions`. Widget "+N more" expands the floating panel.
+
 ## 0.12.0: your Claude Code companion
 **Trust (the numbers are right)**
 - Repeated events count: a second "yes", Stop or idle notice is no longer dropped as a duplicate. Only the same event delivered twice within 5 s (plugin + settings hooks) is merged.

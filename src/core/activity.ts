@@ -42,16 +42,59 @@ export interface Activity {
 }
 
 const TEST_RUN = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|vitest|jest)\b|\bnpx\s+(vitest|jest|playwright)\b|\bpytest\b|\bgo test\b|\bcargo test\b|\bvitest\b|\bjest\b/;
+/** A test runner as the command itself (after cd/env), not a file name inside cat/grep. */
+const TEST_CMD = /^(?:(?:npx|bunx|pnpm\s+exec|pnpm\s+dlx)\s+)?(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|t|vitest|jest)\b|(?:vitest|jest|pytest|mocha|ava|tap)\b|playwright\s+test\b|go\s+test\b|cargo\s+(?:test|nextest)\b|python3?\s+-m\s+(?:pytest|unittest)\b|swift\s+test\b|dotnet\s+test\b|(?:bundle\s+exec\s+)?(?:rspec|rake\s+test)\b|make\s+(?:test|check)\b)/;
+
+/**
+ * Is this shell command a test run? "run" = yes, and its exit code is the tests' · "piped" = output piped into another
+ * command without pipefail, so the exit code is the pipe's (not proof) · null = not a test run.
+ */
+export function testRunKind(summaryOrCommand: string): "run" | "piped" | null {
+  const cmd = summaryOrCommand.replace(/^[✓✗] /, "").replace(/^Run: /, "");
+  const segments = cmd.split(/\s*(?:&&|;|\|\|)\s*/).map((x) => x.replace(/^([A-Z_][A-Z0-9_]*=("[^"]*"|'[^']*'|\S+)\s+)+/, "").trim());
+  const seg = segments.find((x) => TEST_CMD.test(x.split(/\s*\|\s*/)[0]!.trim()));
+  if (!seg) return null;
+  return /(^|[^|])\|(?!\|)/.test(seg) && !/pipefail/.test(cmd) ? "piped" : "run";
+}
+const isTestRun = (summary: string) => testRunKind(summary) === "run";
 const TEST_FILE = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[a-z]+$|_test\.(go|py)$|(^|\/)test_[^/]+\.py$/i;
-const DESTRUCTIVE: Array<[RegExp, string]> = [
-  [/\bgit\s+push\b[^\n]*(--force\b|-f\b|--force-with-lease)/, "force-pushed with git (can overwrite others' work)"],
-  [/\bgit\s+reset\s+--hard\b/, "ran git reset --hard (throws away unsaved changes)"],
-  [/\bgit\s+clean\s+-[a-z]*f/, "ran git clean (deletes untracked files)"],
-  [/\bgit\s+(checkout|restore)\s+(--\s+)?\.(\s|$)/, "discarded all unsaved changes with git"],
-  [/\brm\s+-[a-z]*r[a-z]*f?\b|\brm\s+-[a-z]*f[a-z]*r\b/, "deleted folders with rm -rf"],
-  [/\b(drop\s+(table|database)|truncate\s+table)\b/i, "dropped or emptied a database table"],
-  [/--no-verify\b/, "skipped git safety checks (--no-verify)"],
-];
+/** Routine build/cache/temp folders: deleting them is normal. */
+const ROUTINE_RM = /(^|\/)(node_modules|dist|build|out|\.next|\.nuxt|coverage|tmp|temp|\.cache|__pycache__|\.turbo|\.parcel-cache|\.pytest_cache|target|DerivedData)\/?$/;
+
+/** Risky things in ONE shell command, judged per segment by the program that actually runs. */
+export function commandRisks(cmd: string): string[] {
+  const out: string[] = [];
+  const unquoted = (x: string) => x.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
+  for (const raw of cmd.split(/\s*(?:&&|\|\||;|\||\n)\s*/)) {
+    const seg = raw.trim().replace(/^([A-Z_][A-Z0-9_]*=("[^"]*"|'[^']*'|\S+)\s+)+/, "").replace(/^(sudo|time|nohup|exec|xargs)\s+/, "");
+    const words = unquoted(seg).split(/\s+/).filter(Boolean);
+    const prog = (words[0] ?? "").split("/").pop() ?? "";
+    if (prog === "git") {
+      const sub = words.find((w, k) => k > 0 && !w.startsWith("-")) ?? "";
+      const flags = words.slice(1);
+      if (sub === "push" && (flags.some((w) => w === "-f" || w === "--force" || w.startsWith("--force-with-lease")) || flags.some((w) => /^\+[^\s]+/.test(w)))) out.push("It force-pushed with git (can overwrite others' work)");
+      if (sub === "reset" && flags.includes("--hard")) out.push("It ran git reset --hard (throws away unsaved changes)");
+      if (sub === "clean" && flags.some((w) => /^-[a-z]*f/.test(w))) out.push("It ran git clean (deletes untracked files)");
+      if ((sub === "checkout" || sub === "restore") && (flags.includes(".") || flags.includes(":/"))) out.push("It discarded all unsaved changes with git");
+      if (flags.includes("--no-verify") && (sub === "commit" || sub === "push")) out.push("It skipped git safety checks (--no-verify)");
+    } else if (prog === "rm") {
+      const flags = words.slice(1).filter((w) => w.startsWith("-")).join("");
+      if (!/r|R/.test(flags) || !/f/.test(flags)) continue;
+      // Every target, from the original text (quotes removed), not just the first one.
+      const targets = (seg.match(/("[^"]+"|'[^']+'|\S+)/g) ?? []).slice(1).filter((t) => !t.startsWith("-")).map((t) => t.replace(/^["']|["']$/g, ""));
+      for (const t of targets) {
+        const home = /^(\$HOME|\$\{HOME\}|~)\/?$/.test(t);
+        if (!home && (/^\$/.test(t) || /^\/tmp\/|^\/private\/(var|tmp)\/|\$TMPDIR|mktemp/.test(t) || ROUTINE_RM.test(t))) continue;
+        const shown = t.length > 44 ? `${t.slice(0, 20)}…${t.slice(-20)}` : t;
+        out.push(home ? "It ran rm -rf on your home folder" : `It deleted ${shown} with rm -rf`);
+      }
+    } else if (/^(psql|mysql|mariadb|sqlite3|sqlcmd|duckdb)$/.test(prog) && /\b(drop\s+(table|database|schema)|truncate\s+table)\b/i.test(seg)) {
+      out.push("It dropped or emptied a database table");
+    }
+  }
+  return out;
+}
+
 const SECRET_FILE = /(^|\/)(\.env(\.[\w-]+)?|\.npmrc|\.pypirc|id_rsa|id_ed25519|credentials(\.json)?|secrets?\.(json|ya?ml))$/i;
 
 /** Risky things in these events, newest first, each kind once. Observed only. */
@@ -59,28 +102,15 @@ export function risksIn(ev: HookEvent[]): string[] {
   const out: string[] = [];
   const add = (t: string) => { if (!out.includes(t)) out.push(t); };
   for (const e of [...ev].reverse()) {
-    if (e.agentId == null && (e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure") && e.toolName === "Bash") {
-      const cmd = e.summary.replace(/^[✓✗] Run: /, "");
-      if (/\.example\b|\.sample\b/.test(cmd)) continue;
-      for (const [re, text] of DESTRUCTIVE) {
-        if (!re.test(cmd)) continue;
-        if (/rm -rf/.test(text)) {
-          // Name what was deleted; routine build/cache folders aren't worth a warning.
-          const target = /\brm\s+-[a-z]+\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd)?.[1]?.replace(/^["']|["']$/g, "") ?? "";
-          // A path written as a variable ($TMP/x, $S/app) can't be named reliably; only literal paths are flagged.
-          if (!target || /^\$(?!HOME\b)/.test(target) || /(^|\/)(node_modules|dist|build|out|\.next|coverage|tmp|\.cache|__pycache__|\.turbo|\.parcel-cache)\/?$/.test(target) || /^\$?\(?mktemp|^\/tmp\/|^\$TMPDIR/.test(target)) continue;
-          add(`It deleted ${target.length > 48 ? `${target.slice(0, 47)}…` : target} with rm -rf`);
-        } else add(`It ${text}`);
-      }
-    }
+    if (e.agentId == null && e.hookEvent === "PostToolUse" && e.toolName === "Bash") for (const r of commandRisks(e.summary.replace(/^[✓✗] Run: /, ""))) add(r);
     if (e.hookEvent === "PostToolUse" && isEditLike(e) && e.filePath && SECRET_FILE.test(e.filePath) && !/\.(example|sample|template)$/.test(e.filePath)) add(`It edited a secrets file (${e.filePath.split("/").pop()})`);
   }
   // Tests failing, then test files edited, then tests pass: worth a look (the fix may have weakened the test).
-  const firstFail = ev.findIndex((e) => e.toolName === "Bash" && e.isError && TEST_RUN.test(e.summary));
+  const firstFail = ev.findIndex((e) => e.toolName === "Bash" && e.isError && isTestRun(e.summary));
   if (firstFail >= 0) {
     const after = ev.slice(firstFail);
     const testEdits = new Set(after.filter((e) => e.hookEvent === "PostToolUse" && isEditLike(e) && e.filePath && TEST_FILE.test(e.filePath)).map((e) => e.filePath));
-    const passedLater = after.some((e) => e.hookEvent === "PostToolUse" && e.toolName === "Bash" && TEST_RUN.test(e.summary));
+    const passedLater = after.some((e) => e.hookEvent === "PostToolUse" && e.toolName === "Bash" && isTestRun(e.summary));
     if (testEdits.size && passedLater) add(`Tests were failing, then it changed ${testEdits.size} test file${testEdits.size === 1 ? "" : "s"} and they passed: check it fixed the code, not the test`);
   }
   return out.slice(0, 3);
@@ -101,14 +131,14 @@ export function turnSummary(ev: HookEvent[]): Activity["turn"] {
   const edits = turn.filter((e) => e.hookEvent === "PostToolUse" && isEditLike(e) && e.filePath);
   const files = new Set(edits.map((e) => e.filePath)).size;
   const lastEdit = edits[edits.length - 1];
-  const testsAfter = lastEdit ? turn.filter((e) => e.ts >= lastEdit.ts && e.toolName === "Bash" && (e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure") && TEST_RUN.test(e.summary)) : [];
+  const testsAfter = lastEdit ? turn.filter((e) => e.ts >= lastEdit.ts && e.toolName === "Bash" && (e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure") && isTestRun(e.summary)) : [];
   const lastTest = testsAfter[testsAfter.length - 1];
   const proof = !files ? null : !lastTest ? "unverified" : lastTest.isError ? "failing" : "verified";
   return { steps, files, proof, done: turn.some((e) => e.hookEvent === "Stop") };
 }
 
 const MUST_WORK = new RegExp(
-  `${TEST_RUN.source}|\\b(npm|pnpm|yarn|bun)\\s+(run\\s+)?(build|lint|typecheck|start|dev|ci|install|i|add)\\b|^(npx\\s+)?(tsc|eslint|ruff|mypy|prettier --check)\\b|\\b(cargo (build|check)|go build|make|gradle|mvn|xcodebuild|pip3? install|docker (build|compose)|git (commit|push|merge|rebase|pull))\\b|\\b(wrangler|vercel|netlify|fly) deploy\\b`,
+  `${TEST_RUN.source}|\\b(npm|pnpm|yarn|bun)\\s+(run\\s+)?(build|lint|typecheck|start|dev|ci|install|i|add)\\b|^(npx\\s+)?(tsc|eslint|ruff|mypy|prettier --check)\\b|\\b(cargo (build|check)|go build|make|gradle|mvn|xcodebuild|pip3? install|docker (build|compose)|git (commit|push|merge|rebase|pull))\\b|\\b(wrangler|vercel|netlify|fly) deploy\\b|^(npx\\s+)?(python3?|node|tsx|ts-node|deno|bun)\\s+\\S+\\.(py|m?js|ts|cjs)\\b`,
   "i",
 );
 

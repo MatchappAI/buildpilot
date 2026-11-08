@@ -128,6 +128,8 @@ export class Engine extends EventEmitter {
     this.store = await Store.open(this.opts.inMemory ? null : path.join(this.home, "buildpilot.db"));
     this.ingestor = new Ingestor(this.store, (cwd) => this.resolveProject(cwd));
     this.spool = new SpoolReader(path.join(this.home, "spool"), this.ingestor, (n) => this.onIngest(n));
+    // Older Node can only read the shared database: leave the events for a process that can record them.
+    if (this.store.readOnly) return;
     if (this.opts.light) {
       this.spool.drain();
       return;
@@ -750,7 +752,8 @@ export class Engine extends EventEmitter {
     });
     const resolved = this.trackRecommendations(out, now);
     if (p && this.facts) {
-      const summary = JSON.stringify({ next: out.next?.title ?? null, health: out.health.label, stage: out.stage.stage, name: this.facts.name });
+      // Severity travels with the next step, so the terminal and widget can hide housekeeping while sessions need you.
+      const summary = JSON.stringify({ next: out.next?.title ?? null, severity: out.next?.severity ?? null, health: out.health.label, stage: out.stage.stage, name: this.facts.name });
       if (summary !== this.lastSummary) {
         this.lastSummary = summary;
         this.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, 'summary', ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [p.id, summary, now]);
@@ -987,12 +990,12 @@ export class Engine extends EventEmitter {
     const alerts: Alert[] = [];
     for (const s of st.out.sessions) {
       if (s.id.startsWith("demo-") || s.endedAt || st.generatedAt - s.lastEventAt > 15 * 60_000) continue; // never alert on demo data
-      if (s.displayStatus === "awaiting_approval") alerts.push({ key: `approve:${s.id}:${s.lastEventAt}`, level: "warning", title: "Claude needs your approval", message: s.displayReason, sessionId: s.id });
+      if (s.displayStatus === "awaiting_approval") alerts.push({ key: `approve:${s.id}:${s.displayReason.slice(0, 80)}:${Math.floor(Date.now() / 3600_000)}`, level: "warning", title: "Claude needs your approval", message: s.displayReason, sessionId: s.id });
       if (s.displayStatus === "failed") alerts.push({ key: `failed:${s.id}:${s.lastEventAt}`, level: "error", title: "A Claude session failed", message: s.displayReason, sessionId: s.id });
     }
     for (const s of st.elsewhere) {
       if (st.generatedAt - s.lastEventAt > 15 * 60_000) continue;
-      if (s.status === "awaiting_approval") alerts.push({ key: `approve:${s.id}:${s.lastEventAt}`, level: "warning", title: `Claude in ${s.folder} needs your approval`, message: s.reason, sessionId: s.id });
+      if (s.status === "awaiting_approval") alerts.push({ key: `approve:${s.id}:${s.reason.slice(0, 80)}:${Math.floor(Date.now() / 3600_000)}`, level: "warning", title: `Claude in ${s.folder} needs your approval`, message: s.reason, sessionId: s.id });
     }
     for (const i of st.out.issues) {
       if (i.key.includes("demo-") || (i.sessionId ?? "").startsWith("demo-")) continue;

@@ -89,3 +89,16 @@ describe("risk signals", () => {
     expect(risksIn(events())[0]).toMatch(/fixed the code, not the test/);
   });
 });
+
+import { commandRisks, testRunKind } from "../../src/core/activity";
+describe("review round 2: test-run and risk detection", () => {
+  it.each([
+    ["npm test", "run"], ["cd x && npm test", "run"], ["CI=1 npx vitest run", "run"], ["pytest -q", "run"], ["make test", "run"],
+    ["cat jest.config.js", null], ["grep jest package.json", null], ["ls test", null],
+    ["npm test 2>&1 | tail -20", "piped"], ["set -o pipefail; npm test | tail", "run"],
+  ])("%s → %s", (cmd, kind) => expect(testRunKind(`✓ Run: ${cmd}`)).toBe(kind));
+  it.each([
+    ['grep "DROP TABLE" schema.sql', 0], ['git commit -m "rm -rf handling"', 0], ["git push origin fix-f", 0], ['echo "git reset --hard"', 0], ["rm -rf $S/dbg.app", 0], ["rm -rf node_modules dist", 0],
+    ["git push -f origin main", 1], ["git push origin +main", 1], ["rm -rf node_modules src", 1], ["rm -rf ${HOME}", 1], ['psql -c "DROP TABLE users"', 1], ["git reset --hard HEAD~1", 1],
+  ])("%s → %i warning(s)", (cmd, n) => expect(commandRisks(cmd as string)).toHaveLength(n as number));
+});

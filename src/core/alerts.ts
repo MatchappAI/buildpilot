@@ -8,6 +8,10 @@ import type { PageData } from "./page";
  * named from the alert key, in ~/.buildpilot/alerts. The Swift widget uses the same naming.
  * "approve:<id>:<ts>" (engine) and "need:<id>:<ts>" (page) are the same moment, so they share one claim.
  */
+export function needKey(id: string, what: string, now: number): string {
+  return `need:${id}:${what.slice(0, 80)}:${Math.floor(now / 3600_000)}`;
+}
+
 export function alertClaimName(key: string): string {
   return key.replace(/^approve:/, "need:").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 150);
 }
@@ -53,7 +57,9 @@ export function alertsFor(p: PageData, mem: AlertMemory, now: number): Alert[] {
   const cand: Alert[] = [];
   for (const b of p.builds) {
     const who = b.name ?? b.folder;
-    if (b.needsYou) cand.push({ key: `need:${b.id}:${b.lastEventAt}`, title: `${who} needs you`, body: b.waitingFor ? `Waiting for your OK: ${b.waitingFor}` : b.reason || "Claude is waiting for your answer." });
+    // Keyed by WHAT it's waiting for (per hour), not by the latest event: a helper working under the same approval
+    // mustn't re-notify every few seconds. The menu-bar widget builds the same key.
+    if (b.needsYou) cand.push({ key: needKey(b.id, b.waitingFor ?? b.reason, now), title: `${who} needs you`, body: b.waitingFor ? `Waiting for your OK: ${b.waitingFor}` : b.reason || "Claude is waiting for your answer." });
     if ((b.errors1h ?? 0) >= 3) cand.push({ key: `err:${b.id}:${Math.floor(now / (30 * 60_000))}`, title: `${who}: ${b.errors1h} errors in the last hour`, body: (b.lastErrors ?? [])[0] ?? "Check it before it burns more of your limit." });
     if (b.compactedAt && now - b.compactedAt < 10 * 60_000) cand.push({ key: `compact:${b.id}:${b.compactedAt}`, title: `${who} compacted its memory`, body: "It may have forgotten your rules. Consider a fresh chat with a summary." });
     // "Your turn": a long turn (3+ min) just finished, so you're not left waiting on a build that's done.

@@ -1,4 +1,5 @@
 import * as path from "path";
+import { testRunKind } from "./activity";
 import { RepoFacts, SecretFinding } from "./analyzer";
 import { AuditResult, VisualCheck } from "./checks";
 import { DoctorCheck } from "./doctor";
@@ -167,9 +168,8 @@ export function detectConflicts(sessions: Session[], eventsBySession: Map<string
   return out;
 }
 
-const TEST_CMD_RE = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|vitest|jest)\b|\bnpx\s+(vitest|jest|playwright)\b|\bpytest\b|\bgo test\b|\bcargo test\b|\bvitest\b|\bjest\b/;
 export function isTestCommand(summary: string): boolean {
-  return TEST_CMD_RE.test(summary);
+  return testRunKind(summary) === "run"; // piped runs (npm test | tail) report the pipe's exit code, not the tests'
 }
 
 /** After a session says it's done: were there edits after the last test it ran? */

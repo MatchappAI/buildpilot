@@ -18,7 +18,7 @@ const common = { bundle: true, sourcemap: true, logLevel: "info", minify: !watch
 const ctxs = await Promise.all([
   esbuild.context({ ...common, entryPoints: [path.join(root, "src/extension/extension.ts")], outfile: path.join(root, "dist/extension.js"), platform: "node", format: "cjs", target: "node18", external: ["vscode"] }),
   esbuild.context({ ...common, entryPoints: [path.join(root, "src/webview/main.ts")], outfile: path.join(root, "media/webview.js"), platform: "browser", format: "iife", target: "es2020" }),
-  esbuild.context({ ...common, entryPoints: [path.join(root, "src/cli.ts")], outfile: path.join(root, "dist/cli.js"), platform: "node", format: "cjs", target: "node18", banner: { js: "#!/usr/bin/env node" } }),
+  esbuild.context({ ...common, entryPoints: [path.join(root, "src/cli.ts")], outfile: path.join(root, "dist/cli.js"), platform: "node", format: "cjs", target: "node18", banner: { js: "#!/usr/bin/env node" }, define: { __BP_VERSION__: JSON.stringify(JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version) } }),
 ]);
 if (watch) {
   await Promise.all(ctxs.map((c) => c.watch()));

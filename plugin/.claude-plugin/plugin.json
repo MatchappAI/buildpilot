@@ -1,7 +1,7 @@
 {
   "name": "buildpilot",
   "description": "Your Claude Code companion: what each session is doing, what needs you, finished vs verified, risky steps, chat % full and plan limits. Local-only. Needs Node.js 18+ (22.13+ recommended); best on macOS (Windows/Linux preview).",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "author": {
     "name": "BuildPilot"
   },

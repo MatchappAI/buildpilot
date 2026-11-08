@@ -151,6 +151,8 @@ export function summarize(p: RawHookPayload): string {
 export function nextStatus(p: RawHookPayload): { status: SessionStatus; reason: string } | null {
   switch (p.hook_event_name) {
     case "SessionStart":
+      // After a compaction Claude keeps working; only a real start/resume/clear means "waiting for a prompt".
+      if (p.source === "compact") return null;
       return { status: "idle", reason: "Started, waiting for a prompt" };
     case "UserPromptSubmit":
       return { status: "running", reason: "Working on your prompt" };
@@ -237,8 +239,8 @@ export class Ingestor {
     const errorText = isError ? clip(p.error ?? str(p.error_details) ?? str(p.error_type) ?? "", 600) : null;
     const filePath = toolFilePath(p);
     const cwd = p.cwd ?? "";
-    const existing = this.store.get<{ id: string; started_at: number; last_event_at: number; status: string; status_reason: string; ended_at: number | null }>(
-      "SELECT id, started_at, last_event_at, status, status_reason, ended_at FROM sessions WHERE id = ?",
+    const existing = this.store.get<{ id: string; started_at: number; last_event_at: number; status: string; status_reason: string; ended_at: number | null; cwd: string }>(
+      "SELECT id, started_at, last_event_at, status, status_reason, ended_at, cwd FROM sessions WHERE id = ?",
       [p.session_id],
     );
     if (!existing) {
@@ -256,12 +258,17 @@ export class Ingestor {
     if (this.store.changes() === 0) return { accepted: false, duplicate: true, reason: "duplicate", sessionId: p.session_id }; // another process got it first
     // Out-of-order safety: only let an event change status if it is not older than the latest one we have.
     const isLatest = !existing || ts >= existing.last_event_at;
+    const existingCwd = existing ? existing.cwd : "";
     let ns = nextStatus(p);
     // Subagents report their own tool calls; they must not flip the main session back to "working" after it finished.
     // Approvals and questions from a subagent still need the user, so those pass through.
-    if (ns && p.agent_id && ns.status === "running") ns = null;
+    if (ns && p.agent_id && ns.status === "running" && existing && TERMINAL.has(existing.status)) ns = null;
     // Hooks run as separate background processes, so a tool event can land just after Stop. It doesn't restart the session.
-    if (ns && existing && ns.status === "running" && p.hook_event_name !== "UserPromptSubmit" && TERMINAL.has(existing.status) && ts - existing.last_event_at < LATE_EVENT_MS) ns = null;
+    if (ns && existing && ns.status === "running" && p.hook_event_name !== "UserPromptSubmit" && TERMINAL.has(existing.status)) {
+      // Measured from when it actually finished (not from the latest event, which keeps moving).
+      const endTs = Number(this.store.scalar("SELECT MAX(ts) FROM events WHERE session_id = ? AND hook_event IN ('Stop','StopFailure','SessionEnd')", [p.session_id]) ?? 0);
+      if (endTs && ts >= endTs && ts - endTs < LATE_EVENT_MS) ns = null;
+    }
     const sets: string[] = ["event_count = event_count + 1"];
     const params: (string | number | null)[] = [];
     if (isError) sets.push("error_count = error_count + 1");
@@ -274,7 +281,7 @@ export class Ingestor {
       }
       // A session belongs to the folder it was started in (that's where its terminal is), even if Claude later
       // cd's into a subfolder or another repo. Only a new start (resume/clear) moves it.
-      if (cwd && p.hook_event_name === "SessionStart") {
+      if (cwd && ((p.hook_event_name === "SessionStart" && p.source !== "compact") || !existingCwd)) {
         sets.push("cwd = ?", "project_id = COALESCE(?, project_id)");
         params.push(cwd, this.resolveProject(cwd));
       }
@@ -339,6 +346,7 @@ export function nextChecklist(prev: Checklist | null, p: RawHookPayload, ts: num
     const id = str(ti.taskId) ?? str(ti.task_id) ?? str(ti.id) ?? undefined;
     const i = id ? items.findIndex((x) => x.id === id) : -1;
     if (p.tool_name === "TaskCreate" && title(ti)) items.push({ id, title: title(ti), status: st(ti.status) });
+    else if (i >= 0 && ti.status === "deleted") items.splice(i, 1);
     else if (i >= 0) items[i] = { ...items[i]!, status: ti.status !== undefined ? st(ti.status) : items[i]!.status, title: title(ti) || items[i]!.title };
     else return undefined;
     if (ti.status === "in_progress") active = clip(str(ti.activeForm) ?? title(ti) ?? "", 120) || null;
@@ -350,7 +358,9 @@ export function nextChecklist(prev: Checklist | null, p: RawHookPayload, ts: num
     items = [...(prev?.items ?? [])];
     const i = items.findIndex((x) => (id && x.id === id) || (!!t && x.title === t));
     const status = p.hook_event_name === "TaskCompleted" ? "completed" : "pending";
-    if (i >= 0) items[i] = { ...items[i]!, status: p.hook_event_name === "TaskCompleted" ? "completed" : items[i]!.status };
+    // TaskCreate's input has no id (it comes back in the response), so the TaskCreated hook attaches it here;
+    // later TaskUpdate calls then find the item by id.
+    if (i >= 0) items[i] = { ...items[i]!, id: items[i]!.id ?? id, status: p.hook_event_name === "TaskCompleted" ? "completed" : items[i]!.status };
     else if (t) items.push({ id, title: t, status });
   } else return undefined;
   if (!items.length) return null;

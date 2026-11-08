@@ -79,8 +79,15 @@ export interface WidgetData {
   sessions: WidgetSession[];
   needs: number;
   working: number;
+  /** Finished in the last 2 hours and waiting for your next message. */
+  yourTurn?: number;
   fiveHourPct: number | null;
   sevenDayPct: number | null;
+}
+
+/** One rule everywhere: it answered and is waiting for your next message (finished in the last 2 hours). */
+export function isYourTurn(status: SessionStatus, finishedAt: number | null | undefined, now: number): boolean {
+  return status === "idle" && !!finishedAt && now - finishedAt < 2 * 3600_000;
 }
 
 /** Active Claude Code sessions across all folders, needs-you first. Shared by the terminal glance and the menu-bar widget. */
@@ -101,7 +108,9 @@ export function glanceItems(engine: Engine, now: number) {
         act.turn = turnSummary(turnEv);
       }
       const riskEv = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND ts > ? AND hook_event IN ('PostToolUse','PostToolUseFailure') AND tool_name IN ('Bash','Edit','Write','MultiEdit','NotebookEdit') ORDER BY ts, id LIMIT 2000", [s.id, now - 3 * 3600_000]).map(rowToEvent);
-      act.risks = risksIn(riskEv);
+      // "Looks fine" hides a session's current warnings until a new one appears.
+      const ok = new Set(String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = ?", [NAMES_SCOPE, `risk-ok:${s.id}`]) ?? "").split("\n").filter(Boolean));
+      act.risks = risksIn(riskEv).filter((r) => !ok.has(r));
       return { s, status: d.status, reason: d.reason, live: readLiveStatus(s.id, engine.home), act };
     })
     .filter((x) => (!x.s.endedAt || x.act.stopped) && !isBackground(x.s.cwd))
@@ -115,8 +124,9 @@ function projectNext(engine: Engine, cwd: string): string | null {
   const pid = engine.resolveProject(realpath(cwd));
   if (!pid) return null;
   try {
-    const sum = JSON.parse(String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]) ?? "")) as { next: string | null };
-    return sum.next ?? null;
+    const sum = JSON.parse(String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]) ?? "")) as { next: string | null; severity?: string | null };
+    // Housekeeping ("write down what done means", "add a CLAUDE.md") is never the next step next to live work.
+    return sum.severity === "low" || sum.severity === "info" ? null : sum.next ?? null;
   } catch {
     return null;
   }
@@ -164,6 +174,14 @@ function disambiguate(b: { task: string | null; id: string; cwd?: string }): str
 
 /** Names you give builds live in notes under a global key (not tied to one project). */
 export const NAMES_SCOPE = "__names";
+
+/** Mark a session's current warnings as seen ("Looks fine"). New, different warnings still show. */
+export function dismissRisks(engine: Engine, sessionId: string, risks: string[]): void {
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(sessionId)) return;
+  const prev = String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = ?", [NAMES_SCOPE, `risk-ok:${sessionId}`]) ?? "").split("\n").filter(Boolean);
+  const all = [...new Set([...prev, ...risks])].slice(-30).join("\n");
+  engine.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [NAMES_SCOPE, `risk-ok:${sessionId}`, all, Date.now()]);
+}
 export function buildName(engine: Engine, sessionId: string): string | null {
   const v = engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = ?", [NAMES_SCOPE, `name:${sessionId}`]);
   return typeof v === "string" && v ? v : null;
@@ -217,6 +235,7 @@ export function widgetData(engine: Engine, now = Date.now()): WidgetData {
     })).map((b, _i, all) => ({ ...b, hint: all.filter((o) => (o.name ?? o.folder) === (b.name ?? b.folder)).length > 1 ? disambiguate(b) : null })),
     needs: needs.length,
     working: items.filter((x) => x.status === "running").length,
+    yourTurn: items.filter((x) => isYourTurn(x.status, x.act.finishedAt, now)).length,
     fiveHourPct: pick("fiveHourPct"),
     sevenDayPct: pick("sevenDayPct"),
   };
@@ -240,6 +259,7 @@ export function glance(engine: Engine, o: GlanceOptions): string {
     bold("◆ BuildPilot"),
     items.length ? `${items.length} Claude session${items.length === 1 ? "" : "s"}` : "no active Claude sessions",
     needs.length ? c("33", `${needs.length} need${needs.length === 1 ? "s" : ""} you`) : null,
+    (() => { const n = items.filter((x) => isYourTurn(x.status, x.act.finishedAt, now)).length; return n ? `${n} your turn` : null; })(),
     fiveH != null ? `5-hour limit ${Math.round(fiveH)}%` : null,
   ].filter(Boolean);
   lines.push(head.join(dim("  ·  ")));
@@ -255,7 +275,7 @@ export function glance(engine: Engine, o: GlanceOptions): string {
         ? x.reason
         : x.s.currentTask
           ? `"${x.s.currentTask.replace(/\s+/g, " ")}"`
-          : x.reason;
+          : x.status === "idle" ? "finished" : x.reason;
     const what1 = what.replace(/\s+/g, " ").trim();
     const word = WORD[x.status].padEnd(17);
     const left = `  ${MARK[x.status]} ${name}  ${word}`;
@@ -273,13 +293,13 @@ export function glance(engine: Engine, o: GlanceOptions): string {
   if (pid) {
     const raw = engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]);
     try {
-      const sum = JSON.parse(String(raw ?? "")) as { next: string | null; health: string; name: string };
-      const msg = sum.next ? `Next: ${sum.next}` : sum.health;
-      lines.push(`  ${bold("Here")} ${dim(fit(sum.name, 24).trim())}  ${fit(msg.replace(/\s+/g, " "), W - 34).trimEnd()}`);
+      const sum = JSON.parse(String(raw ?? "")) as { next: string | null; severity?: string | null; health: string; name: string };
+      const msg = sum.next && sum.severity !== "low" && sum.severity !== "info" ? `Next: ${sum.next}` : sum.health;
+      lines.push(`  ${bold("This folder")} ${dim(`(${fit(sum.name, 24).trim()})`)}  ${fit(msg.replace(/\s+/g, " "), W - 40).trimEnd()}`);
     } catch {
       /* not analyzed yet */
     }
   }
-  lines.push(dim(`  bp ui = window · bp today = your day · bp go = jump to the one that needs you`));
+  lines.push(dim(`  bp ui = window · bp today = your day · bp help`));
   return lines.join("\n");
 }

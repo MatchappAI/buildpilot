@@ -124,10 +124,10 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     await tick();
     const t = doc.body.textContent ?? "";
-    expect(t).toMatch(/Next 5 hours/);
+    expect(t).toMatch(/5-hour limit/);
     expect(t).toMatch(/72% used · back to 0% at/);
     expect(t).toMatch(/then wait 1 h 20 min until it's back/);
-    expect(t).toMatch(/This week/);
+    expect(t).toMatch(/Weekly limit/);
     expect(t).toMatch(/At this pace you'll run out around/);
     expect(t).not.toMatch(/\$\d/);
   });

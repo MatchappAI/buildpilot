@@ -51,6 +51,7 @@ struct WidgetData: Codable, Equatable {
     let sessions: [WidgetSession]
     let needs: Int
     let working: Int
+    let yourTurn: Int?
     let fiveHourPct: Double?
     let sevenDayPct: Double?
 }
@@ -216,10 +217,10 @@ final class Model: ObservableObject {
         let fresh = now.subtracting(knownNeeds)
         knownNeeds = now
         if firstLoad { firstLoad = false; return }
-        guard notify else { return }
+        guard notify, notificationsAllowed else { return } // never claim an alert we can't actually show
         for s in d.sessions where fresh.contains(s.id) {
             // Same claim file the BuildPilot window and VS Code use, so one moment = one notification.
-            guard claimAlert("need:\(s.id):\(Int(s.lastEventAt))") else { continue }
+            guard claimAlert("need:\(s.id):\(String((s.waitingFor ?? s.reason).prefix(80))):\(Int(Date().timeIntervalSince1970 / 3600))") else { continue }
             let c = UNMutableNotificationContent()
             c.title = "Claude \(s.word) in \(s.folder)"
             c.body = s.reason
@@ -235,7 +236,7 @@ func claimAlert(_ key: String) -> Bool {
     let home = ProcessInfo.processInfo.environment["BUILDPILOT_HOME"] ?? (NSHomeDirectory() + "/.buildpilot")
     let dir = home + "/alerts"
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    let safe = String(key.replacingOccurrences(of: "approve:", with: "need:").map { $0.isLetter || $0.isNumber || "._-".contains($0) ? $0 : "_" }.prefix(150))
+    let safe = String(key.replacingOccurrences(of: "approve:", with: "need:").map { ($0.isASCII && ($0.isLetter || $0.isNumber)) || "._-".contains($0) ? $0 : "_" }.prefix(150))
     let fd = open(dir + "/" + safe, O_CREAT | O_EXCL | O_WRONLY, 0o600)
     if fd >= 0 { close(fd); return true }
     return errno != EEXIST
@@ -389,6 +390,8 @@ struct LimitBar: View {
 }
 
 var isSnapshot = false
+/// Whether macOS lets BuildPilot Bar show notifications (checked at launch and on each refresh).
+var notificationsAllowed = false
 /// One model for the menu-bar panel and the floating panel.
 let sharedModel = isRenderRun ? Model(live: false) : Model()
 var isRenderRun: Bool { CommandLine.arguments.contains("--render") || CommandLine.arguments.contains("--render-float") }
@@ -468,10 +471,8 @@ struct Panel: View {
 
     var summary: String {
         guard let d = m.data else { return "" }
-        if d.sessions.isEmpty { return "idle" }
-        var parts = ["\(d.working) working"]
-        if d.needs > 0 { parts.append("\(d.needs) need\(d.needs == 1 ? "s" : "") you") }
-        return parts.joined(separator: " · ")
+        if d.sessions.isEmpty { return "no sessions" }
+        return headline(d)
     }
 
     func section(_ t: String) -> some View {
@@ -484,6 +485,15 @@ struct Panel: View {
 
 // MARK: - Floating panel
 
+/// Same counts and words as the window and terminal: needs you · your turn · working.
+func headline(_ d: WidgetData) -> String {
+    var parts: [String] = []
+    if d.needs > 0 { parts.append("\(d.needs) need\(d.needs == 1 ? "s" : "") you") }
+    if let t = d.yourTurn, t > 0 { parts.append("\(t) your turn") }
+    if d.working > 0 { parts.append("\(d.working) working") }
+    return parts.isEmpty ? "all quiet" : parts.joined(separator: " · ")
+}
+
 /// Compact: the one session that matters most, in one line, plus its next step. Expanded: every session.
 struct FloatView: View {
     @ObservedObject var m: Model
@@ -492,7 +502,7 @@ struct FloatView: View {
             HStack(spacing: 6) {
                 Text("BuildPilot").font(.system(size: 12, weight: .bold))
                 if let d = m.data {
-                    Text(d.needs > 0 ? "\(d.needs) need\(d.needs == 1 ? "s" : "") you" : d.working > 0 ? "\(d.working) working" : "all quiet")
+                    Text(headline(d))
                         .font(.system(size: 11)).foregroundStyle(d.needs > 0 ? Color.orange : Color.secondary)
                 }
                 Spacer()
@@ -513,7 +523,10 @@ struct FloatView: View {
                 } else if let top = d.sessions.first(where: \.needsYou) ?? d.sessions.first(where: { $0.stopped == true || $0.maybeStuck == true || !($0.risks ?? []).isEmpty }) ?? d.sessions.first {
                     FloatRow(s: top)
                     if let n = top.next, !top.needsYou { Text("Next: \(n)").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2) }
-                    if d.sessions.count > 1 { Text("+\(d.sessions.count - 1) more").font(.system(size: 10)).foregroundStyle(.tertiary) }
+                    if d.sessions.count > 1 && !isSnapshot {
+                        Button("+\(d.sessions.count - 1) more") { m.floatExpanded = true }.buttonStyle(.borderless).font(.system(size: 10))
+                            .help("Show every session")
+                    }
                 }
             } else if let e = m.error {
                 Text(e).font(.system(size: 11)).foregroundStyle(.orange).lineLimit(3)
@@ -637,7 +650,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if UserDefaults.standard.bool(forKey: "floating") { DispatchQueue.main.async { MainActor.assumeIsolated { FloatController.shared.update(sharedModel) } } }
         let c = UNUserNotificationCenter.current()
         c.delegate = self
-        c.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        c.requestAuthorization(options: [.alert, .sound]) { ok, _ in DispatchQueue.main.async { notificationsAllowed = ok } }
+        c.getNotificationSettings { st in DispatchQueue.main.async { notificationsAllowed = st.authorizationStatus == .authorized || st.authorizationStatus == .provisional } }
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
         done([.banner, .sound])

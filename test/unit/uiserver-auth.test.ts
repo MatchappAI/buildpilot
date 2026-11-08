@@ -51,4 +51,18 @@ describe("ui server auth", () => {
     });
     expect(status).toBe(403);
   });
+
+  it("another local site can't drive BuildPilot: the cookie never works for actions, foreign origins are refused", async () => {
+    const u = new URL(srv.url);
+    const r = await fetch(`${base}/?c=${u.searchParams.get("c")}`, { redirect: "manual" });
+    const cookie = r.headers.get("set-cookie")!.split(";")[0]!;
+    expect(cookie).not.toContain(srv.token); // the cookie is a session nonce, not the token
+    // cookie alone on POST (what a page on 127.0.0.1:3000 could send) → refused
+    expect((await fetch(`${base}/api/msg`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ type: "copyHandoff" }) })).status).toBe(401);
+    // even with the header, a foreign Origin is refused
+    expect((await fetch(`${base}/api/msg`, { method: "POST", headers: { "x-bp-token": srv.token, origin: "http://127.0.0.1:3000", "content-type": "application/json" }, body: "{}" })).status).toBe(403);
+    // the page can't be framed
+    const page = await fetch(`${base}/`, { headers: { cookie } });
+    expect(page.headers.get("x-frame-options")).toBe("DENY");
+  });
 });

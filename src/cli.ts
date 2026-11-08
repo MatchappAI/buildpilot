@@ -18,7 +18,7 @@ import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
 import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
-import { folderLabel, glance, oneLine, widgetData } from "./core/glance";
+import { folderLabel, glance, isYourTurn, oneLine, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
 import { gateParallel, paywallText, readLicense, saveLicense } from "./core/license";
@@ -29,6 +29,10 @@ import { openUri } from "./core/extId";
 import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
 import { GoalType } from "./core/types";
+
+/** Set at build time (esbuild define) so a running window server can tell it's out of date. */
+declare const __BP_VERSION__: string;
+const CLI_VERSION = typeof __BP_VERSION__ === "string" ? __BP_VERSION__ : "dev";
 
 const STATUS_PLAIN: Record<string, string> = { running: "Working", awaiting_approval: "Needs your OK", blocked: "Needs your answer", idle: "Your turn", completed: "Closed", failed: "Failed", unknown: "Quiet" };
 
@@ -79,10 +83,16 @@ async function main(): Promise<void> {
     // BuildPilot as its own window (no VS Code). One private server per user, reused across launches.
     const home = buildpilotHome();
     const info = path.join(home, "ui-server.json");
-    const alive = (): { port: number; token: string } | null => {
+    const alive = (): { port: number; token: string; pid: number } | null => {
       try {
-        const j = JSON.parse(fs.readFileSync(info, "utf8")) as { port: number; token: string; pid: number };
+        const j = JSON.parse(fs.readFileSync(info, "utf8")) as { port: number; token: string; pid: number; version?: string };
         process.kill(j.pid, 0);
+        // A server from an older BuildPilot keeps running old code: replace it so fixes take effect.
+        if (j.version !== CLI_VERSION && rest[0] !== "--serve") {
+          try { process.kill(j.pid, "SIGTERM"); } catch { /* gone */ }
+          fs.rmSync(info, { force: true });
+          return null;
+        }
         return j;
       } catch {
         return null;
@@ -99,7 +109,7 @@ async function main(): Promise<void> {
       const srv = new UiServer(engine, { port: Number(process.env.BUILDPILOT_UI_PORT ?? 0), media, idleExitMs: 15 * 60_000 });
       await srv.start();
       const port = Number(new URL(srv.url).port);
-      fs.writeFileSync(info, JSON.stringify({ port, token: srv.token, pid: process.pid }), { mode: 0o600 });
+      fs.writeFileSync(info, JSON.stringify({ port, token: srv.token, pid: process.pid, version: CLI_VERSION }), { mode: 0o600 });
       return; // keep running
     }
     let s = alive();
@@ -112,16 +122,23 @@ async function main(): Promise<void> {
       if (!s) { console.error("BuildPilot couldn't start its window. Try: bp ui again."); process.exitCode = 1; return; }
     }
     // Ask the running server for a one-time launch code, so the long-lived token never appears in a URL,
-    // the browser history or the process list. (Servers from before 0.12 don't know codes: old style.)
-    let url = `http://127.0.0.1:${s.port}/?t=${s.token}`;
-    for (let i = 0; i < 10; i++) {
+    // the browser history or the process list.
+    let url = "";
+    for (let i = 0; i < 10 && !url; i++) {
       try {
         const r = await fetch(`http://127.0.0.1:${s.port}/api/launch`, { method: "POST", headers: { "x-bp-token": s.token } });
         if (r.ok) url = `http://127.0.0.1:${s.port}/?c=${((await r.json()) as { code: string }).code}`;
-        break; // 404 = older server: keep the old-style address
+        else if (r.status === 404) break; // a server from before 0.12: restart it below
       } catch {
         await new Promise((res) => setTimeout(res, 200)); // still starting up
       }
+    }
+    if (!url) {
+      try { process.kill(s.pid, "SIGTERM"); } catch { /* already gone */ }
+      fs.rmSync(info, { force: true });
+      console.error("BuildPilot's window server was out of date and has been stopped. Run bp ui again.");
+      process.exitCode = 1;
+      return;
     }
     if (rest.includes("--print")) { console.log(url); return; }
     const chrome = ["/Applications/Google Chrome.app", "/Applications/Microsoft Edge.app", "/Applications/Brave Browser.app"].find((p) => fs.existsSync(p));
@@ -225,24 +242,30 @@ async function main(): Promise<void> {
     console.log(`BuildPilot: your Claude Code companion
 
 Everyday
+  bp glance                 every Claude session in three seconds
+  bp today                  your day: needs you, your turn, check before you trust it, next step
   bp ui                     open BuildPilot in its own window
-  bp today                  your day: needs you, stuck, check before you trust it, next step
-  bp doctor [--fix]         is BuildPilot set up right? (--fix repairs the safe things)
-  bp limits                 your sessions, chat % full, plan limits + forecast, tips
-  bp new "<name>"           start another build in its own copy of this project (--no-env: don't copy .env files)
-  bp review · bp merge <name>  see what a side build changed · bring it into your project
-  bp builds · bp done <name>  list extra builds · remove a finished one (branch kept)
-  bp go [name]              jump to the build that needs you (Terminal/iTerm tab or tmux)
-  bp who <file>             which Claude build changed a file, and when
-  bp prompt auto "<what>"   turn plain words into an expert prompt (prints it; run: claude "$(bp prompt auto '...')")
-  bp license [key]          show your plan, or unlock Pro with a key
+  bp limits                 sessions, chat % full, plan limits + forecast, tips
+  bp go [name]              bring the session that needs you forward (Terminal/iTerm tab or tmux)
+  bp who <file>             which Claude session changed a file, and when
+  bp prompt auto "<what>"   turn plain words into an expert prompt
+
+Side builds (another Claude in its own copy of the project)
+  bp new "<name>"           start one (--no-env: don't copy .env files)
+  bp builds                 list side builds
+  bp review                 see what a side build changed
+  bp merge <name>           bring a side build into your project
+  bp done <name>            remove a finished side build (its branch is kept)
 
 Setup
-  bp statusline install     exact chat % and plan limits (keeps your own status line)
-  bp hooks install          let BuildPilot see your builds   (uninstall to undo)
+  bp doctor [--fix]         is BuildPilot set up right? (--fix repairs the safe things)
+  bp statusline install     exact chat % full and plan limits (keeps your own status line)
+  bp hooks install          let BuildPilot see your sessions (uninstall to undo)
+  bp bar install            Mac menu-bar widget (with an optional floating panel)
   bp tmux                   one-line status for tmux/your prompt
+  bp license [key]          show your plan, or unlock Pro with a key
 
-More: bp (folder status) · glance · sessions · brief · handoff · audit · visual [url]
+More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       prompt <goal> "<what>" · open · bar · shell · serve   (add --json to setup commands)`);
     console.log(`\ngoals: ${GOALS.map((g) => g.id).join(", ")}`);
     return;
@@ -292,6 +315,8 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     const section = (title: string, rows: string[]) => { if (rows.length) out.push("", title, ...rows.map((r) => `  ${r}`)); };
     section("Needs you", needs.map((b) => `${name(b)}: ${oneLine(b.waitingFor ?? b.reason, 90) || b.word}`));
     section("Stuck or stopped", blocked.map((b) => `${name(b)}: ${b.stopped ? "stopped mid-task" : b.status === "failed" ? "its last turn failed" : "may be stuck"}`));
+    const turn = w.sessions.filter((b) => isYourTurn(b.status, b.finishedAt, Date.now()));
+    section("Your turn (finished, waiting for your next message)", turn.map((b) => `${name(b)}: ${b.turn?.proof === "verified" ? "tests passed after its changes" : b.turn?.proof === "failing" ? "tests failing" : b.turn?.proof === "unverified" ? "changed files, not tested" : "answered"}${b.task ? ` · “${oneLine(b.task, 50)}”` : ""}`));
     section("Working", working.map((b) => `${name(b)}: ${b.checklist && b.checklist.done < b.checklist.total ? `step ${b.checklist.done + 1} of ${b.checklist.total}` : oneLine(b.now ?? null, 60) ?? "working"}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}`));
     section("Check before you trust it", [
       ...failing.map((b) => `${name(b)}: tests failing after its last change`),
@@ -299,7 +324,7 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
       ...risky.map((b) => `${name(b)}: ${b.risks![0]}`),
     ]);
     section("Finished turns today", finished.slice(0, 8).map((f) => `${folderLabel(f.cwd)}: ${f.n} turn${f.n === 1 ? "" : "s"}`));
-    const next = needs[0] ? `Go to ${name(needs[0])} (bp go)` : failing[0] ? `Ask ${name(failing[0])} to fix the failing tests` : blocked[0] ? `Check ${name(blocked[0])} (bp go ${name(blocked[0])})` : unproven[0] ? `Ask ${name(unproven[0])} to run the tests` : w.sessions.find((b) => (b.contextPct ?? 0) >= 70) ? `Start a fresh chat in ${name(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!)} (it's ${Math.round(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!.contextPct!)}% full)` : null;
+    const next = needs[0] ? `Answer ${name(needs[0])} (bp go takes you there)` : failing[0] ? `Ask ${name(failing[0])} to fix the failing tests` : blocked[0] ? `Check ${name(blocked[0])} (bp go ${name(blocked[0])})` : unproven[0] ? `Ask ${name(unproven[0])} to run the tests` : turn[0] ? `Reply to ${name(turn[0])}: it finished and is waiting for you` : w.sessions.find((b) => (b.contextPct ?? 0) >= 70) ? `Start a fresh chat in ${name(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!)} (it's ${Math.round(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!.contextPct!)}% full)` : null;
     out.push("", next ? `Next: ${next}` : w.sessions.length || finished.length ? "Nothing needs you right now." : "No Claude sessions today yet.");
     console.log(out.join("\n"));
     return;
@@ -325,7 +350,7 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     const want = rest[0]?.toLowerCase();
     const target = want ? w.sessions.find((s) => (s.name ?? s.folder).toLowerCase() === want || (s.name ?? s.folder).toLowerCase().includes(want) || s.folder.toLowerCase().includes(want)) : w.sessions.find((s) => s.needsYou) ?? w.sessions[0];
     if (!target) {
-      console.log(want ? `No build matching "${rest[0]}". Running: ${w.sessions.map((s) => s.folder).join(", ") || "none"}` : "No builds running.");
+      console.log(want ? `No build matching "${rest[0]}". Running: ${w.sessions.map((s) => s.folder).join(", ") || "none"}` : "No Claude sessions running.");
       process.exitCode = 1;
       return;
     }
@@ -471,11 +496,14 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     case "sessions":
       for (const s of st.out.sessions) {
         const when = new Date(s.lastEventAt);
-        const day = when.toDateString() === new Date().toDateString() ? "today" : when.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+        const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        const day = when.toDateString() === new Date().toDateString() ? time : `${when.toLocaleDateString([], { weekday: "short" })} ${time}`;
         const task = (s.currentTask ?? "").replace(/\s+/g, " ");
-        console.log(`${(STATUS_PLAIN[s.displayStatus] ?? s.displayStatus).padEnd(16)} ${day} ${when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).padEnd(8)}  ${task.length > 90 ? `${task.slice(0, 89)}…` : task}  ${"\x1b[2m"}(${s.id.slice(0, 8)})${"\x1b[0m"}`.replace(process.env.NO_COLOR ? /\x1b\[[0-9;]*m/g : /$^/, ""));
+        const status = s.displayStatus === "idle" ? "Idle" : STATUS_PLAIN[s.displayStatus] ?? s.displayStatus;
+        const line = `${status.padEnd(15)} ${day.padEnd(13)} ${task.length > 80 ? `${task.slice(0, 79)}…` : task || "(no prompt yet)"}`;
+        console.log(process.env.NO_COLOR ? `${line}  (${s.id.slice(0, 8)})` : `${line}  \x1b[2m(${s.id.slice(0, 8)})\x1b[0m`);
       }
-      if (!st.out.sessions.length) console.log(st.hooks.installed ? "No sessions observed for this folder yet." : "Hooks not installed: run `buildpilot hooks install`.");
+      if (!st.out.sessions.length) console.log(st.hooks.installed ? "No sessions observed for this folder yet." : "BuildPilot isn't connected yet: run bp hooks install (or install the Claude Code plugin).");
       break;
     case "handoff":
       console.log(engine.handoff(st));
@@ -536,13 +564,13 @@ function limitsText(p: PageData): string {
   const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const lines: string[] = [];
   if (p.plan.sellable && !p.plan.licensed) lines.push(p.plan.trialDaysLeft != null ? `Pro trial: ${p.plan.trialDaysLeft} day${p.plan.trialDaysLeft === 1 ? "" : "s"} left (after it: 2 builds at once, 20 prompts; limits and forecast stay free)` : `Free plan. Unlimited parallel builds + tests before merge + per-build usage: Pro (${p.plan.price}) · bp license <key>`);
-  lines.push(p.builds.length ? `${p.builds.filter((b) => b.needsYou || b.stopped || b.status === "running" || Date.now() - b.lastEventAt < 2 * 3600_000).length} active build${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No builds running.");
+  lines.push(p.builds.length ? `${p.builds.filter((b) => b.needsYou || b.stopped || b.status === "running" || Date.now() - b.lastEventAt < 2 * 3600_000).length} active session${p.builds.length === 1 ? "" : "s"}${p.working ? ` · ${p.working} working` : ""}${p.needs ? ` · ${p.needs} need${p.needs === 1 ? "s" : ""} you` : ""}` : "No Claude sessions running.");
   for (const b of p.builds.slice(0, 10)) lines.push(`  ${b.needsYou ? "!" : b.stopped ? "×" : "•"} ${`${b.name ?? b.folder}${b.agent === "codex" ? " (Codex)" : ""}`.padEnd(24)} ${b.needsYou ? `waiting: ${oneLine(b.waitingFor ?? b.reason, 60) || b.word}` : b.stopped ? "stopped mid-task" : oneLine(b.now ?? null, 70) ?? b.word}${(b.errors1h ?? 0) > 0 ? ` · ${b.errors1h} error${b.errors1h === 1 ? "" : "s"}` : ""}${b.contextPct != null ? ` · chat ${Math.round(b.contextPct)}% full` : ""}${b.costUsd != null ? ` · ~$${b.costUsd.toFixed(2)} today` : b.share != null ? ` · ${b.share}% of your usage today` : ""}`);
   const L = p.limits;
   if (p.billing === "api") lines.push("", `Spend today   ${p.costTodayUsd != null ? `~$${p.costTodayUsd.toFixed(2)}` : "unknown"}`);
   else if (L.fiveHourPct != null || L.sevenDayPct != null) {
-    lines.push("", `Next 5 hours  ${L.fiveHourPct != null ? `${Math.round(L.fiveHourPct)}%` : "unknown"}${L.fiveHourResetsAt ? ` · resets ${t(L.fiveHourResetsAt)}` : ""}${L.fullAt ? ` · runs out ~${t(L.fullAt)} at this pace` : ""}`);
-    lines.push(`This week     ${L.sevenDayPct != null ? `${Math.round(L.sevenDayPct)}%` : "unknown"}`);
+    lines.push("", `5-hour limit  ${L.fiveHourPct != null ? `${Math.round(L.fiveHourPct)}%` : "unknown"}${L.fiveHourResetsAt ? ` · resets ${t(L.fiveHourResetsAt)}` : ""}${L.fullAt ? ` · runs out ~${t(L.fullAt)} at this pace` : ""}`);
+    lines.push(`Weekly limit  ${L.sevenDayPct != null ? `${Math.round(L.sevenDayPct)}%` : "unknown"}${L.sevenDayResetsAt ? ` · resets ${new Date(L.sevenDayResetsAt).toLocaleDateString([], { weekday: "long" })}` : ""}`);
     if (L.fullAt) lines.push(`              (forecast = straight line through your last ${L.basisMin ?? "?"} min${L.accuracy ? `; ${L.accuracy.toLowerCase()}` : ""})`);
   } else lines.push("", "Plan limits   not reported yet. Turn on with /bp-connect (plugin) or: bp statusline install");
   if (p.tips.length) lines.push("", "Tips", ...p.tips.map((x) => `  → ${x.text}`));

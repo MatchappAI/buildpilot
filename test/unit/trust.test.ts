@@ -204,3 +204,45 @@ describe("trust: the big-output tip actually fires", () => {
     expect(t.some((x) => x.key.startsWith("hog:"))).toBe(true);
   });
 });
+
+describe("review round 2: status edge cases", () => {
+  it("auto-compaction doesn't turn a working session into 'your turn' or move its folder", async () => {
+    const { store, ing } = await ingestor();
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", cwd: "/p/app", hook_event_name: "SessionStart", source: "startup" }), 1000);
+    ing.ingestRaw(payload({ hook_event_name: "UserPromptSubmit", prompt: "big job", cwd: "/p/app" }), 2000);
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", cwd: "/p/app/sub", hook_event_name: "SessionStart", source: "compact" }), 3000);
+    for (let i = 0; i < 20; i++) ing.ingestRaw(payload({ hook_event_name: "PreToolUse", tool_name: "Read", tool_use_id: `r${i}`, cwd: "/p/app/sub" }), 4000 + i * 3000);
+    expect(session(store).status).toBe("running");
+    expect(session(store).cwd).toBe("/p/app");
+  });
+  it("after you approve a helper's request, the session goes back to working", async () => {
+    const { store, ing } = await ingestor();
+    ing.ingestRaw(payload({ hook_event_name: "UserPromptSubmit", prompt: "x" }), 1000);
+    ing.ingestRaw(payload({ hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { command: "npm i" }, agent_id: "a1" }), 2000);
+    expect(session(store).status).toBe("awaiting_approval");
+    ing.ingestRaw(payload({ hook_event_name: "PostToolUse", tool_name: "Bash", tool_use_id: "b1", tool_input: { command: "npm i" }, agent_id: "a1" }), 9000);
+    expect(session(store).status).toBe("running");
+  });
+  it("a session with no SessionStart still gets its folder", async () => {
+    const { store, ing } = await ingestor();
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", hook_event_name: "Notification", notification_type: "idle_prompt" }), 1000);
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", cwd: "/p/app", hook_event_name: "UserPromptSubmit", prompt: "hi" }), 2000);
+    expect(session(store).cwd).toBe("/p/app");
+  });
+});
+
+import { nextChecklist } from "../../src/core/ingest";
+describe("review round 2: task tools checklist", () => {
+  it("TaskCreate → TaskCreated (id) → TaskUpdate in_progress/completed/deleted", () => {
+    const P = (o: Record<string, unknown>) => ({ session_id: "s", hook_event_name: "PreToolUse", ...o });
+    let c = nextChecklist(null, P({ tool_name: "TaskCreate", tool_input: { subject: "Add login" } }), 1)!;
+    c = nextChecklist(c, P({ tool_name: "TaskCreate", tool_input: { subject: "Write tests" } }), 2)!;
+    c = nextChecklist(c, { session_id: "s", hook_event_name: "TaskCreated", task_id: "1", task_subject: "Add login" }, 3)!;
+    c = nextChecklist(c, { session_id: "s", hook_event_name: "TaskCreated", task_id: "2", task_subject: "Write tests" }, 4)!;
+    c = nextChecklist(c, P({ tool_name: "TaskUpdate", tool_input: { taskId: "1", status: "in_progress", activeForm: "Adding login" } }), 5)!;
+    expect(c).toMatchObject({ done: 0, total: 2, current: "Adding login" });
+    c = nextChecklist(c, P({ tool_name: "TaskUpdate", tool_input: { taskId: "1", status: "completed" } }), 6)!;
+    c = nextChecklist(c, P({ tool_name: "TaskUpdate", tool_input: { taskId: "2", status: "deleted" } }), 7)!;
+    expect(c).toMatchObject({ done: 1, total: 1 });
+  });
+});

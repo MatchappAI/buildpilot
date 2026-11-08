@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { Store, usesWal } from "./db";
+import { usesWal } from "./db";
 import { buildpilotHome, claudeSettingsPath, ensureHome, HOOK_SCRIPT, hookStatus, installHooks, pluginConnected, statuslineStatus } from "./hooks";
 
 /**
@@ -22,13 +22,18 @@ export async function selfCheck(opts: { fix?: boolean; home?: string; settingsFi
   f.push(nodeOk ? { ok: true, text: `Node.js ${process.versions.node}` } : { ok: false, text: `Node.js ${process.versions.node} is older than 22.13, so BuildPilot can only read (not record) when other BuildPilot windows are open`, fix: "Update Node.js from https://nodejs.org" });
   const db = path.join(home, "buildpilot.db");
   if (fs.existsSync(db)) {
+    // A read-only look: no migrations, no journal-mode change, never moves the file aside.
     try {
-      const s = await Store.open(db);
-      const n = Number(s.scalar("SELECT COUNT(*) FROM sessions") ?? 0);
-      f.push({ ok: true, text: `Database OK (${s.backend}${usesWal(db) ? ", shared safely" : ""}, ${n} sessions, ${Math.round(fs.statSync(db).size / 1024 / 1024)} MB)` });
-      s.close();
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (f: string, o?: Record<string, unknown>) => { prepare(q: string): { get(): Record<string, unknown> }; close(): void } };
+      const d = new DatabaseSync(db, { readOnly: true });
+      const n = Number(d.prepare("SELECT COUNT(*) AS n FROM sessions").get().n ?? 0);
+      const ok = String(d.prepare("PRAGMA quick_check").get().quick_check ?? "") === "ok";
+      d.close();
+      f.push(ok ? { ok: true, text: `Database OK (${usesWal(db) ? "shared safely, " : ""}${n} sessions, ${Math.round(fs.statSync(db).size / 1024 / 1024)} MB)` } : { ok: false, text: "The database reports damage", fix: "Close BuildPilot windows and run bp doctor again; BuildPilot keeps a damaged file aside and starts fresh on next open" });
     } catch (e) {
-      f.push({ ok: false, text: `Database can't be opened: ${(e as Error).message}`, fix: "Run bp doctor again after closing other BuildPilot windows; if it persists, update Node.js" });
+      const msg = (e as Error).message;
+      f.push(/node:sqlite|Cannot find module|No such built-in/i.test(msg) ? { ok: true, text: "Database present (this Node.js can't inspect it; update to 22.13+ for a full check)" } : { ok: false, text: `Database can't be read: ${msg}`, fix: "Close other BuildPilot windows and run bp doctor again" });
     }
   } else f.push({ ok: true, text: "No database yet (it's created on first use)" });
 
