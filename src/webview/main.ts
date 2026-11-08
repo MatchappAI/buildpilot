@@ -101,7 +101,7 @@ function ring(pct: number): string {
   const r = 7;
   const c = 2 * Math.PI * r;
   const v = Math.min(100, Math.max(0, pct));
-  return `<svg class="ring tone-${pct < 70 ? "calm" : tone(pct)}" viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="9" cy="9" r="${r}" class="ring-bg"/><circle cx="9" cy="9" r="${r}" class="ring-fg" stroke-dasharray="${((v / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 9 9)"/></svg>`;
+  return `<svg class="ring tone-${pct < 70 ? "calm" : toneChat(pct)}" viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="9" cy="9" r="${r}" class="ring-bg"/><circle cx="9" cy="9" r="${r}" class="ring-fg" stroke-dasharray="${((v / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 9 9)"/></svg>`;
 }
 
 /** One calm line at the top when something needs attention (most urgent first, max 2). */

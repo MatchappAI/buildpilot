@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BuildPilot — a calm cockpit for Claude Code</title>
+<title>BuildPilot — your Claude Code companion</title>
 <meta name="description" content="See every Claude Code build, what needs you, your plan limits and when you'll run out, and where your tokens go. Local-only. Free to start.">
 <meta property="og:title" content="BuildPilot — a calm cockpit for Claude Code">
 <meta property="og:description" content="Every Claude build, what needs you, your limits and where your tokens go, in one calm window.">
@@ -63,29 +63,29 @@
   <main>
     <div class="hero">
       <div>
-        <h1>A calm cockpit for <span>Claude&nbsp;Code</span>.</h1>
-        <p class="lede">See every build, what needs you, when you'll hit your limit, and where your tokens go. Stop babysitting terminals.</p>
+        <h1>Your <span>Claude&nbsp;Code</span> companion.</h1>
+        <p class="lede">Know what Claude is doing. Know when it needs you. Know what to do next. Every session, what's proven vs just "finished", risky steps, chat health and your limits.</p>
         <div class="install" role="group" aria-label="Install in Claude Code">
           <button type="button" id="copy" aria-label="Copy install commands">Copy</button>
           <div><span class="c">#</span> inside Claude Code</div>
           <div id="cmd">/plugin marketplace add MatchappAI/buildpilot<br>/plugin install buildpilot@buildpilot</div>
         </div>
-        <p class="sub">Then type <b>/bp-ui</b>. Free to start · everything stays on your computer · works on any editor (or none). Needs Node.js 18+ · best on Mac, Windows/Linux preview.</p>
-        <p class="proof">Source on GitHub · 150+ automated tests · WCAG 2.1 AA audited · light &amp; dark · no account needed</p>
+        <p class="sub">Then type <b>/bp-ui</b>. Free to start · everything stays on your computer · works on any editor (or none). Needs Node.js 18+ · best on Mac, Windows/Linux preview. Optional Mac menu-bar widget with a floating panel.</p>
+        <p class="proof">Source on GitHub · 190+ automated tests · WCAG 2.1 AA audited · light &amp; dark · no account needed</p>
       </div>
-      <img class="shot" src="assets/hero-crop.png" width="760" alt="BuildPilot: a build waiting for your OK, live actions like Running npm test, chat fullness and share of today's use">
+      <img class="shot" src="assets/hero-crop.png" width="760" alt="BuildPilot: a session waiting for your OK, one at step 3 of 5, one finished with tests passed, plan limits and a tip">
     </div>
 
     <section id="features" aria-labelledby="fh">
       <p class="kicker">What you get</p>
       <h2 id="fh">Everything you wish Claude Code told you</h2>
       <div class="grid">
-        <div class="f"><h3>Who needs you, right now</h3><p>Every Claude build across your projects. The one waiting for approval comes first, with the exact command and a button that jumps to its terminal tab.</p></div>
-        <div class="f"><h3>Live, plain-English status</h3><p>"Running npm test · 4 min", "Editing pricing.tsx", "may be stuck". Errors appear as they happen, with one click to copy them for Claude.</p></div>
+        <div class="f"><h3>Who needs you, right now</h3><p>Every Claude Code session across your projects. The one waiting for approval comes first, with the exact command and <b>Go to tab</b>. One notification per moment, never three.</p></div>
+        <div class="f"><h3>Finished vs verified</h3><p>"Running tests · 4 min", "Step 3 of 5". When Claude says it's done you see whether tests passed <i>after</i> its last change, or that it's not tested yet. Real errors only.</p></div>
         <div class="f"><h3>Never hit a limit by surprise</h3><p>Your 5-hour and weekly use, when each resets, and when you'll run out at your pace. A heads-up at 80%, before it's too late.</p></div>
         <div class="f"><h3>Where your tokens go</h3><p>See what's eating each chat: the starting load from tools and MCP, giant file reads, subagents. Get tips that actually cut usage.</p></div>
         <div class="f"><h3>Safe parallel builds</h3><p>Start another Claude in its own copy of the project. Review each change and merge. On a conflict, nothing breaks and you get a fix prompt.</p></div>
-        <div class="f"><h3>Who changed this file?</h3><p>See which build touched a file and when, with one-click undo (a safety save point comes first). Codex sessions show up too.</p></div>
+        <div class="f"><h3>Worth a look</h3><p>Force-pushes, <code>reset --hard</code>, deleted folders, edited <code>.env</code> files, and tests that were failing, got edited, then passed. Plus who changed a file, with one-click undo.</p></div>
       </div>
     </section>
 
