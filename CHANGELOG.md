@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.0: your Claude Code companion
+**Trust (the numbers are right)**
+- Repeated events count: a second "yes", Stop or idle notice is no longer dropped as a duplicate. Only the same event delivered twice within 5 s (plugin + settings hooks) is merged.
+- The spool watcher no longer wakes itself ~20×/s (its own heartbeat file re-triggered it); bursts are read in one batch.
+- Database safety: a busy/locked database is never treated as corrupt; older Node (sql.js) opens a shared WAL database read-only instead of replacing it under other processes.
+- Past 2000 unread events the hook drops tool steps but always keeps status changes (prompt, approval, finished, failed, ended); hard stop at 5000.
+- Subagent events and late background hook events can't flip a finished session back to "working". Hidden-as-idle sessions come back when Claude works there again. A session keeps the folder it started in.
+- Errors = real failures (tests, builds, installs, pushes…), not every `grep` that exits 1. Claude's own test runs count for test status. "Today's usage" counts only today's spend per session. Hourly cleanup.
+**Security**
+- Window links use a one-time launch code + HttpOnly cookie: the token never appears in a URL, history or the process list. The server only acts on folders/files BuildPilot knows (sessions, side builds, files Claude edited). Wider secret redaction (URL credentials, `x-api-key`, `--password`, `mysql -p…`). One notification per moment across the window, VS Code and the menu bar.
+**The four questions**
+- Claude's checklist ("Step 3 of 7 · Adding login") from TodoWrite / task tools / TaskCreated·TaskCompleted hooks. Per request: steps, files changed, proof (tests passed after the last change / failing / not tested yet). Risk signals (force-push, reset --hard, rm -rf on a real folder, secrets files, tests edited while failing). "May be stuck" also for one step running 20+ min.
+- `bp today` / `/bp-today`, `bp doctor [--fix]` / `/bp-doctor`.
+**UI**
+- One vocabulary (sessions, "chat X% full", side builds) and one threshold set (chat 70/90, limits 80/95) across window, terminal and menu bar. Go to tab on every row, Start fresh on the row from 70%, task line, chevrons, collapsed repeated steps, plain tool names, two columns on wide windows, j/k/g// keys. Glance and widget no longer point to VS Code.
+- Menu-bar widget: gauge icon (not Safari's compass), rows jump to the session's tab, Open BuildPilot opens the window, optional **floating panel** (compact/expanded, never takes focus, keep-on-top optional).
+
 ## 0.11.0: works for more Claude Code users
 - **No more crash on older Node:** the plugin now ships the database fallback (`sql-wasm.wasm`), so Node 18–22.4 works. If Node is missing, every slash command says so in one plain line instead of a stack trace (`plugin/bin/bp.sh`).
 - **Spool can't grow forever:** the first event starts the 2-day safety clock (before, a plugin that was never opened kept writing), unread events are capped at 2000, and spool files are owner-only.

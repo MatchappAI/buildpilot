@@ -20,6 +20,29 @@ struct WidgetSession: Codable, Identifiable, Equatable {
     let lastEventAt: Double
     let needsYou: Bool
     let next: String?
+    // Newer fields (0.12): all optional so an older engine still decodes.
+    let name: String?
+    let now: String?
+    let waitingFor: String?
+    let stopped: Bool?
+    let maybeStuck: Bool?
+    let risks: [String]?
+    let turn: Turn?
+    let checklist: Checklist?
+
+    struct Turn: Codable, Equatable { let steps: Int; let files: Int; let proof: String?; let done: Bool }
+    struct Checklist: Codable, Equatable { let done: Int; let total: Int; let current: String? }
+
+    var label: String { name ?? folder }
+    /// One plain line: what it's doing / waiting for / how far along / whether it's proven.
+    var line: String {
+        if needsYou { return waitingFor.map { "Waiting for your OK: \($0)" } ?? reason }
+        if stopped == true { return "Stopped mid-task" }
+        if maybeStuck == true { return "\(now ?? "Quiet"), may be stuck" }
+        if let c = checklist, c.total > 1, c.done < c.total { return "Step \(c.done + 1) of \(c.total)\(c.current.map { " · \($0)" } ?? "")" }
+        if let t = turn, t.done, t.files > 0 { return t.proof == "verified" ? "Finished · tests passed" : t.proof == "failing" ? "Finished · tests failing" : "Finished · not tested yet" }
+        return now ?? task.map { "“\($0)”" } ?? word.capitalized
+    }
 }
 
 struct WidgetData: Codable, Equatable {
@@ -57,6 +80,16 @@ final class Model: ObservableObject {
     @Published var updatedAt: Date?
     @Published var notify: Bool = UserDefaults.standard.object(forKey: "notify") as? Bool ?? true {
         didSet { UserDefaults.standard.set(notify, forKey: "notify") }
+    }
+    /// Optional floating panel (off by default). Never takes focus; "keep on top" is its own choice.
+    @Published var floating: Bool = UserDefaults.standard.bool(forKey: "floating") {
+        didSet { UserDefaults.standard.set(floating, forKey: "floating"); let me = self; DispatchQueue.main.async { MainActor.assumeIsolated { FloatController.shared.update(me) } } }
+    }
+    @Published var floatOnTop: Bool = UserDefaults.standard.object(forKey: "floatOnTop") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(floatOnTop, forKey: "floatOnTop"); let me = self; DispatchQueue.main.async { MainActor.assumeIsolated { FloatController.shared.update(me) } } }
+    }
+    @Published var floatExpanded: Bool = UserDefaults.standard.bool(forKey: "floatExpanded") {
+        didSet { UserDefaults.standard.set(floatExpanded, forKey: "floatExpanded") }
     }
     @Published var startAtLogin: Bool = LoginItem.isOn {
         didSet { if startAtLogin != LoginItem.isOn { startAtLogin ? LoginItem.enable() : LoginItem.disable() } }
@@ -354,6 +387,9 @@ struct LimitBar: View {
 }
 
 var isSnapshot = false
+/// One model for the menu-bar panel and the floating panel.
+let sharedModel = isRenderRun ? Model(live: false) : Model()
+var isRenderRun: Bool { CommandLine.arguments.contains("--render") || CommandLine.arguments.contains("--render-float") }
 
 struct Panel: View {
     @ObservedObject var m: Model
@@ -414,6 +450,8 @@ struct Panel: View {
                 Spacer()
                 if isSnapshot { Image(systemName: "gearshape").foregroundStyle(.secondary) } else { Menu {
                     Toggle("Notify me when Claude needs me", isOn: $m.notify)
+                    Toggle("Floating panel", isOn: $m.floating)
+                    Toggle("Keep floating panel on top", isOn: $m.floatOnTop).disabled(!m.floating)
                     Toggle("Start at login", isOn: $m.startAtLogin)
                     Divider()
                     Button("Quit BuildPilot Bar") { NSApp.terminate(nil) }
@@ -442,6 +480,110 @@ struct Panel: View {
     }
 }
 
+// MARK: - Floating panel
+
+/// Compact: the one session that matters most, in one line, plus its next step. Expanded: every session.
+struct FloatView: View {
+    @ObservedObject var m: Model
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("BuildPilot").font(.system(size: 12, weight: .bold))
+                if let d = m.data {
+                    Text(d.needs > 0 ? "\(d.needs) need\(d.needs == 1 ? "s" : "") you" : d.working > 0 ? "\(d.working) working" : "all quiet")
+                        .font(.system(size: 11)).foregroundStyle(d.needs > 0 ? Color.orange : Color.secondary)
+                }
+                Spacer()
+                if !isSnapshot {
+                    Button { m.floatExpanded.toggle() } label: { Image(systemName: m.floatExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical") }
+                        .buttonStyle(.borderless).help(m.floatExpanded ? "Compact" : "Show every session")
+                        .accessibilityLabel(Text(m.floatExpanded ? "Compact view" : "Expanded view"))
+                    Button { Open.window() } label: { Image(systemName: "macwindow") }
+                        .buttonStyle(.borderless).help("Open the BuildPilot window").accessibilityLabel(Text("Open the BuildPilot window"))
+                }
+            }
+            if let d = m.data {
+                if d.sessions.isEmpty {
+                    Text("No Claude sessions running").font(.system(size: 12)).foregroundStyle(.secondary)
+                } else if m.floatExpanded {
+                    ScrollView { VStack(alignment: .leading, spacing: 2) { ForEach(d.sessions) { FloatRow(s: $0) } } }
+                } else if let top = d.sessions.first(where: \.needsYou) ?? d.sessions.first(where: { $0.stopped == true || $0.maybeStuck == true || !($0.risks ?? []).isEmpty }) ?? d.sessions.first {
+                    FloatRow(s: top)
+                    if let n = top.next, !top.needsYou { Text("Next: \(n)").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2) }
+                    if d.sessions.count > 1 { Text("+\(d.sessions.count - 1) more").font(.system(size: 10)).foregroundStyle(.tertiary) }
+                }
+            } else if let e = m.error {
+                Text(e).font(.system(size: 11)).foregroundStyle(.orange).lineLimit(3)
+            }
+        }
+        .padding(12)
+        .frame(minWidth: 260, idealWidth: 300, maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+    }
+}
+
+struct FloatRow: View {
+    let s: WidgetSession
+    var body: some View {
+        Button { Open.session(s.cwd) } label: {
+            HStack(alignment: .top, spacing: 7) {
+                StatusDot(status: s.stopped == true ? "failed" : s.status).padding(.top, 5)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack {
+                        Text(s.label).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Spacer(minLength: 4)
+                        if let c = s.contextPct {
+                            Text("chat \(Int(c.rounded()))% full").font(.system(size: 10)).monospacedDigit()
+                                .foregroundStyle(c >= 90 ? Color.red : c >= 70 ? Color.orange : Color.secondary)
+                        }
+                    }
+                    Text(s.line).font(.system(size: 11)).foregroundStyle(s.needsYou ? Color.primary : Color.secondary).lineLimit(2)
+                    if let r = s.risks?.first { Text("⚠ \(r)").font(.system(size: 10)).foregroundStyle(.orange).lineLimit(2) }
+                }
+            }.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Go to \(s.label)'s terminal")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(s.label). \(s.line)")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// A non-activating panel: it never takes keyboard focus or steals the frontmost app, so typing elsewhere is never
+/// interrupted. Movable, resizable, remembers its place, joins every Space. Shown only when the user turns it on.
+@MainActor final class FloatController {
+    static let shared = FloatController()
+    private var panel: NSPanel?
+
+    func update(_ m: Model) {
+        guard m.floating else { panel?.orderOut(nil); return }
+        if panel == nil {
+            let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 120),
+                            styleMask: [.nonactivatingPanel, .titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
+                            backing: .buffered, defer: true)
+            p.titleVisibility = .hidden
+            p.titlebarAppearsTransparent = true
+            p.isMovableByWindowBackground = true
+            p.hidesOnDeactivate = false
+            p.becomesKeyOnlyIfNeeded = true
+            p.isReleasedWhenClosed = false
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            p.contentView = NSHostingView(rootView: FloatView(m: m))
+            p.setFrameAutosaveName("BuildPilotFloatingPanel")
+            if !p.setFrameUsingName("BuildPilotFloatingPanel"), let screen = NSScreen.main {
+                let v = screen.visibleFrame
+                p.setFrameOrigin(NSPoint(x: v.maxX - 320, y: v.maxY - 160))
+            }
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: p, queue: .main) { _ in
+                MainActor.assumeIsolated { if m.floating { m.floating = false } }
+            }
+            panel = p
+        }
+        panel!.level = m.floatOnTop ? .floating : .normal
+        panel!.orderFrontRegardless() // shows without activating BuildPilot Bar
+    }
+}
+
 struct BarLabel: View {
     @ObservedObject var m: Model
     var body: some View {
@@ -457,14 +599,15 @@ struct BarLabel: View {
 }
 
 /// `BuildPilot Bar --render out.png [light|dark]`: draws the panel with live data to a PNG and exits (for tests and docs).
-@MainActor func renderSnapshot(to path: String, dark: Bool) {
+@MainActor func renderSnapshot(to path: String, dark: Bool, float: Bool = false, expanded: Bool = false) {
     isSnapshot = true
     let m = Model(live: false)
     switch Model.runWidget() {
     case .success(let d): m.data = d
     case .failure(let e): m.error = e.message
     }
-    let view = Panel(m: m)
+    m.floatExpanded = expanded
+    let view = Group { if float { AnyView(FloatView(m: m).frame(width: 300)) } else { AnyView(Panel(m: m)) } }
         .background(dark ? Color(white: 0.16) : Color(white: 0.96))
         .environment(\.colorScheme, dark ? .dark : .light)
     let r = ImageRenderer(content: view)
@@ -480,10 +623,15 @@ struct BarLabel: View {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--render-float"), i + 1 < args.count {
+            renderSnapshot(to: args[i + 1], dark: args.contains("dark"), float: true, expanded: args.contains("expanded"))
+            exit(0)
+        }
         if let i = args.firstIndex(of: "--render"), i + 1 < args.count {
             renderSnapshot(to: args[i + 1], dark: args.contains("dark"))
             exit(0)
         }
+        if UserDefaults.standard.bool(forKey: "floating") { DispatchQueue.main.async { MainActor.assumeIsolated { FloatController.shared.update(sharedModel) } } }
         let c = UNUserNotificationCenter.current()
         c.delegate = self
         c.requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -500,7 +648,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 @main
 struct BuildPilotBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var model = Model()
+    @ObservedObject private var model = sharedModel
     var body: some Scene {
         MenuBarExtra {
             Panel(m: model)

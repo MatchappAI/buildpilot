@@ -1,24 +1,29 @@
 <p align="center"><img src="docs/assets/logo.png" width="96" alt="BuildPilot"></p>
-<h1 align="center">BuildPilot for Claude Code</h1>
-<p align="center"><b>Every Claude build, what needs you, your limits and where your tokens go, in one calm window.</b><br>Local-only · works with Claude Code (and reads Codex) · no editor needed</p>
+<h1 align="center">BuildPilot: your Claude Code companion</h1>
+<p align="center"><b>Know what Claude is doing. Know when it needs you. Know what to do next.</b><br>A Claude Code plugin, with an optional window and Mac menu-bar widget · local-only · works across many sessions</p>
 <p align="center"><a href="https://matchappai.github.io/buildpilot/">Website</a> · <a href="#install">Install</a> · <a href="docs/COMPARISON.md">How it compares</a></p>
-<p align="center"><img src="docs/assets/hero.png" width="560" alt="BuildPilot showing four builds, one waiting for approval, plan limits and tips"></p>
+<p align="center"><img src="docs/assets/hero.png" width="560" alt="BuildPilot showing several Claude sessions, one waiting for approval, plan limits and tips"></p>
 
-Made for people who build with Claude Code and don't want to babysit it, including people who aren't engineers.
+Made for people who build with Claude Code, from first-time vibe coders to developers running five sessions at once.
 
-- **Builds:** every Claude Code (and Codex) session across your projects, grouped by project, needs-you first. Each shows **what it's doing right now** ("Running npm test · 4 min"), errors, and the exact command waiting for your OK. **Find it** jumps to the right Terminal/iTerm tab. Name builds, resume ones that stopped mid-task, and clear out quiet ones.
-- **Where the tokens went:** per build, the starting load before you type (tools, MCP, CLAUDE.md), chat size, model, subagents, and the biggest things pulled into the chat, with tips to cut them.
-- **Who changed this file?** It tells you which build changed it and when, with one-click undo.
-- **Plan limits:** 5-hour and weekly usage, when each resets, and *"At this pace you'll run out around 5:47 PM, then wait 1 h 37 min."* It warns you at 80%. API-key users see spend instead.
-- **Tips for right now:** only when they apply, each with one button. Chat nearly full → **Start fresh chat**. A build stuck repeating a fix → plan first. Two builds in one folder → **New build**. No Git → **Turn on undo**.
-- **+ New build → Review → Merge:** another Claude in its own copy of the project (it copies your `.env` files and installs packages), so builds can't undo each other's work. When it's done, **Review** shows each changed file before ↔ after and **Merge** brings it in. On a conflict nothing changes, and you get a ready fix prompt.
-- **Prompt box:** plain words in, an expert prompt out, with your project's setup, guardrails, checks and "settle these first" questions.
+- **What is Claude doing?** Every Claude Code session across your projects, needs-you first: *"Running tests · 4 min"*, the exact command waiting for your OK, and what you asked. When Claude keeps a checklist you see **"Step 3 of 7 · Adding login"**.
+- **Is it stuck, failing or waiting?** Needs your OK, needs an answer, your turn, stopped mid-task, may be stuck (one step running too long), real errors only (not every `grep` that found nothing). One notification per moment, even with the window, VS Code and the menu bar all open.
+- **Finished vs verified.** "Claude finished" isn't proof. Each request shows steps, files changed and whether tests passed **after** the last change: *✓ tests passed*, *✗ tests failing* or *not tested yet*.
+- **Worth a look.** BuildPilot flags risky steps it saw: force-push, `git reset --hard`, `rm -rf` on a real folder, edits to `.env`, and tests that were failing, got edited, then passed.
+- **Chat health and cost.** Chat % full (amber at 70%, red at 90%) with **Start fresh** on the row, compaction alerts, the starting token load and what eats it, 5-hour and weekly limits with *"at this pace you'll run out around 5:47 PM"*. API users see spend for today only.
+- **Go to tab.** Every row jumps to that session's Terminal, iTerm or tmux tab.
+- **Your day:** `bp today` / `/bp-today`: needs you, stuck, working, check before you trust it, what finished, one next step.
+- **Side builds:** **+ New side build → Review → Merge** runs another Claude in its own copy of the project so sessions can't undo each other's work.
+- **Prompt box:** plain words in, an expert prompt out.
 
 Everything stays on your computer. [How it compares](docs/COMPARISON.md) · [Privacy](docs/SECURITY.md)
 
 ## Install
 
-BuildPilot is a helper for **Claude Code**. You don't need VS Code or any other editor.
+BuildPilot is a helper for **Claude Code**. You don't need VS Code or any other editor. Two ways to use it:
+
+- **A. Plugin only:** everything works inside Claude Code and your terminal (`/bp`, `/bp-today`, `bp ui`).
+- **B. Plugin + Mac widget:** adds the menu-bar widget with notifications and an optional floating panel (`bp bar install`).
 
 **1. Inside Claude Code** (one time):
 
@@ -30,13 +35,16 @@ BuildPilot is a helper for **Claude Code**. You don't need VS Code or any other 
 **2. Open it:**
 - `/bp-ui` in Claude Code, or `bp ui` in a terminal, opens BuildPilot in its own window.
 - On a Mac, the **BuildPilot** app on your Desktop does the same: double-click.
-- In Claude Code, `/bp` shows your builds, limits and tips. Also `/bp-new <name>`, `/bp-merge <name>`, `/bp-prompt <idea>`, `/bp-connect` (exact chat % and limits) and `/bp-license <key>`.
+- In Claude Code, `/bp` shows your sessions, limits and tips; `/bp-today` your day; `/bp-doctor` checks the setup and repairs what's safe. Also `/bp-new <name>`, `/bp-merge <name>`, `/bp-prompt <idea>`, `/bp-connect` (exact chat % and limits) and `/bp-license <key>`.
+- **Menu bar (Mac):** `bp bar install`. Its gear menu has **Floating panel**: a small panel that never takes focus (compact: the one session that matters, expanded: all of them), with **Keep on top** as a separate choice.
 
-**Needs:** Node.js 18+ on your PATH (22.5+ recommended). Claude Code's own installer doesn't include Node; get it from [nodejs.org](https://nodejs.org). Without it, BuildPilot tells you in one line.
+**Update:** `/plugin update buildpilot`, then `bp doctor --fix` once. **Uninstall:** `/plugin uninstall buildpilot` (plus `bp hooks uninstall`, `bp statusline uninstall` and `bp bar uninstall` if you used them; each restores exactly what was there).
 
-**Works best on a Mac.** Windows and Linux are a preview: builds, limits, tips, prompts and Review/Merge work, and Resume/New build open Windows Terminal (or a cmd window) or your Linux terminal. "Find it" (jump to a tab), notifications and the menu-bar widget are Mac only.
+**Needs:** Node.js 18+ on your PATH (22.13+ recommended). Claude Code's own installer doesn't include Node; get it from [nodejs.org](https://nodejs.org). Without it, BuildPilot tells you in one line.
 
-**Terminal:** run `/bp-terminal` once in Claude Code to add the `bp` command to your terminal (zsh/bash). Then: `bp ui` · `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp who <file>` · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
+**Works best on a Mac.** Windows and Linux are a preview: builds, limits, tips, prompts and Review/Merge work, and Resume/New build open Windows Terminal (or a cmd window) or your Linux terminal. "Go to tab", notifications and the menu-bar widget are Mac only.
+
+**Terminal:** run `/bp-terminal` once in Claude Code to add the `bp` command to your terminal (zsh/bash). Then: `bp ui` · `bp today` · `bp doctor` · `bp limits` · `bp new "<name>"` · `bp review` / `bp merge <name>` · `bp go` (jump to the build that needs you) · `bp who <file>` · `bp builds` / `bp done <name>` · `bp tmux` (status segment) · `bp prompt auto "<idea>"` · `bp help`
 
 *Optional:* if you also work in VS Code or Cursor, the same page can sit beside your terminal there (`dist/buildpilot.vsix`).
 
@@ -71,3 +79,11 @@ Nothing is uploaded. There's no telemetry unless you say yes to a one-time quest
 - `server/`: the license Worker (Stripe → signed key).
 
 More: [docs/](docs/), with [PUBLISHING.md](docs/PUBLISHING.md) for the steps that need your accounts.
+
+## What BuildPilot can't see (honest limits)
+
+- **Only what Claude Code reports.** It reads Claude Code's documented hooks and status line. Edits made with shell commands (`sed`, scripts) don't count as "files changed"; tests count only when Claude runs them in a session (or you run them from BuildPilot).
+- **Chat % and plan limits** appear after the status-line reporter is on and Claude has replied once. Before that they show as unknown, never guessed.
+- **Checklist progress** appears only when Claude keeps a to-do list in that session.
+- **Go to tab** finds Terminal, iTerm and tmux on a Mac; two sessions in the same folder may pick the wrong tab.
+- **Remote / web sessions** (claude.ai/code) don't run local hooks, so they don't appear.

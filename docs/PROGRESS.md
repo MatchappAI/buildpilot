@@ -1,4 +1,10 @@
-# Progress (2026-11-07)
+# Progress (2026-11-08)
+
+## v0.12.0: your Claude Code companion (branch `companion`, tag `pre-companion-v0.11.0` = rollback point)
+- Plan: docs/COMPANION_PLAN.md (owner's companion prompt + the v0.11 expert review). Phases A (trust), B (security), C (four questions), D (UI), E (plugin/docs) done; see CHANGELOG.
+- 194 tests pass (typecheck + lint clean). Window checked with headless screenshots on live data (light, dark, expanded, 800 px).
+- Not installed: `~/.buildpilot/bin`, the plugin and the widget still run 0.11 on the owner's Mac (hook.sh was refreshed to 0.12 by a CLI run). To install: `npm run build && node plugin/bin/cli.js shell install && node plugin/bin/cli.js doctor --fix` (+ `bash scripts/build-widget.sh` and `bp bar install` for the widget).
+- Not pushed / not merged to main.
 
 ## v0.11.0: works for more Claude Code users (current, not yet committed/pushed)
 - From the expert review (7/10): plugin ships `sql-wasm.wasm` (Node 18–22.4 no longer crash), `plugin/bin/bp.sh` gives one plain line when Node is missing, spool clock starts on first event + 2000-event cap + owner-only files, `/bp-terminal` for plugin-only users, Windows (wt/cmd) and more Linux terminals, standalone dark page that follows the system (AA contrast, tested), min text 12px, double-hooks tip with one-click fix, action column no longer overlaps chat % in the VS Code layout.

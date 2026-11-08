@@ -90,3 +90,11 @@ describe("double-hooks tip", () => {
     expect(t.action).toBe("fixDoubleHooks");
   });
 });
+
+describe("plugin copy of the CLI", () => {
+  it("matches the built CLI (run npm run build before committing)", () => {
+    const built = path.join(root, "dist", "cli.js");
+    if (!fs.existsSync(built)) return; // fresh clone without a build: nothing to compare
+    expect(fs.readFileSync(path.join(plugin, "bin", "cli.js"), "utf8") === fs.readFileSync(built, "utf8"), "plugin/bin/cli.js is stale: run npm run build").toBe(true);
+  });
+});

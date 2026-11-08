@@ -1,6 +1,6 @@
 # BuildPilot: development instructions
 
-VS Code extension + local engine that supervises Claude Code sessions. TypeScript strict, no framework in the webview.
+Claude Code companion: plugin (primary) + local engine + standalone window (`bp ui`) + Mac menu-bar widget; the VS Code extension is optional. TypeScript strict, no framework in the webview. Plan: docs/COMPANION_PLAN.md.
 
 ## Layout
 - `src/core/`: pure engine, no `vscode` imports (testable in Node): `db.ts` (sql.js SQLite + migrations), `hooks.ts` (safe settings merge + hook.sh), `ingest.ts` (validate → redact → store, session state machine, spool reader), `supervisor.ts` (deterministic rules), `prompts.ts` (Prompt Studio), `memory.ts` (handoff, CLAUDE.md draft), `engine.ts` (orchestrator + snapshot), `api.ts` (Integration API + webhooks), `ai.ts` (opt-in provider), `git.ts`, `analyzer.ts`, `doctor.ts`, `transcript.ts`, `redact.ts`.

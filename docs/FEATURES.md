@@ -1,5 +1,16 @@
 # Features: implemented · partial · planned
 
+## 0.12 companion (2026-11-08) — see docs/COMPANION_PLAN.md
+- ✅ Correct status under repeats, subagents, late async hooks, hidden sessions; spool keeps status events when full; safe shared DB; no watcher loop
+- ✅ Claude's checklist progress (TodoWrite, TaskCreate/TaskUpdate, TaskCreated/TaskCompleted) — observed only
+- ✅ Per-request steps / files changed / proof (verified · failing · not tested yet)
+- ✅ Risk signals (destructive git/rm/SQL, secrets files, tests edited while failing)
+- ✅ `bp today`, `bp doctor [--fix]`, `/bp-today`, `/bp-doctor`
+- ✅ One-time launch codes + cookie for the window; server-side path checks; wider redaction; cross-app alert de-duplication
+- ✅ Window: Go to tab, Start fresh at 70%, two columns, keyboard j/k/g//; one vocabulary + thresholds everywhere
+- 🟡 Menu-bar floating panel (compact/expanded, non-activating): compiles; not visually checked (rendering it would put a window on screen)
+- 🟡 "Files changed" counts Claude's edit tools only (shell edits aren't seen)
+
 Legend: ✅ implemented and tested · 🟡 partial · ⏳ planned (see ROADMAP)
 
 ## Foundation
