@@ -104,7 +104,7 @@ export function glanceItems(engine: Engine, now: number) {
       // The last 80 events may not reach back to the start of a long request: summarize it from its own events.
       const lastAsk = engine.store.get<{ ts: number }>("SELECT MAX(ts) AS ts FROM events WHERE session_id = ? AND hook_event = 'UserPromptSubmit' AND summary NOT LIKE 'Prompt: [Subagent hand-back]%' AND summary NOT IN ('Prompt: Message from another Claude session','Prompt: Background task update','Prompt: System update','Prompt: Report from a helper')", [s.id]);
       if (lastAsk?.ts != null) {
-        const turnEv = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND ts >= ? AND (hook_event IN ('UserPromptSubmit','Stop','PostToolUse','PostToolUseFailure')) ORDER BY ts, id LIMIT 3000", [s.id, Number(lastAsk.ts)]).map(rowToEvent);
+        const turnEv = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND ts >= ? AND (hook_event IN ('UserPromptSubmit','Stop','SessionEnd','PostToolUse','PostToolUseFailure')) ORDER BY ts, id LIMIT 3000", [s.id, Number(lastAsk.ts)]).map(rowToEvent);
         act.turn = turnSummary(turnEv);
       }
       const riskEv = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND ts > ? AND hook_event IN ('PostToolUse','PostToolUseFailure') AND tool_name IN ('Bash','Edit','Write','MultiEdit','NotebookEdit') ORDER BY ts, id LIMIT 2000", [s.id, now - 3 * 3600_000]).map(rowToEvent);
@@ -126,7 +126,8 @@ function projectNext(engine: Engine, cwd: string): string | null {
   try {
     const sum = JSON.parse(String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]) ?? "")) as { next: string | null; severity?: string | null };
     // Housekeeping ("write down what done means", "add a CLAUDE.md") is never the next step next to live work.
-    return sum.severity === "low" || sum.severity === "info" ? null : sum.next ?? null;
+    // (Summaries saved before 0.12.1 have no severity: treat them as housekeeping until the next refresh.)
+    return !sum.severity || sum.severity === "low" || sum.severity === "info" ? null : sum.next ?? null;
   } catch {
     return null;
   }
@@ -206,7 +207,8 @@ export function widgetData(engine: Engine, now = Date.now()): WidgetData {
       folder: folderLabel(x.s.cwd),
       cwd: x.s.cwd,
       status: x.status,
-      word: WORD[x.status],
+      // "your turn" only while it's fresh (same rule as the counts); an old idle session is just idle.
+      word: x.status === "idle" && !isYourTurn(x.status, x.act.finishedAt, now) ? "idle" : WORD[x.status],
       reason: x.reason.split("\n")[0]!.replace(/\s+/g, " ").slice(0, 160),
       task: x.s.currentTask ? x.s.currentTask.replace(/\s+/g, " ").slice(0, 160) : null,
       contextPct: x.live?.contextPct ?? null,
@@ -277,7 +279,7 @@ export function glance(engine: Engine, o: GlanceOptions): string {
           ? `"${x.s.currentTask.replace(/\s+/g, " ")}"`
           : x.status === "idle" ? "finished" : x.reason;
     const what1 = what.replace(/\s+/g, " ").trim();
-    const word = WORD[x.status].padEnd(17);
+    const word = (x.status === "idle" && !isYourTurn(x.status, x.act.finishedAt, now) ? "idle" : WORD[x.status]).padEnd(17);
     const left = `  ${MARK[x.status]} ${name}  ${word}`;
     const room = W - left.length - (ctx ? ctx.length + 3 : 0) - 3;
     const middle = room > 8 ? `  ${fit(what1, room)}` : "";
@@ -294,7 +296,7 @@ export function glance(engine: Engine, o: GlanceOptions): string {
     const raw = engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]);
     try {
       const sum = JSON.parse(String(raw ?? "")) as { next: string | null; severity?: string | null; health: string; name: string };
-      const msg = sum.next && sum.severity !== "low" && sum.severity !== "info" ? `Next: ${sum.next}` : sum.health;
+      const msg = sum.next && sum.severity && sum.severity !== "low" && sum.severity !== "info" ? `Next: ${sum.next}` : sum.health;
       lines.push(`  ${bold("This folder")} ${dim(`(${fit(sum.name, 24).trim()})`)}  ${fit(msg.replace(/\s+/g, " "), W - 40).trimEnd()}`);
     } catch {
       /* not analyzed yet */

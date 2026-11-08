@@ -65,7 +65,7 @@ function earlierToday(engine: Engine, now: number, live: Set<string>): NonNullab
   const midnight = new Date(now).setHours(0, 0, 0, 0);
   const rows = engine.store.all<Record<string, unknown>>("SELECT * FROM sessions WHERE ended_at >= ? AND id NOT LIKE 'demo-%' AND status_reason != 'Hidden as idle' ORDER BY ended_at DESC LIMIT 20", [midnight]);
   return rows.map(rowToSession).filter((s) => !live.has(s.id) && s.eventCount > 2).slice(0, 8).map((s) => {
-    const ev = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND hook_event IN ('UserPromptSubmit','Stop','PostToolUse','PostToolUseFailure') ORDER BY ts, id LIMIT 3000", [s.id]).map(rowToEvent);
+    const ev = engine.store.all<Record<string, unknown>>("SELECT * FROM events WHERE session_id = ? AND hook_event IN ('UserPromptSubmit','Stop','SessionEnd','PostToolUse','PostToolUseFailure') ORDER BY ts, id LIMIT 3000", [s.id]).map(rowToEvent);
     const t = turnSummary(ev);
     return { id: s.id, folder: folderLabel(s.cwd), cwd: s.cwd, task: s.currentTask ? s.currentTask.slice(0, 160) : null, endedAt: s.endedAt!, proof: t?.proof ?? null, files: t?.files ?? 0 };
   });

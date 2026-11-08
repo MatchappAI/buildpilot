@@ -134,7 +134,8 @@ export function turnSummary(ev: HookEvent[]): Activity["turn"] {
   const testsAfter = lastEdit ? turn.filter((e) => e.ts >= lastEdit.ts && e.toolName === "Bash" && (e.hookEvent === "PostToolUse" || e.hookEvent === "PostToolUseFailure") && isTestRun(e.summary)) : [];
   const lastTest = testsAfter[testsAfter.length - 1];
   const proof = !files ? null : !lastTest ? "unverified" : lastTest.isError ? "failing" : "verified";
-  return { steps, files, proof, done: turn.some((e) => e.hookEvent === "Stop") };
+  // Ending the session also ends the request (headless runs can exit before their Stop hook lands).
+  return { steps, files, proof, done: turn.some((e) => e.hookEvent === "Stop" || e.hookEvent === "SessionEnd") };
 }
 
 const MUST_WORK = new RegExp(

@@ -226,7 +226,7 @@ export class Ingestor {
     // Same bytes later = a genuine repeat ("yes", a second Stop or idle notice) and must count.
     const h = createHash("sha256").update(raw).digest("hex").slice(0, 32);
     const bucket = Math.floor(ts / DEDUPE_WINDOW_MS);
-    return this.ingest(v.payload, ts, `${h}:${bucket}`, [`${h}:${bucket - 1}`]);
+    return this.ingest(v.payload, ts, `${h}:${bucket}`, [`${h}:${bucket - 1}`, `${h}:${bucket + 1}`]);
   }
 
   ingest(p: RawHookPayload, ts: number, fingerprint: string, alsoSeenAs: string[] = []): IngestResult {

@@ -608,7 +608,8 @@ export class Engine extends EventEmitter {
   /** When this session last started or resumed (its latest SessionStart), for matching it to a terminal process. */
   sessionStartedAt(id: string): number | null {
     if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id)) return null;
-    const v = this.store.scalar("SELECT COALESCE(MAX(CASE WHEN hook_event = 'SessionStart' THEN ts END), MIN(ts)) FROM events WHERE session_id = ?", [id]);
+    // Latest start/resume; otherwise when the session was first seen (kept on the session, so pruning old events can't shift it).
+    const v = this.store.scalar("SELECT COALESCE((SELECT MAX(ts) FROM events WHERE session_id = ? AND hook_event = 'SessionStart'), (SELECT started_at FROM sessions WHERE id = ?))", [id, id]);
     return v == null ? null : Number(v);
   }
 

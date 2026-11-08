@@ -246,3 +246,26 @@ describe("review round 2: task tools checklist", () => {
     expect(c).toMatchObject({ done: 1, total: 1 });
   });
 });
+
+import { Engine } from "../../src/core/engine";
+describe("review round 3", () => {
+  it("session start time comes from its latest start, else from the session itself (not from prunable events)", async () => {
+    const home = tmpDir();
+    const e = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    await e.start();
+    const ing = (e as unknown as { ingestor: Ingestor }).ingestor;
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", cwd: "/p", hook_event_name: "UserPromptSubmit", prompt: "x" }), 5000);
+    expect(e.sessionStartedAt("s1")).toBe(5000);
+    ing.ingestRaw(JSON.stringify({ session_id: "s1", cwd: "/p", hook_event_name: "SessionStart", source: "resume" }), 9000);
+    expect(e.sessionStartedAt("s1")).toBe(9000);
+    expect(e.sessionStartedAt("bad id!")).toBeNull();
+    e.stop();
+  });
+  it("the same event a few seconds later in another process's bucket still merges (either side)", async () => {
+    const { store, ing } = await ingestor();
+    const p = payload({ hook_event_name: "Stop" });
+    expect(ing.ingestRaw(p, 10_001).accepted).toBe(true);
+    expect(ing.ingestRaw(p, 9_999).duplicate).toBe(true); // arrived "earlier" (other process's clock/mtime)
+    expect(session(store).eventCount).toBe(1);
+  });
+});

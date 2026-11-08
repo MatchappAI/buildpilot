@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.3: finishing touches, tested end to end
+- `bp go` could fail when picking between sessions in the same folder (it read the database after closing it).
+- A session that ends right after a request counts as finished (headless runs can exit before their "finished" event lands).
+- "Your turn" only while it's fresh (finished in the last 2 hours), everywhere; older idle sessions say "Idle". Housekeeping next steps stay hidden.
+- Duplicate events are merged on either side of the time window; session start time no longer drifts when old events are cleaned up; a wrapped progress line never starts with a stray "·".
+- Checked: Claude Code skips hook events it doesn't know with a one-line notice, so the newer events never break older setups.
+
 ## 0.12.2: clearer and more accessible (nothing removed)
 - Text is at least 13px everywhere in the window (was 12px); menu-bar small text 11pt (was 10pt).
 - Every session row says its status in words for screen readers, not only with the colored dot. The floating panel and its summary have VoiceOver labels.
@@ -24,7 +31,7 @@
 
 ## 0.12.0: your Claude Code companion
 **Trust (the numbers are right)**
-- Repeated events count: a second "yes", Stop or idle notice is no longer dropped as a duplicate. Only the same event delivered twice within 5 s (plugin + settings hooks) is merged.
+- Repeated events count: a second "yes", Stop or idle notice is no longer dropped as a duplicate. Only the same event delivered twice within a few seconds (plugin + settings hooks) is merged.
 - The spool watcher no longer wakes itself ~20×/s (its own heartbeat file re-triggered it); bursts are read in one batch.
 - Database safety: a busy/locked database is never treated as corrupt; older Node (sql.js) opens a shared WAL database read-only instead of replacing it under other processes.
 - Past 2000 unread events the hook drops tool steps but always keeps status changes (prompt, approval, finished, failed, ended); hard stop at 5000.

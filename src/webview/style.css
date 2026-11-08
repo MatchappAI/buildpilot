@@ -319,3 +319,4 @@ button.link, .linkbtn, .b-act .link, .b-risk .link { min-height: 24px; padding-t
   body.match.sa { --muted: #d0d0d0; --line: #7a7a7a; }
   .pencil, .chev { opacity: 1; }
 }
+.b-prog .part { white-space: nowrap; margin-right: 4px; }

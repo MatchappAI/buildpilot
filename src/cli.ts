@@ -300,7 +300,15 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     await engine.start();
     const w = widgetData(engine);
     const midnight = new Date().setHours(0, 0, 0, 0);
-    const finished = engine.store.all<{ cwd: string; n: number }>("SELECT s.cwd, COUNT(*) AS n FROM events e JOIN sessions s ON s.id = e.session_id WHERE e.hook_event = 'Stop' AND e.ts >= ? AND e.agent_id IS NULL GROUP BY s.cwd ORDER BY n DESC", [midnight]);
+    // A finished turn = a Stop, or a session that ended after its last prompt without one (headless runs).
+    const finished = engine.store.all<{ cwd: string; n: number }>(
+      `SELECT s.cwd, COUNT(*) AS n FROM events e JOIN sessions s ON s.id = e.session_id
+       WHERE e.ts >= ? AND e.agent_id IS NULL AND (e.hook_event = 'Stop' OR (e.hook_event = 'SessionEnd' AND NOT EXISTS (
+         SELECT 1 FROM events x WHERE x.session_id = e.session_id AND x.hook_event = 'Stop' AND x.ts > COALESCE((SELECT MAX(p.ts) FROM events p WHERE p.session_id = e.session_id AND p.hook_event = 'UserPromptSubmit' AND p.ts <= e.ts), 0))
+         AND EXISTS (SELECT 1 FROM events p WHERE p.session_id = e.session_id AND p.hook_event = 'UserPromptSubmit' AND p.ts <= e.ts)))
+       GROUP BY s.cwd ORDER BY n DESC`,
+      [midnight],
+    );
     engine.stop();
     const name = (b: (typeof w.sessions)[number]) => b.name ?? b.folder;
     const out: string[] = [];
@@ -346,6 +354,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     const engine = new Engine({ light: true });
     await engine.start();
     const w = widgetData(engine);
+    const startedAt = new Map(w.sessions.map((x) => [x.id, engine.sessionStartedAt(x.id)])); // read before closing the database
     engine.stop();
     const want = rest[0]?.toLowerCase();
     const target = want ? w.sessions.find((s) => (s.name ?? s.folder).toLowerCase() === want || (s.name ?? s.folder).toLowerCase().includes(want) || s.folder.toLowerCase().includes(want)) : w.sessions.find((s) => s.needsYou) ?? w.sessions[0];
@@ -355,7 +364,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       return;
     }
     const { findBuild } = await import("./core/termfind");
-    const r = await findBuild(target.cwd, (() => { const v = engine.store.scalar("SELECT COALESCE(MAX(CASE WHEN hook_event = 'SessionStart' THEN ts END), MIN(ts)) FROM events WHERE session_id = ?", [target.id]); return v == null ? null : Number(v); })());
+    const r = await findBuild(target.cwd, startedAt.get(target.id) ?? null);
     const what = target.needsYou ? ` (waiting: ${target.waitingFor ?? target.reason ?? target.word})` : target.now ? ` (${target.now})` : "";
     console.log(r.found ? `→ ${target.name ?? target.folder}${what} in ${r.how}` : `${target.name ?? target.folder}${what}\n  ${r.how}\n  cd "${target.cwd}"`);
     return;

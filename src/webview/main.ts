@@ -246,7 +246,7 @@ function buildSub(x: Build): string {
   if (x.now) return `<b class="nowtxt" title="${esc(x.nowFull ?? x.now)}">${esc(x.now)}</b>${dur(x.nowSince)}`;
   if (x.finishedAt && x.turnMs && Date.now() - x.finishedAt < 15 * 60_000) return `<span class="ok-text">Finished · your turn</span>${x.turnMs >= 60_000 ? ` <span class="muted">after ${Math.round(x.turnMs / 60_000)} min</span>` : ""}`;
   // The task has its own line under this one, so this line says the state, never the task again.
-  return x.task ? `${STATUS_WORD[x.status] ?? x.word} · ${ago(x.lastEventAt)}` : `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
+  return x.task ? `${x.status === "idle" ? (x.word === "idle" ? "Idle" : "Your turn") : STATUS_WORD[x.status] ?? x.word} · ${ago(x.lastEventAt)}` : `${esc(clip(x.task, 70) || STATUS_WORD[x.status] || x.word)} · ${ago(x.lastEventAt)}`;
 }
 
 /** "Step 3 of 7 · Adding login" from Claude's own checklist, else what this request has done so far and whether it's proven. */
@@ -260,7 +260,8 @@ function progressLine(x: Build): string {
   if (!t || (!t.steps && !t.files)) return "";
   const proof = t.proof === "verified" ? `<span class="ok-text">✓ tests passed after the last change</span>` : t.proof === "failing" ? `<span class="bad-text">✗ tests failing</span>` : t.proof === "unverified" ? `<span class="warn-text">${t.done ? "finished, not tested yet" : "not tested yet"}</span>` : "";
   const parts = [`${t.steps} step${t.steps === 1 ? "" : "s"}`, t.files ? `${t.files} file${t.files === 1 ? "" : "s"} changed` : "", proof].filter(Boolean);
-  return `<div class="b-prog">${parts.join(" · ")}</div>`;
+  // Each part is its own piece with a dot before it, so a wrapped line never ends or starts with a stray "·".
+  return `<div class="b-prog">${parts.map((x, i) => `<span class="part">${i ? `<span class="sep" aria-hidden="true">· </span>` : ""}${x}</span>`).join("")}</div>`;
 }
 
 function buildRow(x: Build): string {
@@ -272,7 +273,7 @@ function buildRow(x: Build): string {
   ].join("");
   const errPanel = errOpen.has(x.id) && (x.lastErrors ?? []).length ? `<div class="errpanel"><ul>${(x.lastErrors ?? []).map((e) => `<li><code>${esc(e)}</code></li>`).join("")}</ul><button class="link" data-act="copyErrors" data-id="${esc(x.id)}">Copy for Claude</button></div>` : "";
   return `<li class="${x.needsYou ? "needs" : ""}${expanded.has(x.id) ? " open" : ""}">
-    <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span><span class="sr-only">${esc(x.stopped ? "Stopped mid-task" : x.needsYou ? "Needs you" : STATUS_WORD[x.status] ?? x.word)}:</span>
+    <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span><span class="sr-only">${esc(x.stopped ? "Stopped mid-task" : x.needsYou ? "Needs you" : x.status === "idle" ? (x.word === "idle" ? "Idle" : "Your turn") : STATUS_WORD[x.status] ?? x.word)}:</span>
     <div class="b-main">
       <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" aria-controls="d-${esc(x.id)}" title="Show what it did and where the tokens went"><span class="chev" aria-hidden="true">${expanded.has(x.id) ? "▾" : "▸"}</span>${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this session" aria-label="Name this session">✎</button>` : ""}${chips}</div>
       <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
