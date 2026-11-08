@@ -23,7 +23,7 @@ describe("menu-bar widget data (bp widget)", () => {
     engine.stop();
     expect(d.v).toBe(1);
     expect(d.needs).toBe(1);
-    expect(d.sessions[0]).toMatchObject({ folder: "api", status: "awaiting_approval", needsYou: true, word: "needs approval" });
+    expect(d.sessions[0]).toMatchObject({ folder: "api", status: "awaiting_approval", needsYou: true, word: "needs your OK" });
     expect(d.sessions[0]!.reason).not.toContain("\n");
     expect(d.sessions[1]).toMatchObject({ folder: "site", needsYou: false, task: "Make the homepage faster" });
     expect(d.fiveHourPct).toBeNull(); // unknown stays unknown

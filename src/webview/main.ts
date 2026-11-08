@@ -219,7 +219,7 @@ function connectCard(): string {
   </section>`;
 }
 
-const STATUS_WORD: Record<string, string> = { running: "Working", idle: "Idle", blocked: "Waiting for your answer", awaiting_approval: "Waiting for your OK", completed: "Done", failed: "Stopped with an error", unknown: "Quiet" };
+const STATUS_WORD: Record<string, string> = { running: "Working", idle: "Your turn", blocked: "Needs your answer", awaiting_approval: "Needs your OK", completed: "Closed", failed: "Failed", unknown: "Quiet" };
 
 type Build = PageData["builds"][number];
 const expanded = new Set<string>();

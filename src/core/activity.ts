@@ -67,7 +67,8 @@ export function risksIn(ev: HookEvent[]): string[] {
         if (/rm -rf/.test(text)) {
           // Name what was deleted; routine build/cache folders aren't worth a warning.
           const target = /\brm\s+-[a-z]+\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd)?.[1]?.replace(/^["']|["']$/g, "") ?? "";
-          if (!target || /(^|\/)(node_modules|dist|build|out|\.next|coverage|tmp|\.cache|__pycache__|\.turbo|\.parcel-cache)\/?$/.test(target) || /^\$?\(?mktemp|^\/tmp\/|^\$TMPDIR/.test(target)) continue;
+          // A path written as a variable ($TMP/x, $S/app) can't be named reliably; only literal paths are flagged.
+          if (!target || /^\$(?!HOME\b)/.test(target) || /(^|\/)(node_modules|dist|build|out|\.next|coverage|tmp|\.cache|__pycache__|\.turbo|\.parcel-cache)\/?$/.test(target) || /^\$?\(?mktemp|^\/tmp\/|^\$TMPDIR/.test(target)) continue;
           add(`It deleted ${target.length > 48 ? `${target.slice(0, 47)}…` : target} with rm -rf`);
         } else add(`It ${text}`);
       }

@@ -336,7 +336,7 @@ describe("terminal integration", () => {
     const out = glance(engine, { cwd: "/work", columns: 60, color: false, now });
     const lines = out.split("\n");
     expect(lines[0]).toMatch(/2 Claude sessions.*1 needs you/);
-    expect(lines[1]).toMatch(/! api\s+needs approval/);
+    expect(lines[1]).toMatch(/! api\s+needs your OK/);
     expect(lines[2]).toMatch(/● web-app\s+working/);
     expect(out).not.toMatch(/\x1b\[/); // NO_COLOR respected
     for (const l of lines.slice(0, -1)) expect(l.length).toBeLessThanOrEqual(62);

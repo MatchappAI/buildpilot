@@ -22,13 +22,14 @@ export interface GlanceOptions {
 }
 
 const WORD: Record<SessionStatus, string> = {
+  // One vocabulary in the window, terminal and menu bar.
   running: "working",
-  idle: "idle",
-  blocked: "needs input",
-  awaiting_approval: "needs approval",
-  completed: "ended",
+  idle: "your turn",
+  blocked: "needs your answer",
+  awaiting_approval: "needs your OK",
+  completed: "closed",
   failed: "failed",
-  unknown: "no recent activity",
+  unknown: "quiet",
 };
 const MARK: Record<SessionStatus, string> = { running: "●", idle: "○", blocked: "!", awaiting_approval: "!", completed: "·", failed: "✗", unknown: "?" };
 
@@ -256,7 +257,7 @@ export function glance(engine: Engine, o: GlanceOptions): string {
           ? `"${x.s.currentTask.replace(/\s+/g, " ")}"`
           : x.reason;
     const what1 = what.replace(/\s+/g, " ").trim();
-    const word = WORD[x.status].padEnd(14);
+    const word = WORD[x.status].padEnd(17);
     const left = `  ${MARK[x.status]} ${name}  ${word}`;
     const room = W - left.length - (ctx ? ctx.length + 3 : 0) - 3;
     const middle = room > 8 ? `  ${fit(what1, room)}` : "";

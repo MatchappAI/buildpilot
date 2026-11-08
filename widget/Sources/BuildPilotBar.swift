@@ -41,7 +41,7 @@ struct WidgetSession: Codable, Identifiable, Equatable {
         if maybeStuck == true { return "\(now ?? "Quiet"), may be stuck" }
         if let c = checklist, c.total > 1, c.done < c.total { return "Step \(c.done + 1) of \(c.total)\(c.current.map { " · \($0)" } ?? "")" }
         if let t = turn, t.done, t.files > 0 { return t.proof == "verified" ? "Finished · tests passed" : t.proof == "failing" ? "Finished · tests failing" : "Finished · not tested yet" }
-        return now ?? task.map { "“\($0)”" } ?? word.capitalized
+        return now ?? task.map { "“\($0)”" } ?? (word.prefix(1).uppercased() + word.dropFirst())
     }
 }
 
@@ -323,7 +323,7 @@ struct SessionRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(s.folder).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        Text(s.word.capitalized)
+                        Text(s.word.prefix(1).uppercased() + s.word.dropFirst())
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(s.needsYou ? Color.orange : Color.secondary)
                         Spacer(minLength: 4)
@@ -332,11 +332,13 @@ struct SessionRow: View {
                                 .foregroundStyle(c >= 90 ? Color.red : c >= 70 ? Color.orange : Color.secondary)
                         }
                     }
-                    if s.needsYou {
-                        Text(s.reason).font(.system(size: 12)).lineLimit(2).foregroundStyle(.primary)
-                    } else if let t = s.task {
-                        Text("“\(t)”").font(.system(size: 12)).italic().lineLimit(1).foregroundStyle(.secondary)
+                    if s.line.lowercased() != s.word.lowercased() {
+                        Text(s.line).font(.system(size: 12)).lineLimit(2).foregroundStyle(s.needsYou ? Color.primary : Color.secondary)
                     }
+                    if !s.needsYou, let t = s.task, !s.line.contains(t) {
+                        Text("“\(t)”").font(.system(size: 11)).italic().lineLimit(1).foregroundStyle(.tertiary)
+                    }
+                    if let r = s.risks?.first { Text("⚠ \(r)").font(.system(size: 11)).foregroundStyle(.orange).lineLimit(2) }
                     Text(ago(s.lastEventAt)).font(.system(size: 10)).foregroundStyle(.tertiary)
                 }
             }
@@ -374,7 +376,7 @@ struct LimitBar: View {
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.12))
-                    Capsule().fill(pct >= 85 ? Color.red : pct >= 65 ? Color.orange : Color.accentColor)
+                    Capsule().fill(pct >= 95 ? Color.red : pct >= 80 ? Color.orange : Color.accentColor)
                         .frame(width: max(4, g.size.width * CGFloat(min(max(pct, 0), 100) / 100)))
                 }
             }
@@ -506,7 +508,8 @@ struct FloatView: View {
                 if d.sessions.isEmpty {
                     Text("No Claude sessions running").font(.system(size: 12)).foregroundStyle(.secondary)
                 } else if m.floatExpanded {
-                    ScrollView { VStack(alignment: .leading, spacing: 2) { ForEach(d.sessions) { FloatRow(s: $0) } } }
+                    let rows = VStack(alignment: .leading, spacing: 6) { ForEach(d.sessions) { FloatRow(s: $0) } }
+                    if d.sessions.count > 6 && !isSnapshot { ScrollView { rows } } else { rows }
                 } else if let top = d.sessions.first(where: \.needsYou) ?? d.sessions.first(where: { $0.stopped == true || $0.maybeStuck == true || !($0.risks ?? []).isEmpty }) ?? d.sessions.first {
                     FloatRow(s: top)
                     if let n = top.next, !top.needsYou { Text("Next: \(n)").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2) }

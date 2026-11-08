@@ -30,7 +30,7 @@ import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
 import { GoalType } from "./core/types";
 
-const STATUS_PLAIN: Record<string, string> = { running: "Working", awaiting_approval: "Needs your OK", blocked: "Needs an answer", idle: "Your turn", completed: "Closed", failed: "Failed", unknown: "No recent news" };
+const STATUS_PLAIN: Record<string, string> = { running: "Working", awaiting_approval: "Needs your OK", blocked: "Needs your answer", idle: "Your turn", completed: "Closed", failed: "Failed", unknown: "Quiet" };
 
 function usage(msg: string): void {
   console.error(msg);

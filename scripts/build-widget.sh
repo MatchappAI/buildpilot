@@ -43,3 +43,6 @@ codesign --force --deep -s - "$APP"
 rm -f "$ROOT/media/widget/BuildPilot-Bar.zip"
 ditto -c -k --keepParent "$APP" "$ROOT/media/widget/BuildPilot-Bar.zip"
 echo "Built $APP ($VERSION) → media/widget/BuildPilot-Bar.zip"
+# The plugin ships its own copy; keep it in step (the plugin copy is otherwise refreshed only by npm run build,
+# which runs before this script in npm run package).
+mkdir -p "$ROOT/plugin/media/widget" && cp "$ROOT/media/widget/BuildPilot-Bar.zip" "$ROOT/plugin/media/widget/BuildPilot-Bar.zip"

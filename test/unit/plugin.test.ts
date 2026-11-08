@@ -98,3 +98,11 @@ describe("plugin copy of the CLI", () => {
     expect(fs.readFileSync(path.join(plugin, "bin", "cli.js"), "utf8") === fs.readFileSync(built, "utf8"), "plugin/bin/cli.js is stale: run npm run build").toBe(true);
   });
 });
+
+describe("plugin copy of the menu-bar widget", () => {
+  it("matches the built widget (scripts/build-widget.sh copies it)", () => {
+    const built = path.join(root, "media", "widget", "BuildPilot-Bar.zip");
+    if (!fs.existsSync(built)) return;
+    expect(fs.readFileSync(path.join(plugin, "media", "widget", "BuildPilot-Bar.zip")).equals(fs.readFileSync(built)), "plugin widget zip is stale").toBe(true);
+  });
+});
