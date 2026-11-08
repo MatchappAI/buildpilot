@@ -39,7 +39,7 @@ describe("checklist", () => {
 });
 
 describe("turn summary: Claude finished vs verified", () => {
-  const edit = (id: string, f: string, ts: number) => payload({ hook_event_name: "PostToolUse", tool_name: "Edit", tool_use_id: id, tool_input: { file_path: f } });
+  const edit = (id: string, f: string, _ts: number) => payload({ hook_event_name: "PostToolUse", tool_name: "Edit", tool_use_id: id, tool_input: { file_path: f } });
   const bash = (id: string, cmd: string, fail = false) => payload({ hook_event_name: fail ? "PostToolUseFailure" : "PostToolUse", tool_name: "Bash", tool_use_id: id, tool_input: { command: cmd }, ...(fail ? { error: "Exit code 1" } : {}) });
   it("edits with no test after = unverified", async () => {
     const { ing, events } = await setup();
