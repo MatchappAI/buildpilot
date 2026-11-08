@@ -266,13 +266,13 @@ function progressLine(x: Build): string {
 function buildRow(x: Build): string {
   const label = x.name ?? x.folder;
   const chips = [
-    x.agent === "codex" ? `<span class="chip codex" title="Read from Codex's own logs. Codex has no hooks, so approvals and errors aren't shown here.">Codex</span>` : "",
+    x.agent === "codex" ? `<span class="chip codex" title="Read from Codex's own logs. Codex doesn't report approvals or errors to other apps, so those aren't shown here.">Codex</span>` : "",
     (x.errors1h ?? 0) > 0 ? `<button class="chip err" data-act="toggleErrors" data-id="${esc(x.id)}" title="Errors in the last hour">${x.errors1h} error${x.errors1h === 1 ? "" : "s"}</button>` : "",
     x.autoApprove && !P!.builds.every((b) => b.autoApprove || b.agent === "codex") ? `<span class="chip warn" title="Running with permissions skipped: Claude won't ask before running commands">auto-approve on</span>` : "",
   ].join("");
   const errPanel = errOpen.has(x.id) && (x.lastErrors ?? []).length ? `<div class="errpanel"><ul>${(x.lastErrors ?? []).map((e) => `<li><code>${esc(e)}</code></li>`).join("")}</ul><button class="link" data-act="copyErrors" data-id="${esc(x.id)}">Copy for Claude</button></div>` : "";
   return `<li class="${x.needsYou ? "needs" : ""}${expanded.has(x.id) ? " open" : ""}">
-    <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span>
+    <span class="dot dot-${x.stopped ? "failed" : x.status}" aria-hidden="true"></span><span class="sr-only">${esc(x.stopped ? "Stopped mid-task" : x.needsYou ? "Needs you" : STATUS_WORD[x.status] ?? x.word)}:</span>
     <div class="b-main">
       <div class="b-name"><button class="name-btn" data-act="toggleBuild" data-id="${esc(x.id)}" aria-expanded="${expanded.has(x.id)}" aria-controls="d-${esc(x.id)}" title="Show what it did and where the tokens went"><span class="chev" aria-hidden="true">${expanded.has(x.id) ? "▾" : "▸"}</span>${esc(label)}</button>${x.hint ? `<span class="hint">${esc(x.hint)}</span>` : ""}${x.agent !== "codex" ? `<button class="pencil" data-act="renameBuild" data-id="${esc(x.id)}" title="Name this session" aria-label="Name this session">✎</button>` : ""}${chips}</div>
       <div class="b-sub" title="${esc(x.cwd)}${x.task ? `\n\n${esc(x.task.slice(0, 600))}` : ""}">${buildSub(x)}</div>
@@ -282,7 +282,7 @@ function buildRow(x: Build): string {
       ${errPanel}
     </div>
     <div class="b-meta">${x.contextPct != null ? `<span class="mem tone-${toneChat(x.contextPct)}" title="How full this chat is. From 70% Claude starts to lose details; a fresh chat with a summary keeps it sharp.">${ring(x.contextPct)}chat ${Math.round(x.contextPct)}% full</span>` : ""}${x.costUsd != null ? `<span class="share" title="Claude Code's own estimate for this session today">~$${x.costUsd.toFixed(2)} today</span>` : x.share != null && x.share >= 1 ? `<span class="share" title="This session's share of all your Claude Code usage today (from Claude Code's own cost estimate). Not the same as how full its chat is.">${x.share}% of your usage today</span>` : x.codexTokens ? `<span class="share">${kTok(x.codexTokens)} tokens</span>` : ""}</div>
-    <div class="b-act">${x.agent === "codex" ? `<span class="muted small" title="Codex has no hooks, so BuildPilot can only read its logs">read-only</span>` : buildButton(x)}</div>
+    <div class="b-act">${x.agent === "codex" ? `<span class="muted small" title="BuildPilot can only read Codex's logs, so it can't take you to its tab">read-only</span>` : buildButton(x)}</div>
     ${expanded.has(x.id) ? buildDetails(x) : ""}
   </li>`;
 }
@@ -294,7 +294,7 @@ function buildDetails(x: Build): string {
         <p class="small">${t.baseline != null ? `Started at <b>${kTok(t.baseline)}</b> before your first message` : "Start size unknown"} · chat now ${t.context != null ? `<b>${kTok(t.context)}</b>` : "unknown"} · ${t.inputTotal ? `sent ≈${kTok(t.inputTotal)} in total · ` : ""}Claude wrote ${kTok(t.output)} · ${t.turns} repl${t.turns === 1 ? "y" : "ies"}${t.models.length ? ` · ${t.models.map(([m, n]) => `${esc(shortModel(m))}${t.models.length > 1 ? ` ×${n}` : ""}`).join(", ")}` : ""}${t.subagents ? ` · ${t.subagents} subagent${t.subagents === 1 ? "" : "s"}` : ""}${t.compactions ? ` · compacted ${t.compactions}×` : ""}</p>
         ${t.top ? (t.top.length ? `<ul class="toklist">${t.top.map((i) => `<li><span>${esc(i.label)}</span><span class="muted">≈${kTok(i.tokens)}</span></li>`).join("")}</ul><p class="muted tiny">Biggest things pulled into the chat (≈ estimated from size). They're re-sent with every message until a fresh chat.</p>` : `<p class="muted tiny">No large tool output yet.</p>`) : P!.plan.sellable ? `<p class="small"><a href="#" data-act="upgrade">See exactly what used them · Pro</a></p>` : ""}
       </div>`
-    : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear once this session has a chat transcript BuildPilot can read.</p>`;
+    : x.agent === "codex" ? "" : `<p class="muted tiny">Token details appear after Claude's first reply in this session.</p>`;
   const t2 = x.turn;
   const now = x.needsYou ? `Waiting for your OK: ${x.waitingFor ?? x.reason}` : x.now ?? (x.finishedAt ? "Finished its last reply" : STATUS_WORD[x.status] ?? x.word);
   const facts = `<div class="d-head">This request</div><p class="small">${esc(now)}${t2 ? ` · ${t2.steps} step${t2.steps === 1 ? "" : "s"} · ${t2.files} file${t2.files === 1 ? "" : "s"} changed${t2.proof === "verified" ? " · tests passed after the last change" : t2.proof === "failing" ? " · tests failing" : t2.proof === "unverified" ? " · not tested yet" : ""}` : ""}</p>${x.task ? `<p class="muted small">You asked: “${esc(clip(x.task, 300))}”</p>` : ""}`;

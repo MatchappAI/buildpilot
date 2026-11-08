@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.2: clearer and more accessible (nothing removed)
+- Text is at least 13px everywhere in the window (was 12px); menu-bar small text 11pt (was 10pt).
+- Every session row says its status in words for screen readers, not only with the colored dot. The floating panel and its summary have VoiceOver labels.
+- Click targets for text buttons ("Go to tab", "Looks fine", rename) are at least 24×24 px (WCAG 2.2).
+- Narrow windows and 400% zoom: the chat % and usage text wrap instead of running off the edge (checked at 320 px and 640 px).
+- macOS "Increase contrast" gives darker secondary text and borders.
+- Plain words: no "hooks", "hook script", "status-line reporter" or "transcript" in what you see.
+- Automated WCAG 2.1 AA audit now also covers progress, proof, risks, checklist, "Earlier today" and "your turn", in light, dark and expanded views.
+
 ## 0.12.1: second review round
 **Security**
 - Another local site (any dev server on 127.0.0.1) could drive the window, because browsers share cookies across local ports. Now every action needs the page's own key in a header (the cookie only opens the page and holds a session nonce, never the key), other origins are refused, and the page can't be framed. The launcher never falls back to a key in the URL.

@@ -57,6 +57,23 @@ describe("accessibility (axe, WCAG 2.1 AA)", () => {
   });
 });
 
+describe("accessibility of the 0.12 states", () => {
+  const busy = (): PageData => ({ ...base, connected: true, billing: "plan", needs: 1, working: 1, yourTurn: 1,
+    builds: [
+      b({ id: "n1", needsYou: true, status: "awaiting_approval", waitingFor: "Run: npm i stripe", risks: ["It force-pushed with git (can overwrite others' work)"] }),
+      b({ id: "w1", folder: "api", now: "Running tests", nowSince: now - 240_000, checklist: { done: 2, total: 5, current: "Writing tests", items: [{ title: "Plan", status: "completed" }, { title: "Build", status: "completed" }, { title: "Writing tests", status: "in_progress" }, { title: "Docs", status: "pending" }, { title: "Ship", status: "pending" }], updatedAt: now }, contextPct: 74 }),
+      b({ id: "y1", folder: "landing", status: "idle", word: "your turn", finishedAt: now - 60_000, turnMs: 420_000, turn: { steps: 23, files: 4, proof: "verified", done: true }, timeline: [{ ts: now - 70_000, text: "Ran tests", error: false }, { ts: now - 80_000, text: "Edited hero.tsx", error: false }, { ts: now - 90_000, text: "Edited hero.tsx", error: false }] }),
+    ],
+    earlier: [{ id: "e1", folder: "blog", cwd: "/p/blog", task: "Fix RSS", endedAt: now - 3 * 3600_000, proof: "unverified", files: 2 }],
+    limits: { fiveHourPct: 62, fiveHourResetsAt: now + 3600_000, sevenDayPct: 48, sevenDayResetsAt: now + 3 * 86400_000, fullAt: now + 90 * 60_000, forecastLocked: false, basisMin: 40 } });
+  it("progress, proof, risks, checklist, earlier today: no violations (light, dark, expanded)", async () => {
+    expect(await audit(busy(), { standalone: true })).toEqual([]);
+    expect(await audit(busy(), { standalone: true, expand: true })).toEqual([]);
+    expect(await audit(busy(), { standalone: true, expand: true, theme: "match" })).toEqual([]);
+    expect(await audit(busy())).toEqual([]);
+  });
+});
+
 describe("color contrast (WCAG AA 4.5:1 for text)", () => {
   const lum = (h: string) => { const [r, g, bb] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * r! + 0.7152 * g! + 0.0722 * bb!; };
   const ratio = (a: string, c: string) => { const [x, y] = [lum(a), lum(c)].sort((m, n) => n - m); return (x! + 0.05) / (y! + 0.05); };
@@ -77,7 +94,7 @@ describe("color contrast (WCAG AA 4.5:1 for text)", () => {
     }
     expect(ratio(dark("accent-ink"), dark("accent")), "dark button text").toBeGreaterThanOrEqual(4.5);
   });
-  it("no text smaller than 12px", () => {
-    for (const m of css.matchAll(/font-size:\s*(\d+)px/g)) expect(Number(m[1]), m[0]).toBeGreaterThanOrEqual(12);
+  it("no text smaller than 13px", () => {
+    for (const m of css.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)) expect(Number(m[1]), m[0]).toBeGreaterThanOrEqual(13);
   });
 });

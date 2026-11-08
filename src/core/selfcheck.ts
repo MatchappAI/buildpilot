@@ -40,10 +40,10 @@ export async function selfCheck(opts: { fix?: boolean; home?: string; settingsFi
   // Connection: plugin and/or settings hooks
   const plugin = pluginConnected(settings);
   const hs = hookStatus(settings, home);
-  if (plugin && hs.installed) f.push({ ok: false, text: "Connected twice (plugin + older settings hooks), so every step is recorded twice", fix: "bp hooks uninstall (the plugin keeps working)" });
+  if (plugin && hs.installed) f.push({ ok: false, text: "Connected twice (the plugin and an older setup), so every step is recorded twice", fix: "bp hooks uninstall (the plugin keeps working)" });
   else if (plugin) f.push({ ok: true, text: "Connected through the Claude Code plugin" });
   else if (hs.installed) {
-    f.push({ ok: true, text: "Connected through ~/.claude/settings.json hooks" });
+    f.push({ ok: true, text: "Connected to Claude Code (through your Claude settings)" });
     if (hs.outdated) {
       if (opts.fix) {
         installHooks(settings, home);
@@ -57,15 +57,15 @@ export async function selfCheck(opts: { fix?: boolean; home?: string; settingsFi
   if (hs.installed) {
     const script = path.join(home, "hook.sh");
     if (!fs.existsSync(script)) {
-      if (opts.fix) { ensureHome(home); fixed.push("Restored BuildPilot's hook script"); } else f.push({ ok: false, text: "BuildPilot's hook script is missing, so nothing is recorded", fix: "bp doctor --fix" });
+      if (opts.fix) { ensureHome(home); fixed.push("Restored a missing BuildPilot file"); } else f.push({ ok: false, text: "A BuildPilot file is missing, so nothing is recorded", fix: "bp doctor --fix" });
     } else if (fs.readFileSync(script, "utf8") !== HOOK_SCRIPT) {
-      if (opts.fix) { ensureHome(home); fixed.push("Updated BuildPilot's hook script to this version"); } else f.push({ ok: false, text: "BuildPilot's hook script is from an older version", fix: "bp doctor --fix" });
+      if (opts.fix) { ensureHome(home); fixed.push("Updated a BuildPilot file to this version"); } else f.push({ ok: false, text: "A BuildPilot file is from an older version", fix: "bp doctor --fix" });
     }
   }
 
   // Status line (exact chat % and plan limits)
   const sl = statuslineStatus(settings, home);
-  f.push(sl.installed ? { ok: true, text: "Status-line reporter on (exact chat % full and plan limits)" } : { ok: false, text: "Chat % full and plan limits are unknown until the status-line reporter is on", fix: "bp statusline install (your own status line keeps working)" });
+  f.push(sl.installed ? { ok: true, text: "Chat % full and plan limits are on" } : { ok: false, text: "Chat % full and plan limits are unknown until you turn them on", fix: "bp statusline install (the line under your Claude prompt keeps showing what it shows now)" });
 
   // Spool health
   const spool = path.join(home, "spool");

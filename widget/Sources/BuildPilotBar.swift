@@ -340,7 +340,7 @@ struct SessionRow: View {
                         Text("“\(t)”").font(.system(size: 11)).italic().lineLimit(1).foregroundStyle(.tertiary)
                     }
                     if let r = s.risks?.first { Text("⚠ \(r)").font(.system(size: 11)).foregroundStyle(.orange).lineLimit(2) }
-                    Text(ago(s.lastEventAt)).font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text(ago(s.lastEventAt)).font(.system(size: 11)).foregroundStyle(.tertiary)
                 }
             }
             .padding(.vertical, 6).padding(.horizontal, 8)
@@ -442,7 +442,7 @@ struct Panel: View {
                     }
                 }
                 if let e = m.error {
-                    Text(e).font(.system(size: 10)).foregroundStyle(.orange).lineLimit(2)
+                    Text(e).font(.system(size: 11)).foregroundStyle(.orange).lineLimit(2)
                 }
             } else {
                 HStack { ProgressView().controlSize(.small); Text("Loading…").font(.system(size: 12)) }
@@ -476,7 +476,7 @@ struct Panel: View {
     }
 
     func section(_ t: String) -> some View {
-        Text(t.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+        Text(t.uppercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
             .padding(.horizontal, 8).padding(.top, 4)
             .accessibilityAddTraits(.isHeader)
             .accessibilityLabel(Text(t))
@@ -502,7 +502,7 @@ struct FloatView: View {
             HStack(spacing: 6) {
                 Text("BuildPilot").font(.system(size: 12, weight: .bold))
                 if let d = m.data {
-                    Text(headline(d))
+                    Text(headline(d)).accessibilityLabel(Text("BuildPilot: \(headline(d))"))
                         .font(.system(size: 11)).foregroundStyle(d.needs > 0 ? Color.orange : Color.secondary)
                 }
                 Spacer()
@@ -524,7 +524,7 @@ struct FloatView: View {
                     FloatRow(s: top)
                     if let n = top.next, !top.needsYou { Text("Next: \(n)").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2) }
                     if d.sessions.count > 1 && !isSnapshot {
-                        Button("+\(d.sessions.count - 1) more") { m.floatExpanded = true }.buttonStyle(.borderless).font(.system(size: 10))
+                        Button("+\(d.sessions.count - 1) more") { m.floatExpanded = true }.buttonStyle(.borderless).font(.system(size: 11))
                             .help("Show every session")
                     }
                 }
@@ -534,6 +534,8 @@ struct FloatView: View {
         }
         .padding(12)
         .frame(minWidth: 260, idealWidth: 300, maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("BuildPilot floating panel"))
     }
 }
 
@@ -548,12 +550,12 @@ struct FloatRow: View {
                         Text(s.label).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                         Spacer(minLength: 4)
                         if let c = s.contextPct {
-                            Text("chat \(Int(c.rounded()))% full").font(.system(size: 10)).monospacedDigit()
+                            Text("chat \(Int(c.rounded()))% full").font(.system(size: 11)).monospacedDigit()
                                 .foregroundStyle(c >= 90 ? Color.red : c >= 70 ? Color.orange : Color.secondary)
                         }
                     }
                     Text(s.line).font(.system(size: 11)).foregroundStyle(s.needsYou ? Color.primary : Color.secondary).lineLimit(2)
-                    if let r = s.risks?.first { Text("⚠ \(r)").font(.system(size: 10)).foregroundStyle(.orange).lineLimit(2) }
+                    if let r = s.risks?.first { Text("⚠ \(r)").font(.system(size: 11)).foregroundStyle(.orange).lineLimit(2) }
                 }
             }.contentShape(Rectangle())
         }
