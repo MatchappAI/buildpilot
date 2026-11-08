@@ -195,3 +195,12 @@ describe("trust: one notification per moment across apps", () => {
     expect(claimAlert(home, "need:s1:2000")).toBe(true); // a new moment
   });
 });
+
+import { tips } from "../../src/core/tips";
+describe("trust: the big-output tip actually fires", () => {
+  it("a single command output of 15k+ tokens gets a tip", () => {
+    const b = { id: "s1", folder: "app", cwd: "/p/app", status: "running", word: "working", reason: "", task: null, contextPct: 40, lastEventAt: 0, needsYou: false, next: null, tokens: { baseline: 10_000, models: [], subagents: 0, top: [{ label: "Command output: cat big.log", tokens: 20_000 }], turns: 3 } };
+    const t = tips({ now: 0, builds: [b as never], limits: { fiveHourPct: null, sevenDayPct: null, fullAt: null, fiveHourResetsAt: null }, isGit: true, unsaved: 0, stuck: [] });
+    expect(t.some((x) => x.key.startsWith("hog:"))).toBe(true);
+  });
+});

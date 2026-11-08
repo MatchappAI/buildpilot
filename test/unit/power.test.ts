@@ -74,7 +74,7 @@ describe("where the tokens went", () => {
     expect(r.subagents).toBe(1);
     expect(r.compactions).toBe(1);
     expect(r.top[0]).toEqual({ label: "File package-lock.json", tokens: 40000 });
-    expect(r.top[1]).toEqual({ label: "Output of npm test", tokens: 2000 });
+    expect(r.top[1]).toEqual({ label: "Command output: npm test", tokens: 2000 });
     expect(kTokens(40000)).toBe("40k");
   });
 });

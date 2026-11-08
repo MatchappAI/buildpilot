@@ -223,7 +223,7 @@ final class Model: ObservableObject {
             let c = UNMutableNotificationContent()
             c.title = "Claude \(s.word) in \(s.folder)"
             c.body = s.reason
-            c.userInfo = ["cwd": s.cwd]
+            c.userInfo = ["cwd": s.cwd, "id": s.id]
             c.sound = .default
             UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "bp-\(s.id)-\(Int(Date().timeIntervalSince1970))", content: c, trigger: nil))
         }
@@ -261,9 +261,9 @@ enum Open {
     static func window() { bp(["ui"]) }
 
     /// Bring this session's terminal tab forward; if it can't be found, open Terminal in its folder.
-    static func session(_ folder: String?) {
+    static func session(_ folder: String?, id: String? = nil) {
         guard let folder else { window(); return }
-        bp(["jump", folder]) { code in if code == 3 { terminal(folder) } }
+        bp(["jump", folder] + (id.map { [$0] } ?? [])) { code in if code == 3 { terminal(folder) } }
     }
 
     static func terminal(_ folder: String) {
@@ -317,7 +317,7 @@ struct SessionRow: View {
     let s: WidgetSession
     @State private var hover = false
     var body: some View {
-        Button { Open.session(s.cwd) } label: {
+        Button { Open.session(s.cwd, id: s.id) } label: {
             HStack(alignment: .top, spacing: 8) {
                 StatusDot(status: s.status).padding(.top, 5)
                 VStack(alignment: .leading, spacing: 2) {
@@ -352,10 +352,10 @@ struct SessionRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(s.folder), \(s.word). \(s.needsYou ? s.reason : (s.task ?? ""))\(s.contextPct.map { ". Chat \(Int($0.rounded())) percent full" } ?? ""). \(ago(s.lastEventAt))")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction { Open.session(s.cwd) }
+        .accessibilityAction { Open.session(s.cwd, id: s.id) }
         .accessibilityHint("Brings this session's terminal tab forward")
         .contextMenu {
-            Button("Go to its terminal") { Open.session(s.cwd) }
+            Button("Go to its terminal") { Open.session(s.cwd, id: s.id) }
             Button("Open BuildPilot") { Open.window() }
             Button("Open in Terminal") { Open.terminal(s.cwd) }
             Button("Copy folder path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(s.cwd, forType: .string) }
@@ -527,7 +527,7 @@ struct FloatView: View {
 struct FloatRow: View {
     let s: WidgetSession
     var body: some View {
-        Button { Open.session(s.cwd) } label: {
+        Button { Open.session(s.cwd, id: s.id) } label: {
             HStack(alignment: .top, spacing: 7) {
                 StatusDot(status: s.stopped == true ? "failed" : s.status).padding(.top, 5)
                 VStack(alignment: .leading, spacing: 1) {
@@ -643,7 +643,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         done([.banner, .sound])
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void) {
-        Open.session(response.notification.request.content.userInfo["cwd"] as? String)
+        let info = response.notification.request.content.userInfo
+        Open.session(info["cwd"] as? String, id: info["id"] as? String)
         done()
     }
 }

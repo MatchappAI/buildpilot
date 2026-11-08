@@ -603,6 +603,13 @@ export class Engine extends EventEmitter {
     return rows.map((r) => ({ sessionId: r.session_id, cwd: r.cwd, path: r.file_path, lastTs: Number(r.last), edits: Number(r.n) }));
   }
 
+  /** When this session last started or resumed (its latest SessionStart), for matching it to a terminal process. */
+  sessionStartedAt(id: string): number | null {
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id)) return null;
+    const v = this.store.scalar("SELECT COALESCE(MAX(CASE WHEN hook_event = 'SessionStart' THEN ts END), MIN(ts)) FROM events WHERE session_id = ?", [id]);
+    return v == null ? null : Number(v);
+  }
+
   /** Put one file back to its last saved (committed) version. A safety checkpoint of the current state is made first. */
   async undoFile(file: string): Promise<{ root: string; safety: string }> {
     const abs = path.resolve(file);

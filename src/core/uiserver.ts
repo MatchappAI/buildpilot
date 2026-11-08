@@ -285,7 +285,7 @@ export class UiServer {
       }
       case "openBuild": {
         if (!this.knownFolder(str("cwd"))) return { flash: "BuildPilot doesn't know that folder" };
-        const r = await findBuild(str("cwd"));
+        const r = await findBuild(str("cwd"), str("id") ? eng.sessionStartedAt(str("id")) : null);
         return r.found ? { flash: `Switched to it in ${r.how}` } : { show: `${r.how}\n\nSwitch to that window to see what Claude is asking.` };
       }
       case "renameBuild": {

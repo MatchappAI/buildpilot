@@ -31,7 +31,8 @@ export interface TokenReport {
 
 const HEAD = 512 * 1024;
 const TAIL = 4 * 1024 * 1024;
-const cache = new Map<string, { mtime: number; size: number; report: TokenReport }>();
+const cache = new Map<string, { mtime: number; size: number; report: TokenReport; at: number }>();
+const REPORT_TTL_MS = 20_000;
 const est = (chars: number) => Math.round(chars / 4);
 
 function readBounded(file: string): { head: string; body: string } {
@@ -58,10 +59,12 @@ function target(name: string, input: Record<string, unknown>): string {
   const s = (v: unknown) => (typeof v === "string" ? v : "");
   const fp = s(input.file_path) || s(input.path) || s(input.notebook_path);
   if (fp) return `${name === "Read" ? "File" : name === "Edit" || name === "Write" || name === "MultiEdit" ? "Edit of" : name} ${path.basename(fp)}`;
-  if (name === "Bash") return `Output of ${shortCommand(s(input.command).replace(/\s+/g, " "))}`;
+  if (name === "Bash") { const c = shortCommand(s(input.command).replace(/\s+/g, " ")); return `Command output: ${c.length > 48 ? `${c.slice(0, 47)}…` : c}`; }
   if (name === "Grep" || name === "Glob") return `Search for ${s(input.pattern).slice(0, 40)}`;
   if (name === "WebFetch") return `Web page ${s(input.url).replace(/^https?:\/\//, "").slice(0, 50)}`;
   if (name === "Task" || name === "Agent") return `Subagent ${s(input.description).slice(0, 50)}`;
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+  if (mcp) return `${mcp[1]!.replace(/^(claude_ai_|plugin_[^_]+_)/, "").replace(/[_-]+/g, " ")} (${mcp[2]!.replace(/[_-]+/g, " ")})`;
   return name;
 }
 
@@ -156,9 +159,12 @@ export function tokenReport(transcriptPath: string | null, base = claudeConfigDi
     const st = fs.statSync(transcriptPath);
     const c = cache.get(transcriptPath);
     if (c && c.mtime === st.mtimeMs && c.size === st.size) return c.report;
+    // An active chat's transcript changes every few seconds; re-reading megabytes each time isn't worth it.
+    // Token totals are a slow-moving view, so a fresh-enough report (under 20 s) is reused.
+    if (c && Date.now() - c.at < REPORT_TTL_MS) return c.report;
     const { head, body } = readBounded(transcriptPath);
     const report = parseTokens(head, body);
-    cache.set(transcriptPath, { mtime: st.mtimeMs, size: st.size, report });
+    cache.set(transcriptPath, { mtime: st.mtimeMs, size: st.size, report, at: Date.now() });
     if (cache.size > 50) cache.delete(cache.keys().next().value as string);
     return report;
   } catch {

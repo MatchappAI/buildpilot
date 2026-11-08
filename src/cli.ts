@@ -310,7 +310,9 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
     const cwd = rest[0] ? path.resolve(rest[0]) : "";
     if (!cwd || !fs.existsSync(cwd)) { process.exitCode = 2; return; }
     const { findBuild } = await import("./core/termfind");
-    const r = await findBuild(cwd);
+    let startedAt: number | null = null;
+    if (rest[1]) { const e = new Engine({ light: true }); await e.start(); startedAt = e.sessionStartedAt(rest[1]); e.stop(); }
+    const r = await findBuild(cwd, startedAt);
     console.log(r.how);
     if (!r.found) process.exitCode = 3;
     return;
@@ -328,7 +330,7 @@ More: bp (folder status) · glance · sessions · brief · handoff · audit · v
       return;
     }
     const { findBuild } = await import("./core/termfind");
-    const r = await findBuild(target.cwd);
+    const r = await findBuild(target.cwd, (() => { const v = engine.store.scalar("SELECT COALESCE(MAX(CASE WHEN hook_event = 'SessionStart' THEN ts END), MIN(ts)) FROM events WHERE session_id = ?", [target.id]); return v == null ? null : Number(v); })());
     const what = target.needsYou ? ` (waiting: ${target.waitingFor ?? target.reason ?? target.word})` : target.now ? ` (${target.now})` : "";
     console.log(r.found ? `→ ${target.name ?? target.folder}${what} in ${r.how}` : `${target.name ?? target.folder}${what}\n  ${r.how}\n  cd "${target.cwd}"`);
     return;

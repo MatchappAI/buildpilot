@@ -109,7 +109,7 @@ function headsUp(): string {
   if (!P || !P.connected) return "";
   const items: string[] = [];
   const need = P.builds.find((b) => b.needsYou);
-  if (need) items.push(`<div class="hu hu-need"><span><b>${esc(need.name ?? need.folder)}</b> needs your OK${need.waitingFor ? `: <code>${esc(clip(need.waitingFor, 60))}</code>` : ""}</span><button class="primary small-btn" data-act="openBuild" data-cwd="${esc(need.cwd)}">${standalone ? "Find it" : "Review"}</button></div>`);
+  if (need) items.push(`<div class="hu hu-need"><span><b>${esc(need.name ?? need.folder)}</b> needs your OK${need.waitingFor ? `: <code>${esc(clip(need.waitingFor, 60))}</code>` : ""}</span><button class="primary small-btn" data-act="openBuild" data-cwd="${esc(need.cwd)}" data-id="${esc(need.id)}">${standalone ? "Go to tab" : "Review"}</button></div>`);
   const L = P.limits;
   if ((L.fiveHourPct ?? 0) >= 80) {
     const hog = [...P.builds].filter((b) => b.share != null && b.agent !== "codex").sort((a, b) => b.share! - a.share!)[0];
@@ -366,11 +366,11 @@ function sideSection(): string {
 
 function buildButton(x: PageData["builds"][number]): string {
   const featured = x.needsYou && P!.builds.find((b) => b.needsYou)?.id === x.id;
-  if (!standalone) return `<button class="${x.needsYou ? (featured ? "secondary small-btn" : "primary") : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>`;
-  if (x.needsYou) return `<button class="${featured ? "secondary small-btn" : "primary"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Brings its Terminal, iTerm or tmux tab forward. Nothing is approved until you approve it there.">Go to tab</button>`;
+  if (!standalone) return `<button class="${x.needsYou ? (featured ? "secondary small-btn" : "primary") : "link"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" data-id="${esc(x.id)}" title="${x.needsYou ? "Opens its terminal. Nothing is approved until you approve it there." : "Opens its terminal"}">${x.needsYou ? "Review in terminal" : "Open terminal"}</button>`;
+  if (x.needsYou) return `<button class="${featured ? "secondary small-btn" : "primary"}" data-act="openBuild" data-cwd="${esc(x.cwd)}" data-id="${esc(x.id)}" title="Brings its Terminal, iTerm or tmux tab forward. Nothing is approved until you approve it there.">Go to tab</button>`;
   const fresh = (x.contextPct ?? 0) >= 70 && x.status !== "running" ? `<button class="link" data-act="startFresh" data-cwd="${esc(x.cwd)}" title="Copies a summary of the work so far and opens a new Claude in this folder">Start fresh</button>` : "";
   if (x.stopped) return `${fresh}<button class="link" data-act="resumeBuild" data-id="${esc(x.id)}" data-cwd="${esc(x.cwd)}" title="Reopens this Claude conversation in Terminal">Resume</button>`;
-  return `${fresh}<button class="link" data-act="openBuild" data-cwd="${esc(x.cwd)}" title="Brings its Terminal, iTerm or tmux tab forward">Go to tab</button>`;
+  return `${fresh}<button class="link" data-act="openBuild" data-cwd="${esc(x.cwd)}" data-id="${esc(x.id)}" title="Brings its Terminal, iTerm or tmux tab forward">Go to tab</button>`;
 }
 
 function bar(label: string, pct: number | null, right: string): string {
@@ -479,7 +479,7 @@ async function act(el: HTMLElement): Promise<void> {
     case "copyPrompt": await call("copy", { text: promptText }); void call("promptUsed"); return flash("Copied");
     case "useInOpen": void call("promptUsed"); await call("useInOpen", { text: promptText }); return flash("Copied. Paste it into Claude (Cmd/Ctrl+V)");
     case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
-    case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd });
+    case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id });
     case "resumeBuild": return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
     case "toggleBuild": { const id = el.dataset.id!; if (expanded.has(id)) expanded.delete(id); else expanded.add(id); return render(); }
     case "toggleErrors": { const id = el.dataset.id!; if (errOpen.has(id)) errOpen.delete(id); else errOpen.add(id); return render(); }
@@ -508,7 +508,7 @@ async function act(el: HTMLElement): Promise<void> {
       if (t === "fixDoubleHooks") return void call("fixDoubleHooks");
       if (t === "resumeBuild") return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
       if (t === "pause") { await call("openBuild", { cwd: el.dataset.cwd }); return flash("Press Esc in that terminal to pause Claude"); }
-      if (t === "goTo") return void call("openBuild", { cwd: el.dataset.cwd });
+      if (t === "goTo") return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id });
       if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
       if (t === "newBuild") return void call("newBuild");
       if (t === "planMode") {

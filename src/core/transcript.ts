@@ -26,6 +26,8 @@ export function readUsage(transcriptPath: string | null, base = claudeConfigDir(
   let text: string;
   try {
     const st = fs.statSync(transcriptPath);
+    const hit = usageCache.get(transcriptPath);
+    if (hit && ((hit.size === st.size && hit.mtime === st.mtimeMs) || Date.now() - hit.at < USAGE_TTL_MS)) return hit.snap;
     const start = Math.max(0, st.size - maxBytes);
     const fd = fs.openSync(transcriptPath, "r");
     try {
@@ -38,8 +40,20 @@ export function readUsage(transcriptPath: string | null, base = claudeConfigDir(
   } catch {
     return none;
   }
-  return parseUsage(text);
+  const snap = parseUsage(text);
+  try {
+    const st = fs.statSync(transcriptPath);
+    usageCache.set(transcriptPath, { size: st.size, mtime: st.mtimeMs, at: Date.now(), snap });
+    if (usageCache.size > 60) usageCache.delete(usageCache.keys().next().value as string);
+  } catch {
+    /* gone */
+  }
+  return snap;
 }
+
+/** Per-transcript cache: unchanged files are never re-read, and a busy one at most every 10 s. */
+const usageCache = new Map<string, { size: number; mtime: number; at: number; snap: UsageSnapshot }>();
+const USAGE_TTL_MS = 10_000;
 
 export function parseUsage(jsonl: string): UsageSnapshot {
   let model: string | null = null;

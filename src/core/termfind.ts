@@ -14,16 +14,30 @@ export function claudeProcesses(ps: string): { pid: number; tty: string }[] {
   return ps.split("\n").map((l) => l.trim().split(/\s+/)).filter((p) => p.length >= 3 && /(^|\/)claude$/.test(p.slice(2).join(" ")) && p[1] !== "??" && /^[a-z0-9]+$/i.test(p[1]!)).map((p) => ({ pid: Number(p[0]), tty: p[1]! }));
 }
 
-/** The /dev/ttysNNN of the claude process running in `cwd`, or null. */
-export async function ttyForCwd(cwd: string): Promise<string | null> {
+/**
+ * The /dev/ttysNNN of the claude process running in `cwd`, or null. When several claude processes share the folder,
+ * `startedAt` (when the session last started or resumed) picks the one whose process started closest to it.
+ */
+export async function ttyForCwd(cwd: string, startedAt?: number | null): Promise<string | null> {
   if (process.platform !== "darwin" && process.platform !== "linux") return null;
   const want = real(cwd);
+  const hits: { pid: number; tty: string }[] = [];
   for (const p of claudeProcesses(await run("ps", ["-axo", "pid=,tty=,comm="]))) {
     const out = await run("lsof", ["-a", "-p", String(p.pid), "-d", "cwd", "-Fn"]);
     const dir = out.split("\n").find((l) => l.startsWith("n"))?.slice(1);
-    if (dir && real(dir) === want) return `/dev/${p.tty.startsWith("tty") ? p.tty : `tty${p.tty}`}`;
+    if (dir && real(dir) === want) hits.push(p);
   }
-  return null;
+  if (!hits.length) return null;
+  let pick = hits[0]!;
+  if (hits.length > 1 && startedAt) {
+    let best = Infinity;
+    for (const h of hits) {
+      const t = Date.parse((await run("ps", ["-o", "lstart=", "-p", String(h.pid)])).trim());
+      const d = Number.isFinite(t) ? Math.abs(t - startedAt) : Infinity;
+      if (d < best) { best = d; pick = h; }
+    }
+  }
+  return `/dev/${pick.tty.startsWith("tty") ? pick.tty : `tty${pick.tty}`}`;
 }
 
 const TERMINAL = `on run argv
@@ -85,9 +99,9 @@ export async function focusTmux(cwd: string): Promise<boolean> {
 }
 
 /** Best effort: tmux, then Terminal/iTerm tab by tty. Returns a short description of what happened. */
-export async function findBuild(cwd: string): Promise<{ found: boolean; how: string }> {
+export async function findBuild(cwd: string, startedAt?: number | null): Promise<{ found: boolean; how: string }> {
   if (await focusTmux(cwd)) return { found: true, how: "tmux" };
-  const tty = await ttyForCwd(cwd);
+  const tty = await ttyForCwd(cwd, startedAt);
   if (tty) {
     const app = await focusTty(tty);
     if (app) return { found: true, how: app };
