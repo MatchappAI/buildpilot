@@ -17,7 +17,7 @@ import * as os from "os";
 import * as path from "path";
 import { IntegrationApi, loadOrCreateToken } from "./core/api";
 import { Engine } from "./core/engine";
-import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installStatusline, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
+import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installStatusline, pluginConnected, statuslineStatus, uninstallHooks, uninstallStatusline } from "./core/hooks";
 import { folderLabel, glance, isYourTurn, oneLine, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
@@ -36,6 +36,30 @@ const CLI_VERSION = typeof __BP_VERSION__ === "string" ? __BP_VERSION__ : "dev";
 
 const STATUS_PLAIN: Record<string, string> = { running: "Working", awaiting_approval: "Needs your OK", blocked: "Needs your answer", idle: "Your turn", completed: "Closed", failed: "Failed", unknown: "Quiet" };
 
+/** Every command the CLI answers to. Anything else is a typo: say so before doing any work. */
+const COMMANDS = new Set(["glance", "widget", "bar", "ui", "recent", "open", "shell", "hooks", "statusline", "license", "help", "jump", "go", "review", "merge", "who", "builds", "done", "new", "limits", "today", "doctor", "tmux", "prompt", "brief", "status", "sessions", "handoff", "audit", "visual", "serve", "version"]);
+
+/** One line, same words everywhere, shown when BuildPilot can't see any Claude Code session yet. */
+const NOT_CONNECTED = "BuildPilot isn't connected to Claude Code yet, so it can't see your sessions. In Claude Code: /plugin install buildpilot@buildpilot (or in a terminal: bp hooks install)";
+
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur.push(Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1)));
+    prev = cur;
+  }
+  return prev[b.length]!;
+}
+
+function isConnected(): boolean {
+  try {
+    return pluginConnected() || hookStatus(claudeSettingsPath("user")).installed;
+  } catch {
+    return false;
+  }
+}
+
 function usage(msg: string): void {
   console.error(msg);
   process.exitCode = 2;
@@ -44,7 +68,16 @@ function usage(msg: string): void {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const json = args.includes("--json");
-  const [cmd = "status", ...rest] = args.filter((a) => a !== "--json");
+  const [rawCmd = "status", ...rest] = args.filter((a) => a !== "--json");
+  const cmd = rawCmd === "--help" || rawCmd === "-h" ? "help" : rawCmd === "--version" || rawCmd === "-v" ? "version" : rawCmd;
+  if (!COMMANDS.has(cmd)) {
+    const near = [...COMMANDS].find((c) => editDistance(c, cmd.toLowerCase()) <= 2 && cmd.length > 2);
+    return usage(`Unknown command "${rawCmd}".${near ? ` Did you mean bp ${near}?` : ""} See all commands: bp help`);
+  }
+  if (cmd === "version") {
+    console.log(`BuildPilot ${CLI_VERSION}`);
+    return;
+  }
   if (cmd === "glance") {
     // Fast path for new terminals: no project analysis, no tool probing.
     const engine = new Engine({ light: true });
@@ -238,7 +271,7 @@ async function main(): Promise<void> {
     }
     return;
   }
-  if (cmd === "help" || cmd === "--help") {
+  if (cmd === "help") {
     console.log(`BuildPilot: your Claude Code companion
 
 Everyday
@@ -264,6 +297,7 @@ Setup
   bp bar install            Mac menu-bar widget (with an optional floating panel)
   bp tmux                   one-line status for tmux/your prompt
   bp license [key]          show your plan, or unlock Pro with a key
+  bp --version              which BuildPilot version you have
 
 More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       prompt <goal> "<what>" · open · bar · shell · serve   (add --json to setup commands)`);
@@ -333,7 +367,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     ]);
     section("Finished turns today", finished.slice(0, 8).map((f) => `${folderLabel(f.cwd)}: ${f.n} turn${f.n === 1 ? "" : "s"}`));
     const next = needs[0] ? `Answer ${name(needs[0])} (bp go takes you there)` : failing[0] ? `Ask ${name(failing[0])} to fix the failing tests` : blocked[0] ? `Check ${name(blocked[0])} (bp go ${name(blocked[0])})` : unproven[0] ? `Ask ${name(unproven[0])} to run the tests` : turn[0] ? `Reply to ${name(turn[0])}: it finished and is waiting for you` : w.sessions.find((b) => (b.contextPct ?? 0) >= 70) ? `Start a fresh chat in ${name(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!)} (it's ${Math.round(w.sessions.find((b) => (b.contextPct ?? 0) >= 70)!.contextPct!)}% full)` : null;
-    out.push("", next ? `Next: ${next}` : w.sessions.length || finished.length ? "Nothing needs you right now." : "No Claude sessions today yet.");
+    out.push("", next ? `Next: ${next}` : w.sessions.length || finished.length ? "Nothing needs you right now." : isConnected() ? "No Claude sessions today yet." : `No Claude sessions today yet.\n${NOT_CONNECTED}`);
     console.log(out.join("\n"));
     return;
   }
@@ -377,7 +411,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     const builds = await engine.extraBuilds();
     const b = builds.find((x) => path.basename(x.dir) === rest[0] || x.branch === rest[0] || x.branch === `bp/${rest[0]}` || path.basename(x.dir).endsWith(`-${rest[0]}`)) ?? (builds.length === 1 && !rest[0] ? builds[0] : undefined);
     if (!b) {
-      console.log(`Which build? ${builds.map((x) => path.basename(x.dir)).join(", ") || "(none; start one with bp new)"}`);
+      console.log(`${rest[0] ? `No side build called "${rest[0]}". ` : ""}Which build? ${builds.map((x) => path.basename(x.dir)).join(", ") || "(none; start one with bp new)"}`);
       engine.stop();
       process.exitCode = 1;
       return;
@@ -415,7 +449,10 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     await engine.start();
     await engine.openProject(folder);
     const builds = await engine.extraBuilds();
-    if (cmd === "builds") {
+    if (cmd === "done" && !rest[0]) {
+      console.log(`Usage: bp done <name>   removes a finished side build's folder (its branch is kept)\nYours:\n${builds.map((b) => `  ${path.basename(b.dir)}`).join("\n") || "  (none)"}`);
+      process.exitCode = 2;
+    } else if (cmd === "builds") {
       console.log(builds.length ? builds.map((b) => `  ${path.basename(b.dir).padEnd(32)} ${b.branch}${b.dirty ? "  (unsaved changes)" : ""}`).join("\n") : "No extra builds. Start one: bp new \"<name>\"");
     } else {
       const target = builds.find((b) => path.basename(b.dir) === rest[0] || b.branch === rest[0] || b.branch === `bp/${rest[0]}` || path.basename(b.dir).endsWith(`-${rest[0]}`));
@@ -425,7 +462,9 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       } else {
         try {
           await engine.removeBuild(target.dir);
-          console.log(`Removed ${path.basename(target.dir)}. Its branch ${target.branch} is kept. Merge it with:  git merge ${target.branch}`);
+          const { run } = await import("./core/git");
+          const merged = (await run("git", ["merge-base", "--is-ancestor", target.branch, "HEAD"], folder)).code === 0;
+          console.log(`Removed ${path.basename(target.dir)}. Its branch ${target.branch} is kept.${merged ? " (Its work is already in your project.)" : ` Bring its work in with:  git merge ${target.branch}`}`);
         } catch (e) {
           console.log(`Couldn't remove it: ${(e as Error).message}`);
           process.exitCode = 1;
@@ -455,8 +494,8 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       engine.stop();
       if (process.env.TMUX) {
         execFile("tmux", ["new-window", "-c", w.dir, "-n", path.basename(w.dir).slice(0, 20), "claude"], () => {});
-        console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).\nTwo builds use your plan limit about twice as fast. When done: git merge ${w.branch} && bp done ${path.basename(w.dir)}`);
-      } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast. When done: git merge ${w.branch} && bp done ${path.basename(w.dir)}`);
+        console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).\nTwo builds use your plan limit about twice as fast. When done: bp review ${path.basename(w.dir)}, then bp merge ${path.basename(w.dir)}`);
+      } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast. When done: bp review ${path.basename(w.dir)}, then bp merge ${path.basename(w.dir)}`);
     } catch (e) {
       engine.stop();
       const msg = (e as Error).message;
@@ -471,8 +510,10 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     const p = pageData(engine, null);
     engine.stop();
     console.log(limitsText(p));
+    if (!p.builds.length && !isConnected()) console.log(`\n${NOT_CONNECTED}`);
     return;
   }
+  if (cmd === "prompt" && rest[0] === "auto" && !rest[1]?.trim()) return usage('Usage: bp prompt auto "<what you want, in plain words>"\nExample: bp prompt auto "the login button does nothing on mobile"');
   if (cmd === "prompt" && rest[0] === "auto") rest[0] = guessGoal(rest[1] ?? "");
   if (cmd === "prompt" && (!rest[0] || !GOALS.some((g) => g.id === rest[0]))) {
     return usage(`${rest[0] ? `Unknown goal "${rest[0]}". ` : ""}Usage: bp prompt <goal> "<what you want>"\n\nGoals:\n${GOALS.map((g) => `  ${g.id.padEnd(14)} ${g.label}`).join("\n")}\n\nExample: bp prompt bugfix "the login button does nothing on mobile"`);
@@ -483,8 +524,12 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
   if (!markers.some((m) => fs.existsSync(path.join(folder, m))) || folder === os.homedir()) {
     const engine = new Engine({ light: true });
     await engine.start();
-    console.log(glance(engine, { cwd: folder, columns: process.stdout.columns ?? 80, color: !!process.stdout.isTTY && !process.env.NO_COLOR }));
-    console.log(`\n${folder} doesn't look like a project folder. cd into a project (one with .git or package.json) and run bp again.`);
+    if (cmd === "status") {
+      console.log(glance(engine, { cwd: folder, columns: process.stdout.columns ?? 80, color: !!process.stdout.isTTY && !process.env.NO_COLOR }));
+      if (!isConnected()) console.log(`\n${NOT_CONNECTED}`);
+    }
+    console.log(`${cmd === "status" ? "\n" : ""}${folder} doesn't look like a project folder. cd into a project (one with .git or package.json) and run ${cmd === "status" ? "bp" : `bp ${cmd}`} again.`);
+    if (cmd !== "status") process.exitCode = 2;
     engine.stop();
     return;
   }
@@ -512,7 +557,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
         const line = `${status.padEnd(15)} ${day.padEnd(13)} ${task.length > 80 ? `${task.slice(0, 79)}…` : task || "(no prompt yet)"}`;
         console.log(process.env.NO_COLOR ? `${line}  (${s.id.slice(0, 8)})` : `${line}  \x1b[2m(${s.id.slice(0, 8)})\x1b[0m`);
       }
-      if (!st.out.sessions.length) console.log(st.hooks.installed ? "No sessions observed for this folder yet." : "BuildPilot isn't connected yet: run bp hooks install (or install the Claude Code plugin).");
+      if (!st.out.sessions.length) console.log(st.hooks.installed || isConnected() ? "No sessions observed for this folder yet." : NOT_CONNECTED);
       break;
     case "handoff":
       console.log(engine.handoff(st));
@@ -526,7 +571,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     case "visual": {
       const url = rest.find((x) => /^https?:/.test(x)) ?? st.appUrl.url;
       if (!url) {
-        console.log("No app address detected. Usage: buildpilot visual <folder> <url>");
+        console.log("No app address detected. Usage: bp visual [folder] <url>");
         break;
       }
       const r = await engine.visualCheck(url);

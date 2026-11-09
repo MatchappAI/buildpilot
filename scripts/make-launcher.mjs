@@ -28,7 +28,7 @@ fs.writeFileSync(path.join(app, "Contents/Info.plist"), `<?xml version="1.0" enc
 </dict></plist>
 `);
 
-// The launcher: find Node, ask BuildPilot for your most recent project, open it in VS Code with the BuildPilot page.
+// The launcher: find Node, ask BuildPilot for your most recent project, open BuildPilot in its own window there.
 fs.writeFileSync(path.join(app, "Contents/MacOS/BuildPilot"), `#!/bin/zsh
 # BuildPilot launcher. Opens BuildPilot in its own window for the project you were most recently building.
 CLI="$HOME/.buildpilot/bin/cli.js"
