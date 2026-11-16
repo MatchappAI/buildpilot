@@ -332,7 +332,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
         const file = claudeSettingsPath("user");
         const ok = await confirm(
           "Connect BuildPilot to Claude Code?",
-          `BuildPilot adds a few lines to ${file} so it can see your builds, memory and plan limits.\n\nEverything stays on this computer. Your settings are backed up first, and "BuildPilot: Disconnect" undoes it.`,
+          `BuildPilot adds a few lines to ${file} so it can see your sessions, memory and plan limits.\n\nEverything stays on this computer. Your settings are backed up first, and "BuildPilot: Disconnect" undoes it.`,
           "Connect",
         );
         if (!ok) return;
@@ -396,15 +396,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       case "renameBuild": {
         const id = String(m.id ?? "");
         if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return;
-        const name = await vscode.window.showInputBox({ title: "Name this build", prompt: "Leave empty to clear", placeHolder: "e.g. checkout page" });
+        const name = await vscode.window.showInputBox({ title: "Name this session", prompt: "Leave empty to clear", placeHolder: "e.g. checkout page" });
         if (name === undefined) return;
         setBuildName(eng, id, name);
         push();
         return;
       }
       case "hideIdle": {
-        if (!(await confirm("Hide builds that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again.", "Hide"))) return;
-        void vscode.window.setStatusBarMessage(`$(check) Hid ${eng.hideIdle()} idle build(s).`, 4000);
+        if (!(await confirm("Hide sessions that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again.", "Hide"))) return;
+        void vscode.window.setStatusBarMessage(`$(check) Hid ${eng.hideIdle()} quiet session(s).`, 4000);
         push();
         return;
       }

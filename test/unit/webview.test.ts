@@ -218,7 +218,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await click('[data-act="whoChanged"]');
     await tick();
     expect(sent.find((m) => m.type === "whoChanged")?.query).toBe("auth.ts");
-    expect(doc.body.textContent).toMatch(/No build has changed a file matching “auth\.ts”/);
+    expect(doc.body.textContent).toMatch(/No session has changed a file matching “auth\.ts”/);
     void w;
   });
 
@@ -261,7 +261,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(sent.find((m) => m.type === "buildPrompt")).toMatchObject({ goal: "bugfix", request: "The login button is broken on mobile" });
     const out = doc.getElementById("ptext") as HTMLTextAreaElement;
     expect(out.value.length).toBeGreaterThan(200);
-    expect(doc.querySelector(".summary")?.textContent).toMatch(/This asks Claude to The login button is broken on mobile/);
+    expect(doc.querySelector(".summary")?.textContent).toMatch(/Your request, “The login button is broken on mobile”, written up for Claude/);
     expect(sent.find((m) => m.type === "buildPrompt")?.defer).toBe(true);
     expect(sent.some((m) => m.type === "promptUsed")).toBe(false); // not counted until used
     await click('[data-act="sendPrompt"]');
@@ -361,5 +361,22 @@ describe("one-page UI (real bundle in jsdom)", () => {
     await tick();
     expect((doc.getElementById("req") as HTMLTextAreaElement).value).toBe("half-typed idea");
     expect(doc.activeElement?.id).toBe("req");
+  });
+});
+
+describe("window footer and announcements", () => {
+  it("toasts are announced to screen readers and Alerts says its state", async () => {
+    const { doc, tick } = mount(full(), { standalone: true });
+    await tick();
+    await tick();
+    const flash = doc.getElementById("flash")!;
+    expect(flash.getAttribute("role")).toBe("status");
+    expect(flash.getAttribute("aria-hidden")).toBeNull();
+    const alerts = doc.querySelector('[data-act="toggleAlerts"]');
+    if (alerts) {
+      expect(alerts.textContent).toMatch(/^Alerts: (on|off)$/);
+      expect(["true", "false"]).toContain(alerts.getAttribute("aria-pressed"));
+    }
+    expect(doc.body.textContent).not.toContain("Dark page");
   });
 });

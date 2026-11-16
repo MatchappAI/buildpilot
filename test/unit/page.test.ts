@@ -124,3 +124,22 @@ describe("real-data polish", () => {
     expect(tips({ now: Date.now(), builds: [b("a"), b("b")], limits: { fiveHourPct: 10, sevenDayPct: 10, fullAt: null, fiveHourResetsAt: null }, isGit: true, unsaved: 0, stuck: [] })).toEqual([]);
   });
 });
+
+describe("tips point at sessions you can see", () => {
+  it("demo sessions (hidden from the list) never raise the 'keeps repeating a fix' tip", async () => {
+    const { Engine } = await import("../../src/core/engine");
+    const { pageData } = await import("../../src/core/page");
+    const { makeRepo } = await import("./helpers");
+    const home = tmpDir();
+    const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    await engine.start();
+    await engine.openProject(makeRepo({ "package.json": "{}" }));
+    engine.loadDemo();
+    const st = engine.snapshot();
+    expect(st.out.issues.some((i) => i.key.startsWith("loop:"))).toBe(true); // the demo does loop
+    const p = pageData(engine, st);
+    expect(p.builds.some((b) => b.id.startsWith("demo-"))).toBe(false);
+    expect(p.tips.some((t) => t.key === "stuck")).toBe(false);
+    engine.stop();
+  });
+});

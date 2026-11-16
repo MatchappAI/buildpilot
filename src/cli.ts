@@ -393,7 +393,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     const want = rest[0]?.toLowerCase();
     const target = want ? w.sessions.find((s) => (s.name ?? s.folder).toLowerCase() === want || (s.name ?? s.folder).toLowerCase().includes(want) || s.folder.toLowerCase().includes(want)) : w.sessions.find((s) => s.needsYou) ?? w.sessions[0];
     if (!target) {
-      console.log(want ? `No build matching "${rest[0]}". Running: ${w.sessions.map((s) => s.folder).join(", ") || "none"}` : "No Claude sessions running.");
+      console.log(want ? `No session matching "${rest[0]}". Running: ${w.sessions.map((s) => s.folder).join(", ") || "none"}` : "No Claude sessions running.");
       process.exitCode = 1;
       return;
     }
@@ -432,13 +432,13 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     return;
   }
   if (cmd === "who") {
-    if (!rest[0]) return usage('Usage: bp who <file>   which Claude build changed it, and when');
+    if (!rest[0]) return usage('Usage: bp who <file>   which Claude session changed it, and when');
     const engine = new Engine({ light: true });
     await engine.start();
     const rows = engine.fileHistory(rest[0]);
     const names = new Map(widgetData(engine).sessions.map((s) => [s.id, s.name ?? s.folder]));
     engine.stop();
-    if (!rows.length) console.log(`No build has changed a file matching "${rest[0]}" recently.`);
+    if (!rows.length) console.log(`No Claude session has changed a file matching "${rest[0]}" recently.`);
     for (const r of rows) console.log(`  ${path.basename(r.path).padEnd(28)} ${r.edits}× by ${names.get(r.sessionId) ?? path.basename(r.cwd)} · ${new Date(r.lastTs).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}\n    ${r.path}`);
     if (rows.length) console.log("\nUndo one file (back to its last commit): git checkout -- <path>   (or use Undo in bp ui, which saves a safety point first)");
     return;

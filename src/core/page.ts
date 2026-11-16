@@ -303,7 +303,8 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     biggest: top && builds.length > 1 ? { folder: top.folder, share: top.share!, cwd: top.cwd } : null,
     isGit: st?.facts ? st.facts.isGit : null,
     unsaved: changes ? changes.staged.length + changes.unstaged.length + changes.untracked.length : null,
-    stuck: (st?.out.issues ?? []).filter((i) => i.key.startsWith("loop:")).map((i) => i.title),
+    // Only sessions shown in the list (never demo or long-gone ones), so the tip always points at something you can see.
+    stuck: (st?.out.issues ?? []).filter((i) => i.key.startsWith("loop:") && builds.some((b) => b.id === i.sessionId)).map((i) => i.title),
     weekFullAt: wk.weekFullAt,
     claudeMdTokens: claudeMdTokens(st?.project?.root ?? null),
     doubleHooks: !!st?.hooks.installed && pluginConnected(),

@@ -168,10 +168,10 @@ function render(): void {
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `<div class="cols"><div class="col-main">${buildsSection()}</div><div class="col-side">${limitsSection()}${tipsSection()}${promptSection()}</div></div>`}
     <footer class="foot">
-      <button type="button" class="linkbtn" data-act="more" title="Dependency check, app check, save points and undo, handoff, phone alerts and more">Advanced tools</button> · <button type="button" class="linkbtn" data-act="toggleTheme" data-to="${theme === "match" ? "white" : "match"}">${theme === "match" ? "White page" : standalone ? "Dark page" : "Match my theme"}</button>${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" title="Mac notifications when a build needs you, you're near your limit, errors pile up, or a chat compacts">Alerts ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
+      <button type="button" class="linkbtn" data-act="more" title="Terminal commands for dependency checks, app checks, handoffs and side builds">Advanced tools</button> · <button type="button" class="linkbtn" data-act="toggleTheme" data-to="${theme === "match" ? "white" : "match"}">${theme === "match" ? "White page" : standalone ? "Auto light/dark" : "Match my theme"}</button>${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" aria-pressed="${alertsOn ? "true" : "false"}" title="Mac notifications when a session needs you, you're near your limit, errors pile up, or a chat compacts. Click to turn ${alertsOn ? "off" : "on"}.">Alerts: ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
     </footer>
   </main>
-  <div id="flash" class="flash" aria-hidden="true"></div>`;
+  <div id="flash" class="flash" role="status" aria-live="polite"></div>`;
   const req = document.getElementById("req") as HTMLTextAreaElement | null;
   if (req) req.value = vs.request;
   const out = document.getElementById("ptext") as HTMLTextAreaElement | null;
@@ -204,14 +204,14 @@ function trialNotice(): string {
 
 function connectCard(): string {
   return `<section class="card connect">
-    <div class="hero">${MARK}<div><h2>Connect Claude Code</h2><p class="muted small">Every build, what needs you, your limits and where your tokens go, in one calm window.</p></div></div>
-    <p>BuildPilot adds a few lines to your Claude Code settings so it can see your builds, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and you can disconnect anytime.</p>
+    <div class="hero">${MARK}<div><h2>Connect Claude Code</h2><p class="muted small">Every session, what needs you, your limits and where your tokens go, in one calm window.</p></div></div>
+    <p>BuildPilot adds a few lines to your Claude Code settings so it can see your sessions, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and you can disconnect anytime.</p>
     <div class="actions"><button class="primary" data-act="connectAll">Connect</button><button class="link" data-act="showConnectChanges">See exactly what changes</button></div>
   </section>
   <section class="preview" aria-label="What you'll see">
     <h2 class="label">What you'll see</h2>
     <ul class="feat">
-      <li><b>Every build, live.</b> What each Claude chat is doing right now, which one needs you, and errors as they happen.</li>
+      <li><b>Every session, live.</b> What each Claude chat is doing right now, which one needs you, and errors as they happen.</li>
       <li><b>Your limits, ahead of time.</b> 5-hour and weekly use, when it resets, and when you'll run out at your pace.</li>
       <li><b>Where your tokens go.</b> The biggest things eating each chat, with tips to cut them.</li>
       <li><b>Safe parallel builds.</b> Start a second Claude in its own copy, then review and merge.</li>
@@ -318,7 +318,7 @@ function fileFinder(): string {
   return `<div class="finder">
     <label class="lbl" for="fileq">Who changed a file?</label>
     <div class="finder-row"><input id="fileq" type="text" placeholder="e.g. checkout.tsx" value="${esc(fileQuery)}"><button class="secondary small-btn" data-act="whoChanged">Find</button></div>
-    ${fileResults == null ? "" : fileResults.length ? `<ul class="files">${fileResults.map((r) => `<li><div><b>${esc(r.file)}</b> <span class="muted small">changed ${r.edits}× by ${esc(P!.builds.find((b) => b.id === r.sessionId)?.name ?? P!.builds.find((b) => b.id === r.sessionId)?.folder ?? r.cwd.split("/").pop() ?? "a build")}, ${ago(r.lastTs)}</span></div>${fileResults!.filter((o) => o.path === r.path).length > 1 ? `<span class="warn-text small" title="Undo goes back to the last commit, so it also removes the other builds' changes to this file">changed by ${fileResults!.filter((o) => o.path === r.path).length} builds</span>` : ""}<button class="link" data-act="undoFile" data-path="${esc(r.path)}" title="Put this file back to its last saved (committed) version. This removes every build's changes to it since then.">Undo this file</button></li>`).join("")}</ul>` : `<p class="muted small">No build has changed a file matching “${esc(fileQuery)}” recently.</p>`}
+    ${fileResults == null ? "" : fileResults.length ? `<ul class="files">${fileResults.map((r) => `<li><div><b>${esc(r.file)}</b> <span class="muted small">changed ${r.edits}× by ${esc(P!.builds.find((b) => b.id === r.sessionId)?.name ?? P!.builds.find((b) => b.id === r.sessionId)?.folder ?? r.cwd.split("/").pop() ?? "a session")}, ${ago(r.lastTs)}</span></div>${fileResults!.filter((o) => o.path === r.path).length > 1 ? `<span class="warn-text small" title="Undo goes back to the last commit, so it also removes the other sessions' changes to this file">changed by ${fileResults!.filter((o) => o.path === r.path).length} sessions</span>` : ""}<button class="link" data-act="undoFile" data-path="${esc(r.path)}" title="Put this file back to its last saved (committed) version. This removes every session's changes to it since then.">Undo this file</button></li>`).join("")}</ul>` : `<p class="muted small">No session has changed a file matching “${esc(fileQuery)}” recently.</p>`}
   </div>`;
 }
 
@@ -392,7 +392,7 @@ function weekday(t: number): string {
 function limitsSection(): string {
   const L = P!.limits;
   if (P!.billing === "api") {
-    return `<section class="block" aria-label="Spend"><h2 class="label">Spend today</h2><p class="big">${P!.costTodayUsd != null ? `~$${P!.costTodayUsd.toFixed(2)}` : "—"}</p><p class="muted small">Claude Code's own estimate for your API key, across all builds today.</p></section>`;
+    return `<section class="block" aria-label="Spend"><h2 class="label">Spend today</h2><p class="big">${P!.costTodayUsd != null ? `~$${P!.costTodayUsd.toFixed(2)}` : "—"}</p><p class="muted small">Claude Code's own estimate for your API key, across all sessions today.</p></section>`;
   }
   if (P!.billing === "unknown" || (L.fiveHourPct == null && L.sevenDayPct == null)) {
     return `<section class="block" aria-label="Plan limits"><h2 class="label">Plan limits</h2><p class="muted">Shows up after your next message to Claude.</p></section>`;
@@ -439,11 +439,11 @@ function promptSection(): string {
     <div class="actions center"><button class="primary" data-act="build">Write my prompt</button>${counter}</div>
     ${paywalled ? paywallCard() : ""}
     ${built ? `
-      <p class="summary">This asks Claude to <b>${esc(vs.request.trim().replace(/[.!]+$/, ""))}</b> in ${esc(folder)}, using your project's setup, with a short plan first and checks at the end.${built.missingInfo.length ? ` Worth adding: ${esc(built.missingInfo[0]!)}` : ""}</p>
+      <p class="summary">Your request, <b>“${esc(vs.request.trim().replace(/[.!]+$/, ""))}”</b>, written up for Claude in ${esc(folder)}: your project's setup, a short plan first and checks at the end.${built.missingInfo.length ? ` Worth adding: ${esc(built.missingInfo[0]!)}` : ""}</p>
       <label class="lbl" for="ptext">Your prompt. Edit anything.</label>
       <textarea id="ptext" class="mono" rows="${Math.min(40, Math.max(12, promptText.split("\n").length + 1))}"></textarea>
       <div class="actions"><button class="primary" data-act="sendPrompt">Start Claude with this</button><button class="secondary" data-act="useInOpen" title="Copies it and switches to your open terminal, so you can paste it into the Claude chat you already have">Use in my open Claude</button><button class="link" data-act="copyPrompt">Copy</button></div>
-      <p class="muted tiny">"Start Claude with this" opens a new terminal in ${esc(folder)}. Your running builds aren't touched.</p>` : ""}
+      <p class="muted tiny">"Start Claude with this" opens a new terminal in ${esc(folder)}. Your running sessions aren't touched.</p>` : ""}
   </section>`;
 }
 

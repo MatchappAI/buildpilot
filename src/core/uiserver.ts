@@ -335,7 +335,7 @@ export class UiServer {
         dismissRisks(eng, id, b.risks ?? []);
         return { flash: "Hidden. New warnings for this session will still show" };
       }
-      case "hideIdle": return { flash: `Hid ${eng.hideIdle()} idle build(s). Their history is kept.` };
+      case "hideIdle": { const n = eng.hideIdle(); return { flash: n ? `Hid ${n} quiet session${n === 1 ? "" : "s"}. Their history is kept.` : "Nothing to hide: no session has been quiet for 2+ hours" }; }
       case "whoChanged": {
         const rows = eng.fileHistory(str("query"));
         return { files: rows.map((r) => ({ ...r, file: path.basename(r.path) })) };
@@ -372,7 +372,7 @@ export class UiServer {
         if (!pluginConnected(file)) installHooks(file, eng.home); // the plugin already brings its own hooks
         installStatusline(file, eng.home);
         eng.setClaudeSettingsFile(file);
-        return { flash: "Connected. Builds appear as soon as Claude does something" };
+        return { flash: "Connected. Sessions appear as soon as Claude does something" };
       }
       case "showConnectChanges": return { show: connectPreview(eng.home) };
       case "disconnect": {
@@ -479,7 +479,7 @@ export class UiServer {
   const H = { "content-type": "application/json", "x-bp-token": T };
   // Side effects are confirmed here, in plain words, before anything is sent.
   const CONFIRM = {
-    connectAll: ["Connect BuildPilot to Claude Code?", "BuildPilot adds a few lines to ~/.claude/settings.json so it can see your builds, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and Disconnect undoes it."],
+    connectAll: ["Connect BuildPilot to Claude Code?", "BuildPilot adds a few lines to ~/.claude/settings.json so it can see your sessions, how full each chat is, and your plan limits. Your settings are backed up first, nothing leaves this computer, and Disconnect undoes it."],
     disconnect: ["Disconnect BuildPilot from Claude Code?", "Removes exactly the lines BuildPilot added and restores your own status line."],
     sendToClaude: ["Start Claude with this prompt?", "Opens Terminal in your project and starts Claude with it. Claude still asks before risky actions."],
     startFresh: ["Start a fresh chat?", "Your files are kept. BuildPilot copies a summary of the work so far and opens Claude in a new Terminal window. Paste the summary as your first message."],
@@ -487,7 +487,7 @@ export class UiServer {
     setupUndo: ["Turn on undo for this project?", "Sets up Git here and saves everything as a first save point. Nothing is uploaded."],
     checkpoint: ["Make a save point?", "Saves a snapshot of every file as a private Git ref. Your files and branch don't change."],
     mergeBuild: ["Bring this build's work into your main project?", "Its unsaved work is saved first. If both builds changed the same lines, nothing changes and you get a fix prompt."],
-    hideIdle: ["Hide builds that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again."],
+    hideIdle: ["Hide sessions that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again."],
     undoFile: ["Put this file back to its last saved version?", "Undoes every change since your last commit for this one file. BuildPilot makes a safety save point of the current version first."],
     resumeBuild: ["Resume this Claude conversation?", "Opens Terminal in that folder and continues the same chat (claude --resume)."],
     removeBuild: ["Remove this build's folder?", "Its branch is kept, so nothing is lost. Folders with unsaved changes are never removed."],
@@ -522,9 +522,9 @@ export class UiServer {
       if (CONFIRM[m.type] && !(await ask(CONFIRM[m.type][0], CONFIRM[m.type][1], "Continue"))) return reply(null);
       if (m.type === "showConnectChanges") { const r = await post(m); await show("BuildPilot adds these entries to ~/.claude/settings.json:\\n\\n" + r.show); return reply(null); }
       if (m.type === "enterLicense") { const k = await input("Paste your BuildPilot Pro key", "BP1.…", true); if (k) { const r = await post({ type: "enterLicense", key: k }); if (r?.flash) toast(r.flash); await pushState(); } return reply(null); }
-      if (m.type === "newBuild") { const label = await input("New build: what's it for? (a few words)", "e.g. checkout page"); if (label === null) return reply(null); if (!(await ask("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy next to your project (with your .env files), installs packages, and opens Claude in Terminal. Two builds use your plan limit about twice as fast.", "Start build"))) return reply(null); m.label = label; }
-      if (m.type === "renameBuild") { const n = await input("Name this build (leave empty to clear)", "e.g. checkout page"); if (n === null) return reply(null); m.name = n; }
-      if (m.type === "selectProject") { const list = await post({ type: "projects" }); const p = await pick("Choose a project", list || []); if (!p) return reply(null); m.root = p.root; }
+      if (m.type === "newBuild") { const label = await input("New side build: what's it for? (a few words)", "e.g. checkout page"); if (label === null) return reply(null); if (!(await ask("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy next to your project (with your .env files), installs packages, and opens Claude in Terminal. Two builds use your plan limit about twice as fast.", "Start build"))) return reply(null); m.label = label; }
+      if (m.type === "renameBuild") { const n = await input("Name this session (leave empty to clear)", "e.g. checkout page"); if (n === null) return reply(null); m.name = n; }
+      if (m.type === "selectProject") { const list = await post({ type: "projects" }); if (!list || !list.length) { await show("No projects yet.\\n\\nOpen BuildPilot from inside a project folder (cd my-app, then bp ui), or start Claude in a project: it shows up here after Claude does something there."); return reply(null); } const p = await pick("Choose a project", list); if (!p) return reply(null); m.root = p.root; }
       let r = await post(m);
       if (r && r.confirmAgain) { if (await ask(r.confirmAgain, "Merging now would bring failing code into your main project.", "Merge anyway")) r = await post({ ...m, force: true }); else return reply(null); }
       if (r && typeof r.paywall === "string") { if (await ask("Go Pro?", r.paywall.replace(/: https?:\\/\\/\\S+$/, "."), "Get Pro")) window.open(r.url, "_blank"); return reply(null); }

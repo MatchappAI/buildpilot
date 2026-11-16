@@ -82,3 +82,11 @@ describe("standalone app server", () => {
     expect((await post({ type: "whoChanged", query: "a.t" })).files.length).toBe(1);
   });
 });
+
+describe("window wording", () => {
+  it("Hide idle says sessions, with a real count or a plain 'nothing to hide'", async () => {
+    const r = (await srv.onMessage({ type: "hideIdle" })) as { flash: string };
+    expect(r.flash).not.toMatch(/build\(s\)/);
+    expect(r.flash).toMatch(/Nothing to hide|quiet session/);
+  });
+});

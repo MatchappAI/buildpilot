@@ -36,7 +36,7 @@ export function tips(i: TipInput, max = 3): Tip[] {
   if (i.doubleHooks) out.push({ key: "doublehooks", text: "BuildPilot is connected twice (the plugin and the older settings hooks), so every step is counted twice. Remove the older hooks; the plugin keeps working.", why: "Both ~/.claude/settings.json and the BuildPilot plugin send the same events.", action: "fixDoubleHooks", actionLabel: "Remove older hooks" });
   const full = i.builds.filter((b) => (b.contextPct ?? 0) >= 80).sort((a, b) => (b.contextPct ?? 0) - (a.contextPct ?? 0))[0];
   if (full) out.push({ key: "memory", text: `${full.folder}'s chat is ${Math.round(full.contextPct!)}% full, so Claude will start forgetting details. Start a fresh chat that picks up where it left off.`, why: "Near full, Claude summarizes and loses details. A fresh chat with a summary keeps it sharp and uses less of your limit per message.", action: "startFresh", actionLabel: "Start fresh chat", cwd: full.cwd });
-  if (i.stuck.length) out.push({ key: "stuck", text: "A build keeps repeating a fix that fails. Stop it and ask Claude for a plan first.", why: i.stuck[0]!, action: "planMode", actionLabel: "Write a plan prompt" });
+  if (i.stuck.length) out.push({ key: "stuck", text: "A session keeps repeating a fix that fails. Stop it and ask Claude for a plan first.", why: i.stuck[0]!, action: "planMode", actionLabel: "Write a plan prompt" });
   const soon = i.limits.fullAt != null && i.limits.fullAt - i.now < 60 * 60_000;
   if (soon || (i.limits.fiveHourPct ?? 0) >= 85) {
     // The limits card already shows the run-out time; the tip says what to do about it.
