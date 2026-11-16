@@ -321,7 +321,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
   if (cmd === "doctor") {
     const { selfCheck } = await import("./core/selfcheck");
     const r = await selfCheck({ fix: rest.includes("--fix") });
-    if (rest.includes("--json")) { console.log(JSON.stringify(r)); return; }
+    if (json) { console.log(JSON.stringify(r)); return; }
     for (const x of r.findings) console.log(`${x.ok ? "✓" : "✗"} ${x.text}${!x.ok && x.fix ? `\n    → ${x.fix}` : ""}`);
     for (const x of r.fixed) console.log(`✓ Fixed: ${x}`);
     const bad = r.findings.filter((x) => !x.ok).length;
@@ -393,7 +393,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     const want = rest[0]?.toLowerCase();
     const target = want ? w.sessions.find((s) => (s.name ?? s.folder).toLowerCase() === want || (s.name ?? s.folder).toLowerCase().includes(want) || s.folder.toLowerCase().includes(want)) : w.sessions.find((s) => s.needsYou) ?? w.sessions[0];
     if (!target) {
-      console.log(want ? `No session matching "${rest[0]}". Running: ${w.sessions.map((s) => s.folder).join(", ") || "none"}` : "No Claude sessions running.");
+      console.log(want ? `No session matching "${rest[0]}". Running: ${[...new Set(w.sessions.map((s) => s.name ?? s.folder))].join(", ") || "none"}` : "No Claude sessions running.");
       process.exitCode = 1;
       return;
     }

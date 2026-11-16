@@ -48,7 +48,7 @@ beforeAll(async () => {
   engine.stop();
 });
 
-function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean; standalone?: boolean } = {}) {
+function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean; standalone?: boolean; cancelSend?: boolean } = {}) {
   const sent: Record<string, unknown>[] = [];
   const dom = new JSDOM(`<!doctype html><html><body><div id="app"></div></body></html>`, { runScripts: "outside-only", url: "https://webview.local/" });
   const w = dom.window as unknown as Window & typeof globalThis & { acquireVsCodeApi: unknown; eval(s: string): unknown; __xss?: number };
@@ -60,6 +60,7 @@ function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean; standa
       sent.push(m);
       const reply = (result: unknown) => setTimeout(() => w.postMessage({ type: "reply", id: m.id, result }, "*"), 0);
       if (m.type === "buildPrompt") reply(opts.paywall ? { paywall: { url: "https://buy.stripe.com/x" } } : { prompt: built, remaining: 3 });
+      else if (m.type === "sendToClaude") reply(opts.cancelSend ? null : { flash: "Claude is starting in Terminal", sent: true });
       else if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: opts.trusted ?? true, standalone: opts.standalone ?? false } }, "*"), 0);
       else if (m.id) reply(null);
     },
@@ -89,7 +90,7 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelectorAll("[role=tab], .tabs").length).toBe(0);
     expect(doc.querySelector("h1")?.textContent).toBe("BuildPilot");
     const css = fs.readFileSync(path.join(__dirname, "../../src/webview/style.css"), "utf8");
-    expect(css).toMatch(/--bg:\s*#fafafa/);
+    expect(css).toMatch(/--bg:\s*#ffffff/); // plain white page
     expect(css.slice(0, css.indexOf("body.match")).match(/--vscode-/g)).toBeNull(); // white unless the user picks "match"
   });
 
@@ -378,5 +379,47 @@ describe("window footer and announcements", () => {
       expect(["true", "false"]).toContain(alerts.getAttribute("aria-pressed"));
     }
     expect(doc.body.textContent).not.toContain("Dark page");
+  });
+});
+
+describe("audit 2026-11-16: page regressions", () => {
+  it("a toast survives the live refresh that follows an action", async () => {
+    const { doc, w, tick } = mount(full());
+    await tick();
+    await tick();
+    const f = doc.getElementById("flash")!;
+    expect(f.parentElement).toBe(doc.body); // outside #app, so render() can't wipe it
+    f.textContent = "Saved";
+    w.postMessage({ type: "state", state, page: full({ working: 2 }), settings: { standalone: true } }, "*");
+    await tick();
+    expect(doc.getElementById("flash")?.textContent).toBe("Saved");
+    expect(doc.querySelectorAll("#flash").length).toBe(1);
+  });
+
+  it("Start Claude with this: a cancelled confirm doesn't use up a free prompt", async () => {
+    const { doc, sent, tick, click, type } = mount(full(), { cancelSend: true });
+    await tick();
+    await tick();
+    type("req", "The login button is broken on mobile");
+    await click('[data-act="build"]');
+    await tick();
+    await click('[data-act="sendPrompt"]'); // the mock replies null = cancelled
+    await tick();
+    expect(sent.some((m) => m.type === "sendToClaude")).toBe(true);
+    expect(sent.some((m) => m.type === "promptUsed")).toBe(false);
+    void doc;
+  });
+
+  it("own window: white page by default, the theme link offers Auto light/dark, and changing alerts re-renders", async () => {
+    const { doc, w, tick } = mount(full(), { standalone: true });
+    await tick();
+    await tick();
+    expect(doc.body.classList.contains("match")).toBe(false);
+    expect(doc.querySelector('[data-act="toggleTheme"]')?.getAttribute("data-to")).toBe("auto");
+    expect(doc.querySelector('[data-act="toggleTheme"]')?.textContent).toBe("Auto light/dark");
+    w.postMessage({ type: "state", state, page: full(), settings: { standalone: true, theme: "auto", alerts: false } }, "*");
+    await tick();
+    expect(doc.querySelector('[data-act="toggleTheme"]')?.textContent).toBe("White page");
+    expect(doc.querySelector('[data-act="toggleAlerts"]')?.textContent).toBe("Alerts: off");
   });
 });

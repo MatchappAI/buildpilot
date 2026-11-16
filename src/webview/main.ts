@@ -55,7 +55,7 @@ window.addEventListener("message", (e: MessageEvent) => {
     standalone = !!m.settings?.standalone;
     alertsOn = m.settings?.alerts !== false;
     // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
-    const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted, theme });
+    const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted, theme, themePref, alertsOn, standalone });
     if (key === lastKey) return;
     lastKey = key;
     render();
@@ -168,10 +168,11 @@ function render(): void {
     ${!trusted ? `<p class="note">This folder isn't trusted, so BuildPilot can look but won't change anything.</p>` : ""}
     ${!P.connected ? connectCard() : `<div class="cols"><div class="col-main">${buildsSection()}</div><div class="col-side">${limitsSection()}${tipsSection()}${promptSection()}</div></div>`}
     <footer class="foot">
-      <button type="button" class="linkbtn" data-act="more" title="Terminal commands for dependency checks, app checks, handoffs and side builds">Advanced tools</button> · <button type="button" class="linkbtn" data-act="toggleTheme" data-to="${theme === "match" ? "white" : "match"}">${theme === "match" ? "White page" : standalone ? "Auto light/dark" : "Match my theme"}</button>${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" aria-pressed="${alertsOn ? "true" : "false"}" title="Mac notifications when a session needs you, you're near your limit, errors pile up, or a chat compacts. Click to turn ${alertsOn ? "off" : "on"}.">Alerts: ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
+      <button type="button" class="linkbtn" data-act="more" title="Terminal commands for dependency checks, app checks, handoffs and side builds">Advanced tools</button> · ${themeButton()}${standalone ? ` · <button type="button" class="linkbtn" data-act="toggleAlerts" aria-pressed="${alertsOn ? "true" : "false"}" title="Mac notifications when a session needs you, you're near your limit, errors pile up, or a chat compacts. Click to turn ${alertsOn ? "off" : "on"}.">Alerts: ${alertsOn ? "on" : "off"}</button>` : ""}${P.connected ? `<span class="sep" aria-hidden="true"></span><button type="button" class="linkbtn danger" data-act="disconnect">Disconnect</button>` : ""}
     </footer>
-  </main>
-  <div id="flash" class="flash" role="status" aria-live="polite"></div>`;
+  </main>`;
+  // The toast lives outside #app, so a live refresh right after an action never wipes its message.
+  if (!document.getElementById("flash")) document.body.insertAdjacentHTML("beforeend", `<div id="flash" class="flash" role="status" aria-live="polite"></div>`);
   const req = document.getElementById("req") as HTMLTextAreaElement | null;
   if (req) req.value = vs.request;
   const out = document.getElementById("ptext") as HTMLTextAreaElement | null;
@@ -193,6 +194,13 @@ function planPill(): string {
   if (p.trialDaysLeft != null && p.trialDaysLeft <= 3) return "";
   if (p.trialDaysLeft != null) return `<span class="pill soft" title="Every Pro feature is on during your trial. After it, builds, limits, the forecast, tips, 20 prompts and 2 builds at once stay free.">Pro trial · ${p.trialDaysLeft} day${p.trialDaysLeft === 1 ? "" : "s"} left</span>`;
   return "";
+}
+
+/** Own window: White page (default) or Auto light/dark. VS Code: White page or Match my theme. */
+function themeButton(): string {
+  const other = standalone ? (themePref === "auto" ? "white" : "auto") : theme === "match" ? "white" : "match";
+  const label = other === "white" ? "White page" : other === "auto" ? "Auto light/dark" : "Match my theme";
+  return `<button type="button" class="linkbtn" data-act="toggleTheme" data-to="${other}">${label}</button>`;
 }
 
 function trialNotice(): string {
@@ -484,7 +492,7 @@ async function act(el: HTMLElement): Promise<void> {
     case "toggleTheme": return void call("toggleTheme", { to: el.dataset.to });
     case "copyPrompt": await call("copy", { text: promptText }); void call("promptUsed"); return flash("Copied");
     case "useInOpen": void call("promptUsed"); await call("useInOpen", { text: promptText }); return flash("Copied. Paste it into Claude (Cmd/Ctrl+V)");
-    case "sendPrompt": void call("promptUsed"); return void call("sendToClaude", { text: promptText });
+    case "sendPrompt": { const r = await call<unknown>("sendToClaude", { text: promptText }); if (r === true || (r as { sent?: boolean } | null)?.sent) void call("promptUsed"); return; } // cancelled = not counted
     case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id });
     case "resumeBuild": return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
     case "dismissRisk": await call("dismissRisk", { id: el.dataset.id }); return;

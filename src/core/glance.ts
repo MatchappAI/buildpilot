@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { Engine, realpath } from "./engine";
-import { readLiveStatus } from "./hooks";
+import { claudeSettingsPath, hookStatus, pluginConnected, readLiveStatus } from "./hooks";
 import { rowToEvent, rowToSession } from "./ingest";
 import { Activity, activityFor, risksIn, TimelineItem, turnSummary } from "./activity";
 import { deriveDisplayStatus } from "./supervisor";
@@ -124,7 +124,8 @@ function projectNext(engine: Engine, cwd: string): string | null {
   const pid = engine.resolveProject(realpath(cwd));
   if (!pid) return null;
   try {
-    const sum = JSON.parse(String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]) ?? "")) as { next: string | null; severity?: string | null };
+    const sum = JSON.parse(String(engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]) ?? "")) as { next: string | null; nextKey?: string | null; severity?: string | null };
+    if (staleConnectStep(sum)) return null;
     // Housekeeping ("write down what done means", "add a CLAUDE.md") is never the next step next to live work.
     // (Summaries saved before 0.12.1 have no severity: treat them as housekeeping until the next refresh.)
     return !sum.severity || sum.severity === "low" || sum.severity === "info" ? null : sum.next ?? null;
@@ -134,6 +135,25 @@ function projectNext(engine: Engine, cwd: string): string | null {
 }
 
 /** Headless/background runs (temp folders: scripts, CI, agent sandboxes) aren't builds you're watching. */
+/**
+ * A saved "Connect BuildPilot" next step goes stale the moment you connect (the terminal never re-analyzes).
+ * Older summaries have no nextKey, so match the title too.
+ */
+let connectedCache: { at: number; on: boolean } | null = null;
+export function staleConnectStep(sum: { next?: string | null; nextKey?: string | null }): boolean {
+  if (sum.nextKey !== "hooks-missing" && sum.next !== "Connect BuildPilot to Claude Code") return false;
+  if (!connectedCache || Date.now() - connectedCache.at > 5000) {
+    let on = false;
+    try {
+      on = pluginConnected() || hookStatus(claudeSettingsPath("user")).installed;
+    } catch {
+      on = false;
+    }
+    connectedCache = { at: Date.now(), on };
+  }
+  return connectedCache.on;
+}
+
 export function isBackground(cwd: string): boolean {
   const p = path.resolve(cwd);
   return p.startsWith("/private/tmp/") || p.startsWith("/tmp/") || p.startsWith("/private/var/folders/") || p.startsWith("/var/folders/") || p.startsWith(path.resolve(os.tmpdir()) + path.sep);
@@ -268,9 +288,11 @@ export function glance(engine: Engine, o: GlanceOptions): string {
 
   // Waiting sessions first, then the rest; at most 5 rows.
   const ordered = [...needs, ...items.filter((x) => !needs.includes(x))].slice(0, 5);
-  const nameW = Math.min(18, Math.max(8, ...ordered.map((x) => folderLabel(x.s.cwd).length)));
+  // A session you named (in the window) shows that name here too, so the same words work with bp go <name>.
+  const label = (x: (typeof ordered)[number]) => buildName(engine, x.s.id) ?? folderLabel(x.s.cwd);
+  const nameW = Math.min(18, Math.max(8, ...ordered.map((x) => label(x).length)));
   for (const x of ordered) {
-    const name = fit(folderLabel(x.s.cwd), nameW);
+    const name = fit(label(x), nameW);
     const ctx = x.live?.contextPct != null ? `chat ${Math.round(x.live.contextPct)}% full` : "";
     const what =
       x.status === "awaiting_approval" || x.status === "blocked" || x.status === "failed"
@@ -295,8 +317,8 @@ export function glance(engine: Engine, o: GlanceOptions): string {
   if (pid) {
     const raw = engine.store.scalar("SELECT value FROM notes WHERE project_id = ? AND key = 'summary'", [pid]);
     try {
-      const sum = JSON.parse(String(raw ?? "")) as { next: string | null; severity?: string | null; health: string; name: string };
-      const msg = sum.next && sum.severity && sum.severity !== "low" && sum.severity !== "info" ? `Next: ${sum.next}` : sum.health;
+      const sum = JSON.parse(String(raw ?? "")) as { next: string | null; nextKey?: string | null; severity?: string | null; health: string; name: string };
+      const msg = sum.next && !staleConnectStep(sum) && sum.severity && sum.severity !== "low" && sum.severity !== "info" ? `Next: ${sum.next}` : sum.health;
       lines.push(`  ${bold("This folder")} ${dim(`(${fit(sum.name, 24).trim()})`)}  ${fit(msg.replace(/\s+/g, " "), W - 40).trimEnd()}`);
     } catch {
       /* not analyzed yet */

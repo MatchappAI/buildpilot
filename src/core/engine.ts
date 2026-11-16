@@ -754,7 +754,7 @@ export class Engine extends EventEmitter {
     const resolved = this.trackRecommendations(out, now);
     if (p && this.facts) {
       // Severity travels with the next step, so the terminal and widget can hide housekeeping while sessions need you.
-      const summary = JSON.stringify({ next: out.next?.title ?? null, severity: out.next?.severity ?? null, health: out.health.label, stage: out.stage.stage, name: this.facts.name });
+      const summary = JSON.stringify({ next: out.next?.title ?? null, nextKey: out.next?.key ?? null, severity: out.next?.severity ?? null, health: out.health.label, stage: out.stage.stage, name: this.facts.name });
       if (summary !== this.lastSummary) {
         this.lastSummary = summary;
         this.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, 'summary', ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [p.id, summary, now]);

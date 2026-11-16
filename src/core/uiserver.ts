@@ -9,7 +9,7 @@ import { pageData } from "./page";
 import { checkoutUrl, gate, gateParallel, plan, readUsage, recordUse, saveLicense } from "./license";
 import { worktrees, run } from "./git";
 import { GoalType } from "./types";
-import { shellQuote } from "./prompts";
+import { shellQuote, writePromptFile } from "./prompts";
 import { findBuild } from "./termfind";
 import { dismissRisks, setBuildName, widgetData } from "./glance";
 import { alertsFor, AlertMemory, claimAlert } from "./alerts";
@@ -45,9 +45,21 @@ export interface UiServerOptions { port?: number; token?: string; media: string;
 
 const MIME: Record<string, string> = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".ttf": "font/ttf" };
 
+/**
+ * Test seam: with BUILDPILOT_OS_LOG set, OS side effects (Terminal, clipboard, notifications, opening links) are written
+ * to that file as JSON lines instead of happening, so end-to-end runs never touch the user's screen or clipboard.
+ */
+function osLog(kind: string, data: Record<string, unknown>): boolean {
+  const f = process.env.BUILDPILOT_OS_LOG;
+  if (!f) return false;
+  try { fs.appendFileSync(f, JSON.stringify({ kind, ...data, at: Date.now() }) + "\n"); } catch { /* best effort */ }
+  return true;
+}
+
 /** Open a terminal window in `dir` and run a fixed command there.
  * macOS: Terminal.app · Windows: Windows Terminal, else a cmd window · Linux: the first terminal found. */
 export function openTerminal(dir: string, command: string | null): Promise<void> {
+  if (osLog("terminal", { dir, command })) return Promise.resolve();
   const line = `cd ${shellQuote(dir)}${command ? ` && ${command}` : ""}`;
   const manual = () => new Error(`Open a terminal in ${dir} and run: ${command ?? "claude"}`);
   const tryEach = (cands: [string, string[]][], i = 0): Promise<void> =>
@@ -83,6 +95,7 @@ export function openTerminal(dir: string, command: string | null): Promise<void>
 }
 
 export function copyText(text: string): Promise<void> {
+  if (osLog("copy", { text })) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const cmd = process.platform === "darwin" ? "pbcopy" : process.platform === "win32" ? "clip" : "xclip";
     const args = process.platform === "linux" ? ["-selection", "clipboard"] : [];
@@ -93,11 +106,12 @@ export function copyText(text: string): Promise<void> {
 
 /** macOS notification; title/body passed as AppleScript arguments (never interpolated). */
 export function notify(title: string, body: string): void {
+  if (osLog("notify", { title, body })) return;
   if (process.platform !== "darwin") return;
   execFile("osascript", ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title.slice(0, 80), body.slice(0, 200)], { timeout: 5000 }, () => {});
 }
 
-const openUrl = (u: string) => execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [u], () => {});
+const openUrl = (u: string) => osLog("open", { url: u }) || execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [u], () => {});
 
 export class UiServer {
   readonly token: string;
@@ -219,7 +233,7 @@ export class UiServer {
 
   private theme(): string {
     const t = this.uiPrefs().theme;
-    return t === "match" || t === "white" ? t : "auto"; // no saved choice: the page follows the system light/dark setting
+    return t === "match" || t === "auto" ? t : "white"; // no saved choice: a plain white page (Auto light/dark is one click away)
   }
 
   private send(res: http.ServerResponse, code: number, body: unknown, type = "application/json; charset=utf-8"): void {
@@ -304,18 +318,15 @@ export class UiServer {
       case "copy": case "useInOpen": await copyText(str("text")); return { flash: m.type === "useInOpen" ? "Copied. Paste it into Claude (Cmd+V)" : "Copied" };
       case "sendToClaude": {
         if (!root) return { flash: "Pick a project first" };
-        const dir = path.join(eng.home, "prompts");
-        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-        const file = path.join(dir, `prompt-${Date.now()}.md`);
-        fs.writeFileSync(file, str("text"), { mode: 0o600 });
+        const file = writePromptFile(eng.home, str("text"));
         if (process.platform === "win32") {
           // cmd has no safe "$(cat file)": copy the prompt and start Claude; the user pastes it.
           await copyText(str("text"));
           await openTerminal(root, "claude");
-          return { flash: "Claude is starting. Your prompt is copied: paste it (Ctrl+V)" };
+          return { flash: "Claude is starting. Your prompt is copied: paste it (Ctrl+V)", sent: true };
         }
         await openTerminal(root, `claude "$(cat ${shellQuote(file)})"`);
-        return { flash: "Claude is starting in Terminal" };
+        return { flash: "Claude is starting in Terminal", sent: true };
       }
       case "openBuild": {
         if (!this.knownFolder(str("cwd"))) return { flash: "BuildPilot doesn't know that folder" };
@@ -452,7 +463,7 @@ export class UiServer {
       }
       case "upgrade": { const g = gate(eng.home); openUrl(g.allowed ? checkoutUrl(readUsage(eng.home).installId) : g.paywall.url); return null; }
       case "enterLicense": { const v = saveLicense(eng.home, str("key")); return { flash: v.valid ? "BuildPilot Pro unlocked" : `That key didn't work (${v.reason})` }; }
-      case "toggleTheme": { this.savePrefs({ theme: str("to") === "white" ? "white" : str("to") === "match" ? "match" : this.theme() === "match" ? "white" : "match" }); return null; }
+      case "toggleTheme": { const to = str("to"); this.savePrefs({ theme: to === "white" || to === "match" || to === "auto" ? to : this.theme() === "white" ? "auto" : "white" }); return null; }
       case "projects": {
         const rows = eng.store.all<{ root: string; name: string }>("SELECT root, name FROM projects ORDER BY COALESCE(last_analyzed_at, created_at) DESC LIMIT 15").filter((r) => fs.existsSync(r.root));
         return rows.map((r) => ({ root: r.root, name: path.basename(r.root) }));

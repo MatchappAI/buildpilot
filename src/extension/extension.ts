@@ -11,7 +11,7 @@ import { Alert, Engine, UiState } from "../core/engine";
 import { restoreFiles, diffSinceCheckpoint, run as runCmd, worktrees } from "../core/git";
 import { claudeSettingsPath, connectPreview, installHooks, installStatusline, pluginConnected, uninstallHooks, uninstallStatusline } from "../core/hooks";
 import { isLocalUrl } from "../core/checks";
-import { GOALS } from "../core/prompts";
+import { GOALS, writePromptFile } from "../core/prompts";
 import { gate, gateParallel, plan, recordUse, saveLicense } from "../core/license";
 import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
@@ -237,10 +237,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     if (!requireTrust("start Claude Code")) return;
     const preview = prompt.length > 400 ? prompt.slice(0, 400) + "…" : prompt;
     if (!(await confirm("Start a new Claude Code session with this prompt?", `Opens a terminal in ${root} and runs \`claude\` with your prompt. Claude Code will still ask before risky actions.\n\n${preview}`, "Start Claude Code"))) return;
-    const dir = path.join(eng.home, "prompts");
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const file = path.join(dir, `prompt-${Date.now()}.md`);
-    fs.writeFileSync(file, prompt, { mode: 0o600 });
+    const file = writePromptFile(eng.home, prompt);
     const term = vscode.window.createTerminal({ name: "Claude · BuildPilot", cwd: root });
     term.show();
     const plan = launchPlan(file, process.platform, vscode.env.shell || "");
@@ -250,6 +247,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
     }
     term.sendText(plan.text);
     eng.store.run("INSERT INTO approvals (project_id, action, detail, approved_at) VALUES (?, 'start_claude', ?, ?)", [eng.currentProject!.id, prompt.slice(0, 300), Date.now()]);
+    return true; // the page counts the prompt as used only now (not when you cancel)
   };
 
   async function enterLicense(): Promise<void> {

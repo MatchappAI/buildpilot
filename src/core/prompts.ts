@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { RepoFacts } from "./analyzer";
 import { clip } from "./redact";
 import { ChangeSet, GoalType, Issue, Requirement, TestRun } from "./types";
@@ -393,4 +395,24 @@ export function settleFirst(request: string): string[] {
 
 export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Saves a prompt for "Start Claude with this" (Claude reads it via $(cat file)) in <home>/prompts, owner-only.
+ * Prompt files older than a week are removed, so they don't pile up.
+ */
+export function writePromptFile(home: string, text: string, now = Date.now()): string {
+  const dir = path.join(home, "prompts");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      const full = path.join(dir, f);
+      if (/^prompt-\d+\.md$/.test(f) && now - fs.statSync(full).mtimeMs > 7 * 86_400_000) fs.rmSync(full, { force: true });
+    }
+  } catch {
+    /* best effort */
+  }
+  const file = path.join(dir, `prompt-${now}.md`);
+  fs.writeFileSync(file, text, { mode: 0o600 });
+  return file;
 }
