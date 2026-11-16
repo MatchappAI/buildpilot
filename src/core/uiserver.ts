@@ -226,7 +226,11 @@ export class UiServer {
     }
   }
 
+  private sideAt = 0;
   private statePayload() {
+    // Side builds change on disk while Claude works in them: re-read them every few seconds (in the background),
+    // not only after a button press, so Review/Merge appear as soon as there's something to review.
+    if (Date.now() - this.sideAt > 5000) { this.sideAt = Date.now(); void this.refreshSide(); }
     const st = this.engine.snapshot();
     return { type: "state", state: st, page: { ...pageData(this.engine, st), side: this.side }, settings: { trusted: true, theme: this.theme(), standalone: true, alerts: this.uiPrefs().alerts !== false } };
   }
@@ -372,7 +376,7 @@ export class UiServer {
         const cwd = str("cwd") || root;
         if (!cwd || !fs.existsSync(cwd) || !this.knownFolder(cwd)) return null;
         // The summary must be for the session being restarted, which may be in another project than the one selected.
-        const sameProject = !!root && path.resolve(cwd).startsWith(path.resolve(root));
+        const sameProject = !!root && (path.resolve(cwd) === path.resolve(root) || path.resolve(cwd).startsWith(path.resolve(root) + path.sep));
         await copyText(sameProject ? eng.handoff() : sessionHandoff(widgetData(eng).sessions.find((b) => b.cwd === cwd) ?? null, cwd));
         await openTerminal(cwd, "claude");
         return { flash: "Summary copied. Paste it into the new Claude (Cmd+V)" };
@@ -470,8 +474,12 @@ export class UiServer {
       }
       case "selectProject": {
         const r = str("root");
-        if (r && fs.existsSync(r)) { await eng.openProject(r); void this.refreshSide(); }
-        return null;
+        // Only a project BuildPilot already knows (the picker's list) or a folder a Claude session worked in.
+        let real = r;
+        try { real = fs.realpathSync(r); } catch { /* missing: refused below */ }
+        const known = !!r && (!!eng.store.get("SELECT 1 AS x FROM projects WHERE root IN (?, ?)", [path.resolve(r), real]) || this.knownFolder(r) || this.knownFolder(real));
+        if (known && fs.existsSync(r)) { await eng.openProject(r); void this.refreshSide(); }
+        return known ? null : { flash: "BuildPilot doesn't know that folder" };
       }
       case "more": return { show: "More tools are in the terminal:\n\n  bp            folder status, issues, next step\n  bp audit      check dependencies for known vulnerabilities\n  bp visual     check your running app + screenshot\n  bp handoff    summary for a new Claude chat\n  bp builds     side builds · bp review / bp merge / bp done\n  bp help       everything" };
       default: return null;

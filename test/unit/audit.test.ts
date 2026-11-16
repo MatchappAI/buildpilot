@@ -154,3 +154,57 @@ describe("spool", () => {
     expect(fs.existsSync(path.join(home, "spool", "evt.bad.json"))).toBe(false);
   });
 });
+
+describe("bp ui", () => {
+  it("never stops an unrelated process named by a stale ui-server.json (recycled pid)", async () => {
+    const { spawn } = await import("child_process");
+    const home = tmpDir("bp-home-");
+    const bph = path.join(home, ".buildpilot");
+    fs.mkdirSync(bph, { recursive: true });
+    const victim = spawn("sleep", ["30"], { stdio: "ignore" });
+    fs.writeFileSync(path.join(bph, "ui-server.json"), JSON.stringify({ port: 9, token: "x", pid: victim.pid, version: "0.0.1" }));
+    const r = spawnSync(process.execPath, [cli, "ui", "--print"], { cwd: home, encoding: "utf8", env: { ...process.env, HOME: home, BUILDPILOT_HOME: bph, NO_COLOR: "1" }, timeout: 20000 });
+    let alive = true;
+    try { process.kill(victim.pid!, 0); } catch { alive = false; }
+    // stop the window server this test started
+    try { process.kill((JSON.parse(fs.readFileSync(path.join(bph, "ui-server.json"), "utf8")) as { pid: number }).pid, "SIGTERM"); } catch { /* none */ }
+    victim.kill();
+    expect(alive).toBe(true);
+    expect(r.stdout).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/\?c=[0-9a-f]+/);
+  });
+
+  it("the project picker only opens folders BuildPilot knows", async () => {
+    const home = tmpDir();
+    const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    await engine.start();
+    const known = makeRepo({ "package.json": "{}" });
+    await engine.openProject(known);
+    const srv = new UiServer(engine, { media: path.join(__dirname, "../../media") });
+    const stranger = makeRepo({ "package.json": "{}" });
+    expect(await srv.onMessage({ type: "selectProject", root: stranger })).toEqual({ flash: "BuildPilot doesn't know that folder" });
+    expect(engine.currentProject?.root).toBe(fs.realpathSync(known));
+    expect(await srv.onMessage({ type: "selectProject", root: known })).toBeNull();
+    engine.stop();
+  });
+});
+
+describe("side builds in the window", () => {
+  it("their change counts refresh on their own while the window is open (not only after a click)", async () => {
+    const home = tmpDir();
+    const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    await engine.start();
+    await engine.openProject(makeRepo({ "package.json": "{}" }));
+    const srv = new UiServer(engine, { media: path.join(__dirname, "../../media") });
+    const w = await engine.createWorktree("later");
+    const side = () => (srv as unknown as { statePayload(): { page: { side: { name: string; changed: number }[] } } }).statePayload().page.side;
+    side();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(side().find((x) => x.name === path.basename(w.dir))?.changed).toBe(0);
+    fs.writeFileSync(path.join(w.dir, "new.txt"), "hi");
+    (srv as unknown as { sideAt: number }).sideAt = 0; // as if 5 s passed
+    side();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(side().find((x) => x.name === path.basename(w.dir))?.changed).toBe(1);
+    engine.stop();
+  });
+});

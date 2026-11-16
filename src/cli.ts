@@ -118,20 +118,35 @@ async function main(): Promise<void> {
     // BuildPilot as its own window (no VS Code). One private server per user, reused across launches.
     const home = buildpilotHome();
     const info = path.join(home, "ui-server.json");
-    const alive = (): { port: number; token: string; pid: number } | null => {
+    // Is the process in ui-server.json really our window server? A stale file (after a crash or restart) can point at a
+    // pid the system has since given to another app, so nothing is ever stopped unless it answers with our token.
+    const answers = async (j: { port: number; token: string }): Promise<boolean> => {
       try {
-        const j = JSON.parse(fs.readFileSync(info, "utf8")) as { port: number; token: string; pid: number; version?: string };
+        const r = await fetch(`http://127.0.0.1:${j.port}/api/state`, { headers: { "x-bp-token": j.token }, signal: AbortSignal.timeout(1500) });
+        return r.ok;
+      } catch {
+        return false;
+      }
+    };
+    const alive = async (): Promise<{ port: number; token: string; pid: number } | null> => {
+      let j: { port: number; token: string; pid: number; version?: string };
+      try {
+        j = JSON.parse(fs.readFileSync(info, "utf8")) as typeof j;
         process.kill(j.pid, 0);
-        // A server from an older BuildPilot keeps running old code: replace it so fixes take effect.
-        if (j.version !== CLI_VERSION && rest[0] !== "--serve") {
-          try { process.kill(j.pid, "SIGTERM"); } catch { /* gone */ }
-          fs.rmSync(info, { force: true });
-          return null;
-        }
-        return j;
       } catch {
         return null;
       }
+      if (!(await answers(j))) {
+        fs.rmSync(info, { force: true }); // stale: leave that process alone
+        return null;
+      }
+      // A server from an older BuildPilot keeps running old code: replace it so fixes take effect.
+      if (j.version !== CLI_VERSION && rest[0] !== "--serve") {
+        try { process.kill(j.pid, "SIGTERM"); } catch { /* gone */ }
+        fs.rmSync(info, { force: true });
+        return null;
+      }
+      return j;
     };
     if (rest[0] === "--serve") {
       const engine = new Engine();
@@ -147,13 +162,13 @@ async function main(): Promise<void> {
       fs.writeFileSync(info, JSON.stringify({ port, token: srv.token, pid: process.pid, version: CLI_VERSION }), { mode: 0o600 });
       return; // keep running
     }
-    let s = alive();
+    let s = await alive();
     if (!s) {
       const { spawn } = await import("child_process");
       const folder = rest[0] ? path.resolve(rest[0]) : "";
       const child = spawn(process.execPath, [__filename, "ui", "--serve", folder], { detached: true, stdio: "ignore" });
       child.unref();
-      for (let i = 0; i < 50 && !(s = alive()); i++) await new Promise((r) => setTimeout(r, 100));
+      for (let i = 0; i < 50 && !(s = await alive()); i++) await new Promise((r) => setTimeout(r, 100));
       if (!s) { console.error("BuildPilot couldn't start its window. Try: bp ui again."); process.exitCode = 1; return; }
     }
     // Ask the running server for a one-time launch code, so the long-lived token never appears in a URL,
