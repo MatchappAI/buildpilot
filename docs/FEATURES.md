@@ -1,5 +1,11 @@
 # Features: implemented · partial · planned
 
+## 0.12.4 audit (2026-11-16) — see docs/APP_AUDIT.md, docs/ISSUE_TRACKER.md
+- ✅ Every CLI command, window button and side-build flow exercised end to end (headless window e2e: `npm run test:e2e`)
+- ✅ Plugin slash commands never run user text as shell; `bp prompt auto --stdin`
+- ✅ White page by default (Auto light/dark optional); toasts persist; prompt counted only after a confirmed send
+- 🟡 Menu-bar widget, VS Code extension host and slash commands inside real Claude Code: not run in this audit (see FINAL_READINESS_REPORT.md)
+
 ## 0.12 companion (2026-11-08) — see docs/COMPANION_PLAN.md
 - ✅ Correct status under repeats, subagents, late async hooks, hidden sessions; spool keeps status events when full; safe shared DB; no watcher loop
 - ✅ Claude's checklist progress (TodoWrite, TaskCreate/TaskUpdate, TaskCreated/TaskCompleted) — observed only

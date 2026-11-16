@@ -1,6 +1,13 @@
 # Testing & verification
 
-Run everything: `npm run ci` (typecheck → lint → unit/engine tests → real VS Code smoke test).
+Run everything: `npm run ci` (typecheck → lint → unit/engine tests). `npm run test:e2e` drives the real `bp ui` window in headless Chrome with a throwaway home (never a visible window; Terminal/clipboard/links/notifications are logged via `BUILDPILOT_OS_LOG`). `npm run test:smoke` opens a visible VS Code: only when the owner says so.
+
+## Results (2026-11-16 audit, v0.12.4)
+| Gate | Result |
+|---|---|
+| `npm run ci` | ✅ 254/254 |
+| `npm run test:e2e` (window: auth, connect, sessions, rename, undo, prompt, side builds, prefs, a11y axe WCAG 2.2 AA, 375 px, disconnect; free plan counting) | ✅ 34/34 + 7/7 |
+| CLI + edge sweeps (every command, bad input, broken settings, concurrency 6 writers × 8 readers, spool cap, corrupt/zero-byte/read-only DB, no Git, 20k events perf, unicode folders) | ✅ see docs/QA_MATRIX.md |
 
 ## Results (2026-11-05, macOS, Node 22.22, VS Code installed, Claude Code 2.1.318)
 | Gate | Result |

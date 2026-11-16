@@ -1,4 +1,10 @@
-# Progress (2026-11-08)
+# Progress (2026-11-16)
+
+## v0.12.4: production-readiness audit (branch `audit/2026-11-16`, not pushed)
+- 27 issues fixed (1 P0, 3 P1, 8 P2, 15 P3); all with regression tests. Reports: APP_AUDIT, USER_JOURNEYS, QA_MATRIX, ISSUE_TRACKER, CHANGELOG_AUDIT, FINAL_READINESS_REPORT (docs/).
+- `npm run ci`: 254/254. `npm run test:e2e`: 34/34 + 7/7 (headless, throwaway home).
+- Not installed on this Mac yet (owner's call): rebuild + `bp shell install` + `bp doctor --fix`; plugin updates after push.
+
 
 ## v0.12.0: your Claude Code companion (branch `companion`, tag `pre-companion-v0.11.0` = rollback point)
 - Plan: docs/COMPANION_PLAN.md (owner's companion prompt + the v0.11 expert review). Phases A (trust), B (security), C (four questions), D (UI), E (plugin/docs) done; see CHANGELOG.

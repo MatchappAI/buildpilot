@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.4: production-readiness audit (2026-11-16)
+**Safety**
+- `/bp-prompt` passes your words on stdin, so backticks, `$(…)` or quotes in a request are only text (they could run as shell commands before). `/bp-new`, `/bp-who`, `/bp-merge`, `/bp-license` quote their argument safely.
+- `bp ui` never stops another app because of a stale server file (the pid must answer with BuildPilot's key first).
+- Unreadable hook events are kept only as a short, redacted copy for a week (were kept raw). The window's project picker only opens folders BuildPilot knows.
+**Fixes you'll notice**
+- Confirmations ("Connected", "Merged", "Put back…") stay on screen instead of vanishing on the next refresh.
+- Cancelling "Start Claude with this" no longer uses up a free prompt.
+- Side builds refresh on their own, so Review and Merge show up while Claude works.
+- White page by default; the theme link really switches to Auto light/dark. "Go to tab" says it's looking right away.
+- `bp doctor --json`, `bp glance` shows the names you gave sessions, the "Connect" hint disappears once connected, hints quote names with spaces, a plain message when Git isn't installed, `bp serve` shows its real port, old prompt files are cleaned up.
+**Testing**
+- `npm run test:e2e`: the real window in headless Chrome against a throwaway home (34 + 7 checks, WCAG 2.2 AA audit). Nothing opens on screen; Terminal, clipboard, links and notifications are logged instead (`BUILDPILOT_OS_LOG`).
+
 ## 0.12.3: finishing touches, tested end to end
 - `bp go` could fail when picking between sessions in the same folder (it read the database after closing it).
 - A session that ends right after a request counts as finished (headless runs can exit before their "finished" event lands).

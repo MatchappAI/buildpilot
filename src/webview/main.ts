@@ -493,7 +493,7 @@ async function act(el: HTMLElement): Promise<void> {
     case "copyPrompt": await call("copy", { text: promptText }); void call("promptUsed"); return flash("Copied");
     case "useInOpen": void call("promptUsed"); await call("useInOpen", { text: promptText }); return flash("Copied. Paste it into Claude (Cmd/Ctrl+V)");
     case "sendPrompt": { const r = await call<unknown>("sendToClaude", { text: promptText }); if (r === true || (r as { sent?: boolean } | null)?.sent) void call("promptUsed"); return; } // cancelled = not counted
-    case "openBuild": return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id });
+    case "openBuild": flash("Looking for its terminal…"); return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id }); // finding the tab can take a few seconds
     case "resumeBuild": return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
     case "dismissRisk": await call("dismissRisk", { id: el.dataset.id }); return;
     case "toggleBuild": { const id = el.dataset.id!; if (expanded.has(id)) expanded.delete(id); else expanded.add(id); return render(); }
