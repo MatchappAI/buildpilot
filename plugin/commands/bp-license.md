@@ -4,6 +4,6 @@ argument-hint: your key (optional)
 allowed-tools: Bash(sh:*)
 ---
 
-!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" license $ARGUMENTS`
+!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" license '$ARGUMENTS'`
 
 Repeat the output above to the user in one sentence.

@@ -110,3 +110,47 @@ describe("prompt files", () => {
     expect(fs.statSync(fresh).mode & 0o077).toBe(0);
   });
 });
+
+describe("plugin commands never run user text as shell", () => {
+  const dir = path.join(__dirname, "..", "..", "plugin", "commands");
+  it("no $ARGUMENTS inside double quotes or bare in a ! line (backticks/$() in plain English would run)", () => {
+    for (const f of fs.readdirSync(dir)) {
+      const md = fs.readFileSync(path.join(dir, f), "utf8");
+      for (const line of md.split("\n").filter((l) => l.includes("$ARGUMENTS") && /sh "\$\{CLAUDE_PLUGIN_ROOT\}/.test(l))) {
+        expect(line, f).toMatch(/'\$ARGUMENTS'/);
+      }
+    }
+    const p = fs.readFileSync(path.join(dir, "bp-prompt.md"), "utf8");
+    expect(p).not.toMatch(/!`[^`]*\$ARGUMENTS/);
+    expect(p).toContain("--stdin <<'BP_REQUEST_END'");
+  });
+
+  it("bp prompt auto --stdin treats backticks, $( ) and quotes as plain text", () => {
+    const repo = makeRepo({ "package.json": JSON.stringify({ name: "x", scripts: { test: "node -e 0" } }) });
+    const home = tmpDir("bp-home-");
+    const marker = path.join(home, "pwned");
+    const hostile = `make the \`touch ${marker}\` "Save" button $(touch ${marker}) blue`;
+    const r = spawnSync("sh", [path.join(__dirname, "..", "..", "plugin", "bin", "bp.sh"), "prompt", "auto", "--stdin"], { cwd: repo, input: hostile, encoding: "utf8", env: { ...process.env, HOME: home, BUILDPILOT_HOME: path.join(home, ".buildpilot"), NO_COLOR: "1" }, timeout: 20000 });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("Save");
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+});
+
+describe("spool", () => {
+  it("unreadable events are kept only as a short, redacted copy", async () => {
+    const home = tmpDir();
+    fs.mkdirSync(path.join(home, "spool", "tmp"), { recursive: true });
+    fs.writeFileSync(path.join(home, "spool", "evt.bad.json"), `{"prompt":"my key sk-ant-api03-${"Q".repeat(40)}" ${"x".repeat(20000)}`);
+    const engine = new Engine({ home, light: true, claudeSettingsFile: path.join(home, "s.json") });
+    await engine.start();
+    engine.stop();
+    const rej = path.join(home, "spool", "rejected");
+    const kept = fs.readdirSync(rej);
+    expect(kept).toHaveLength(1);
+    const body = fs.readFileSync(path.join(rej, kept[0]!), "utf8");
+    expect(body).not.toContain("sk-ant-api03-QQQQ");
+    expect(body.length).toBeLessThanOrEqual(4000);
+    expect(fs.existsSync(path.join(home, "spool", "evt.bad.json"))).toBe(false);
+  });
+});

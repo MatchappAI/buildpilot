@@ -4,6 +4,6 @@ argument-hint: file name, e.g. checkout.tsx
 allowed-tools: Bash(sh:*)
 ---
 
-!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" who "$ARGUMENTS"`
+!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" who '$ARGUMENTS'`
 
 Show the output above to the user. If they want to undo a file, offer to put it back to its last commit after confirming with them.

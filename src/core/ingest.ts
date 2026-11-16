@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { Store } from "./db";
-import { clip } from "./redact";
+import { clip, redact } from "./redact";
 import { Checklist, HookEvent, Session, SessionStatus } from "./types";
 
 /**
@@ -475,13 +475,22 @@ export class SpoolReader {
           this.stats.rejected++;
           const rej = path.join(this.dir, "rejected");
           try {
+            // Kept for diagnosis only as a short, redacted copy (an unreadable event can still hold a prompt or a key),
+            // at most 50 of them, for a week.
             fs.mkdirSync(rej, { recursive: true, mode: 0o700 });
             const kept = fs.readdirSync(rej);
-            if (kept.length < 50) fs.renameSync(full, path.join(rej, f.name));
-            else safeUnlink(full);
+            for (const k of kept) {
+              try {
+                if (Date.now() - fs.statSync(path.join(rej, k)).mtimeMs > 7 * 86_400_000) safeUnlink(path.join(rej, k));
+              } catch {
+                /* gone */
+              }
+            }
+            if (kept.length < 50) fs.writeFileSync(path.join(rej, f.name), redact(raw.slice(0, 8000)).slice(0, 4000), { mode: 0o600 });
           } catch {
-            safeUnlink(full);
+            /* diagnostics are optional */
           }
+          safeUnlink(full);
         }
       }
     } finally {

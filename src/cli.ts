@@ -33,6 +33,8 @@ import { GoalType } from "./core/types";
 /** Set at build time (esbuild define) so a running window server can tell it's out of date. */
 declare const __BP_VERSION__: string;
 const CLI_VERSION = typeof __BP_VERSION__ === "string" ? __BP_VERSION__ : "dev";
+/** A side-build name as you'd type it back: quoted when it has spaces or shell characters. */
+const arg = (s: string) => (/^[\w.@%+=:,/-]+$/.test(s) ? s : `"${s.replace(/(["\\$`])/g, "\\$1")}"`);
 
 const STATUS_PLAIN: Record<string, string> = { running: "Working", awaiting_approval: "Needs your OK", blocked: "Needs your answer", idle: "Your turn", completed: "Closed", failed: "Failed", unknown: "Quiet" };
 
@@ -424,7 +426,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       else {
         if (ch.unsaved) await engine.saveBuild(b.dir, `Work from ${path.basename(b.dir)} (saved by BuildPilot before merging)`);
         const r = await engine.mergeBuild(b.branch);
-        console.log(r.merged ? `${r.message} Remove its folder: bp done ${path.basename(b.dir)}` : `${r.message}${r.conflicts.length ? `\n  ${r.conflicts.join("\n  ")}\nAsk the Claude in that build: "git merge <your main branch>, resolve the conflicts, run tests, commit", then bp merge again.` : ""}`);
+        console.log(r.merged ? `${r.message} Remove its folder: bp done ${arg(path.basename(b.dir))}` : `${r.message}${r.conflicts.length ? `\n  ${r.conflicts.join("\n  ")}\nAsk the Claude in that build: "git merge <your main branch>, resolve the conflicts, run tests, commit", then bp merge again.` : ""}`);
         if (!r.merged) process.exitCode = 1;
       }
     }
@@ -494,12 +496,14 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       engine.stop();
       if (process.env.TMUX) {
         execFile("tmux", ["new-window", "-c", w.dir, "-n", path.basename(w.dir).slice(0, 20), "claude"], () => {});
-        console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).\nTwo builds use your plan limit about twice as fast. When done: bp review ${path.basename(w.dir)}, then bp merge ${path.basename(w.dir)}`);
-      } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast. When done: bp review ${path.basename(w.dir)}, then bp merge ${path.basename(w.dir)}`);
+        console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).\nTwo builds use your plan limit about twice as fast. When done: bp review ${arg(path.basename(w.dir))}, then bp merge ${arg(path.basename(w.dir))}`);
+      } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast. When done: bp review ${arg(path.basename(w.dir))}, then bp merge ${arg(path.basename(w.dir))}`);
     } catch (e) {
       engine.stop();
       const msg = (e as Error).message;
-      console.log(/at least one commit/.test(msg) ? "A new build needs undo (Git) with one save point first. Run:  git init && git add -A && git commit -m \"First save point\"" : `Couldn't start the build: ${msg}`);
+      const { run } = await import("./core/git");
+      const hasGit = (await run("git", ["--version"], folder)).code === 0;
+      console.log(!hasGit ? "Side builds need Git, and Git isn't installed. On a Mac run:  xcode-select --install   (then try again)" : /at least one commit/.test(msg) ? "A new build needs undo (Git) with one save point first. Run:  git init && git add -A && git commit -m \"First save point\"" : `Couldn't start the build: ${msg}`);
       process.exitCode = 1;
     }
     return;
@@ -512,6 +516,14 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     console.log(limitsText(p));
     if (!p.builds.length && !isConnected()) console.log(`\n${NOT_CONNECTED}`);
     return;
+  }
+  // --stdin: the request comes on stdin, never through a shell command line (the /bp-prompt plugin command uses this,
+  // so backticks, $(…) or quotes in plain English are just text).
+  if (cmd === "prompt" && rest.includes("--stdin")) {
+    let text = "";
+    try { text = fs.readFileSync(0, "utf8"); } catch { /* no stdin */ }
+    rest.splice(rest.indexOf("--stdin"), 1);
+    rest.splice(1, 0, text.trim().slice(0, 20_000));
   }
   if (cmd === "prompt" && rest[0] === "auto" && !rest[1]?.trim()) return usage('Usage: bp prompt auto "<what you want, in plain words>"\nExample: bp prompt auto "the login button does nothing on mobile"');
   if (cmd === "prompt" && rest[0] === "auto") rest[0] = guessGoal(rest[1] ?? "");

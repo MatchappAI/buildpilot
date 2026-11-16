@@ -4,6 +4,6 @@ argument-hint: build name, e.g. checkout
 allowed-tools: Bash(sh:*)
 ---
 
-!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" review "$ARGUMENTS"`
+!`sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" review '$ARGUMENTS'`
 
-Show the user the list above in a code block and ask: "Merge these changes into your project? (yes / no)". Only if they say yes, run `sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" merge "$ARGUMENTS"` and report the result in one or two plain sentences. If it reports conflicts, offer to resolve them inside that build's folder.
+Show the user the list above in a code block and ask: "Merge these changes into your project? (yes / no)". Only if they say yes, run `sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" merge '$ARGUMENTS'` and report the result in one or two plain sentences. If it reports conflicts, offer to resolve them inside that build's folder.

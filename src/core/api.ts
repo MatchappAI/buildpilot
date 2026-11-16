@@ -54,7 +54,9 @@ export class IntegrationApi {
   constructor(private readonly engine: Engine, private readonly opts: ApiOptions) {}
 
   get address(): string {
-    return `http://${this.opts.host === "0.0.0.0" ? "<this-computer-ip>" : "127.0.0.1"}:${this.opts.port}`;
+    const a = this.server?.address();
+    const port = a && typeof a === "object" ? a.port : this.opts.port; // the real port, also when 0 (any free port) was asked for
+    return `http://${this.opts.host === "0.0.0.0" ? "<this-computer-ip>" : "127.0.0.1"}:${port}`;
   }
 
   start(): Promise<void> {
