@@ -197,14 +197,16 @@ describe("side builds in the window", () => {
     const srv = new UiServer(engine, { media: path.join(__dirname, "../../media") });
     const w = await engine.createWorktree("later");
     const side = () => (srv as unknown as { statePayload(): { page: { side: { name: string; changed: number }[] } } }).statePayload().page.side;
-    side();
-    await new Promise((r) => setTimeout(r, 1500));
-    expect(side().find((x) => x.name === path.basename(w.dir))?.changed).toBe(0);
+    // Wait for the background refresh itself (git can be slow when the machine is busy), never a fixed time.
+    const changed = () => side().find((x) => x.name === path.basename(w.dir))?.changed;
+    const until = async (cond: () => boolean) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > 20_000) throw new Error("side builds never refreshed"); await new Promise((r) => setTimeout(r, 20)); } };
+    side(); // first read starts a refresh in the background
+    await until(() => changed() === 0);
     fs.writeFileSync(path.join(w.dir, "new.txt"), "hi");
     (srv as unknown as { sideAt: number }).sideAt = 0; // as if 5 s passed
-    side();
-    await new Promise((r) => setTimeout(r, 1500));
-    expect(side().find((x) => x.name === path.basename(w.dir))?.changed).toBe(1);
+    side(); // no click: just reading the page starts the refresh
+    await until(() => changed() === 1);
+    expect(changed()).toBe(1);
     engine.stop();
-  });
+  }, 30_000);
 });

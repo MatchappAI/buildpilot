@@ -54,58 +54,62 @@ function mount(p: PageData, saved: Record<string, unknown> = {}) {
   });
   w.eval(fs.readFileSync(bundle, "utf8"));
   const doc = w.document;
-  const tick = () => new Promise((r) => setTimeout(r, 30));
+  /** Wait for a condition, not a fixed time (other test runs may load this machine). */
+  const until = async (cond: () => boolean, ms = 8000) => { const t = Date.now(); while (!cond()) { if (Date.now() - t > ms) throw new Error(`timed out: ${cond.toString().slice(0, 120)}`); await new Promise((r) => setTimeout(r, 10)); } };
+  const ready = () => until(() => !!doc.querySelector(".page"));
   const push = (pg: PageData) => w.postMessage({ type: "state", state, page: pg, settings: { trusted: true, standalone: true } }, "*");
-  return { w, doc, sent, tick, push, saved: () => st, setSlow: (v: boolean) => (slow = v), release: () => held.splice(0).forEach((f) => f()) };
+  return { w, doc, sent, until, ready, push, saved: () => st, setSlow: (v: boolean) => (slow = v), release: () => held.splice(0).forEach((f) => f()) };
 }
 
 describe("live QA regressions (window page)", () => {
   it("a call that carries a session id still gets its answer, so the same button works a second time (rename twice)", async () => {
-    const { doc, sent, tick } = mount(full());
-    await tick(); await tick();
-    (doc.querySelector('[data-act="renameBuild"]') as HTMLElement).click(); await tick();
-    (doc.querySelector('[data-act="renameBuild"]') as HTMLElement).click(); await tick();
-    const renames = sent.filter((m) => m.type === "renameBuild");
-    expect(renames.length).toBe(2);
-    expect(renames[0]!.id).toBe("aaaaaaaa-1111"); // the session id is sent as-is…
-    expect(typeof renames[0]!.rid).toBe("number"); // …and the reply is matched by rid
+    const { doc, sent, until, ready } = mount(full());
+    await ready();
+    const renames = () => sent.filter((m) => m.type === "renameBuild");
+    (doc.querySelector('[data-act="renameBuild"]') as HTMLElement).click();
+    await until(() => renames().length === 1);
+    // Press again until it goes through: presses are ignored only while the first call is still waiting for its answer.
+    // If that answer never came back (the old bug), this times out.
+    await until(() => { if (renames().length < 2) (doc.querySelector('[data-act="renameBuild"]') as HTMLElement).click(); return renames().length === 2; });
+    expect(renames().length).toBe(2);
+    expect(renames()[0]!.id).toBe("aaaaaaaa-1111"); // the session id is sent as-is…
+    expect(typeof renames()[0]!.rid).toBe("number"); // …and the reply is matched by rid
   });
 
   it("a double click on Write my prompt sends one request, and the button says Writing… while it waits", async () => {
-    const { doc, sent, tick, setSlow, release } = mount(full());
-    await tick(); await tick();
+    const { doc, sent, until, ready, setSlow, release } = mount(full());
+    await ready();
     const req = doc.getElementById("req") as HTMLTextAreaElement;
     req.value = "add search"; req.dispatchEvent(new doc.defaultView!.Event("input"));
     setSlow(true);
     (doc.querySelector('[data-act="build"]') as HTMLElement).click();
     (doc.querySelector('[data-act="build"]') as HTMLElement).click();
-    await new Promise((r) => setTimeout(r, 600));
+    await until(() => doc.querySelector('[data-act="build"]')?.textContent === "Writing…");
     expect(sent.filter((m) => m.type === "buildPrompt").length).toBe(1);
-    expect(doc.querySelector('[data-act="build"]')?.textContent).toBe("Writing…");
-    release(); await tick(); await tick();
-    expect(doc.querySelector('[data-act="build"]')?.textContent).toBe("Write my prompt");
+    release();
+    await until(() => doc.querySelector('[data-act="build"]')?.textContent === "Write my prompt" && !!doc.getElementById("ptext"));
     expect((doc.getElementById("ptext") as HTMLTextAreaElement).value.length).toBeGreaterThan(50);
   });
 
   it("text typed in the file box survives a live refresh (before Find is pressed)", async () => {
-    const { doc, tick, push } = mount(full());
-    await tick(); await tick();
-    (doc.querySelector('[data-act="openFinder"]') as HTMLElement).click(); await tick();
+    const { doc, until, ready, push } = mount(full());
+    await ready();
+    (doc.querySelector('[data-act="openFinder"]') as HTMLElement).click(); await until(() => !!doc.getElementById("fileq"));
     const q = doc.getElementById("fileq") as HTMLInputElement;
     q.value = "checkout"; q.dispatchEvent(new doc.defaultView!.Event("input"));
-    push(full({ builds: [session({ lastEventAt: now - 5_000, now: "Editing checkout.tsx" })] })); await tick();
+    push(full({ builds: [session({ lastEventAt: now - 5_000, now: "Editing checkout.tsx" })] })); await until(() => !!doc.body.textContent?.includes("Editing checkout.tsx"));
     expect((doc.getElementById("fileq") as HTMLInputElement).value).toBe("checkout");
   });
 
   it("a selection and scroll inside the written prompt survive a live refresh", async () => {
-    const { doc, tick, push } = mount(full());
-    await tick(); await tick();
+    const { doc, until, ready, push } = mount(full());
+    await ready();
     const req = doc.getElementById("req") as HTMLTextAreaElement;
     req.value = "add search"; req.dispatchEvent(new doc.defaultView!.Event("input"));
-    (doc.querySelector('[data-act="build"]') as HTMLElement).click(); await tick(); await tick();
+    (doc.querySelector('[data-act="build"]') as HTMLElement).click(); await until(() => !!doc.getElementById("ptext"));
     const t = doc.getElementById("ptext") as HTMLTextAreaElement;
     t.focus(); t.setSelectionRange(5, 25);
-    push(full({ builds: [session({ lastEventAt: now - 1_000, now: "Running tests" })] })); await tick();
+    push(full({ builds: [session({ lastEventAt: now - 1_000, now: "Running tests" })] })); await until(() => !!doc.body.textContent?.includes("Running tests"));
     const t2 = doc.getElementById("ptext") as HTMLTextAreaElement;
     expect(doc.activeElement).toBe(t2);
     expect([t2.selectionStart, t2.selectionEnd]).toEqual([5, 25]);
@@ -113,13 +117,13 @@ describe("live QA regressions (window page)", () => {
 
   it("the written prompt and the request it was written for come back after a reload", async () => {
     const a = mount(full());
-    await a.tick(); await a.tick();
+    await a.ready();
     const req = a.doc.getElementById("req") as HTMLTextAreaElement;
     req.value = "add search"; req.dispatchEvent(new a.doc.defaultView!.Event("input"));
-    (a.doc.querySelector('[data-act="build"]') as HTMLElement).click(); await a.tick(); await a.tick();
+    (a.doc.querySelector('[data-act="build"]') as HTMLElement).click(); await a.until(() => !!a.doc.getElementById("ptext") && !!(a.saved() as { prompt?: string }).prompt);
     const saved = a.saved() as Record<string, unknown>;
     const b = mount(full(), { ...saved, request: "something else typed later" });
-    await b.tick(); await b.tick();
+    await b.ready();
     expect((b.doc.getElementById("ptext") as HTMLTextAreaElement | null)?.value).toBe(saved.prompt);
     expect(b.doc.querySelector(".summary")?.textContent).toContain("add search");
   });
@@ -127,22 +131,22 @@ describe("live QA regressions (window page)", () => {
   it("Pause is only offered for a session that is actually working, named so you can tell same-folder sessions apart", async () => {
     const limits = { ...page.limits, fiveHourPct: 85 };
     const idleHog = mount(full({ limits, builds: [session({ status: "idle", word: "your turn", share: 60, hint: "login button" }), session({ id: "bbbbbbbb-2222", share: 10, hint: "checkout" })] }));
-    await idleHog.tick(); await idleHog.tick();
+    await idleHog.ready();
     expect(idleHog.doc.querySelector('[data-tip="pause"]')).toBeNull();
     const busy = mount(full({ limits, builds: [session({ share: 60, hint: "checkout" }), session({ id: "bbbbbbbb-2222", status: "idle", share: 10, hint: "login" })] }));
-    await busy.tick(); await busy.tick();
+    await busy.ready();
     expect(busy.doc.querySelector('[data-tip="pause"]')?.textContent).toBe("Pause shop (checkout) (60%)");
   });
 
   it("the needs-you line names the exact session when a folder has several", async () => {
-    const { doc, tick } = mount(full({ needs: 1, builds: [session({ status: "awaiting_approval", needsYou: true, hint: "clean the old build" }), session({ id: "bbbbbbbb-2222", hint: "checkout" })] }));
-    await tick(); await tick();
+    const { doc, ready } = mount(full({ needs: 1, builds: [session({ status: "awaiting_approval", needsYou: true, hint: "clean the old build" }), session({ id: "bbbbbbbb-2222", hint: "checkout" })] }));
+    await ready();
     expect(doc.querySelector(".hu-need")?.textContent).toContain("shop (clean the old build) needs your OK");
   });
 
   it("the test result sits on its own line (no line starting with a stray dot)", async () => {
-    const { doc, tick } = mount(full({ builds: [session({ status: "idle", turn: { steps: 3, files: 2, proof: "verified", done: true } as never })] }));
-    await tick(); await tick();
+    const { doc, ready } = mount(full({ builds: [session({ status: "idle", turn: { steps: 3, files: 2, proof: "verified", done: true } as never })] }));
+    await ready();
     const parts = [...doc.querySelectorAll(".b-prog .part")].map((p) => p.textContent);
     expect(parts).toEqual(["3 steps · 2 files changed", "✓ tests passed after the last change"]);
   });

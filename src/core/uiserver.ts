@@ -213,14 +213,18 @@ export class UiServer {
     this.server = null;
   }
 
+  private sideSeq = 0;
   private async refreshSide(): Promise<void> {
+    // Refreshes can overlap (background every 5 s + after New/Merge/Remove). Only the newest one may write the list,
+    // so a slow older run can't bring back a build that was just removed.
+    const seq = ++this.sideSeq;
     try {
       const out = [];
       for (const b of await this.engine.extraBuilds()) {
         const c = await this.engine.buildChanges(b.dir, b.branch);
         out.push({ name: path.basename(b.dir), dir: b.dir, branch: b.branch, changed: c.files.length, unsaved: c.unsaved, commits: c.commits });
       }
-      this.side = out;
+      if (seq === this.sideSeq) this.side = out;
     } catch {
       /* not a git project */
     }
