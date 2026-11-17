@@ -624,8 +624,11 @@ export class Engine extends EventEmitter {
   }
 
   /** Marks builds quiet for 2+ hours as ended (history is kept). Returns how many. */
-  hideIdle(now = Date.now(), quietMs = 2 * 3600_000): number {
-    this.store.run("UPDATE sessions SET ended_at = ?, status = 'completed', status_reason = 'Hidden as idle' WHERE ended_at IS NULL AND last_event_at < ? AND id NOT LIKE 'demo-%'", [now, now - quietMs]);
+  hideIdle(now = Date.now(), quietMs = 2 * 3600_000, only?: string[]): number {
+    // `only`: exactly the sessions the page lists as quiet (never one that needs you, stopped mid-task or is working).
+    if (only && !only.length) return 0;
+    const ids = only ? ` AND id IN (${only.map(() => "?").join(",")})` : "";
+    this.store.run(`UPDATE sessions SET ended_at = ?, status = 'completed', status_reason = 'Hidden as idle' WHERE ended_at IS NULL AND last_event_at < ? AND id NOT LIKE 'demo-%'${ids}`, [now, now - quietMs, ...(only ?? [])]);
     const n = this.store.changes();
     this.emit("changed");
     return n;

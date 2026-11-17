@@ -28,6 +28,7 @@ import { guessGoal } from "./core/goal";
 import { openUri } from "./core/extId";
 import { installShell, shellStatus, uninstallShell } from "./core/shell";
 import { execFile } from "child_process";
+import { osLog } from "./core/oslog";
 import { GoalType } from "./core/types";
 
 /** Set at build time (esbuild define) so a running window server can tell it's out of date. */
@@ -192,6 +193,7 @@ async function main(): Promise<void> {
     }
     if (rest.includes("--print")) { console.log(url); return; }
     const chrome = ["/Applications/Google Chrome.app", "/Applications/Microsoft Edge.app", "/Applications/Brave Browser.app"].find((p) => fs.existsSync(p));
+    if (osLog("open", { url })) { console.log("BuildPilot is open."); return; }
     if (process.platform === "darwin" && chrome) execFile("open", ["-na", chrome, "--args", `--app=${url}`, "--window-size=780,1000"], () => {});
     else execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [url], () => {});
     console.log("BuildPilot is open.");
@@ -225,7 +227,7 @@ async function main(): Promise<void> {
     const folder = path.resolve(rest[0] ?? process.cwd());
     const uri = openUri(folder);
     const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-    execFile(opener, [uri], (e) => {
+    if (!osLog("open", { url: uri })) execFile(opener, [uri], (e) => {
       if (e) console.error(`Couldn't open VS Code: ${e.message}`);
     });
     console.log(`Opening BuildPilot for ${folder} in VS Code…`);
@@ -510,7 +512,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       if (w.copied.length) console.log(`Copied ${w.copied.join(", ")} into the new build (use --no-env to skip).`);
       engine.stop();
       if (process.env.TMUX) {
-        execFile("tmux", ["new-window", "-c", w.dir, "-n", path.basename(w.dir).slice(0, 20), "claude"], () => {});
+        if (!osLog("terminal", { dir: w.dir, command: "claude" })) execFile("tmux", ["new-window", "-c", w.dir, "-n", path.basename(w.dir).slice(0, 20), "claude"], () => {});
         console.log(`New build started in a tmux window: ${w.dir} (branch ${w.branch}).\nTwo builds use your plan limit about twice as fast. When done: bp review ${arg(path.basename(w.dir))}, then bp merge ${arg(path.basename(w.dir))}`);
       } else console.log(`New build ready: ${w.dir} (branch ${w.branch})\nStart it:  cd "${w.dir}" && claude\nTwo builds use your plan limit about twice as fast. When done: bp review ${arg(path.basename(w.dir))}, then bp merge ${arg(path.basename(w.dir))}`);
     } catch (e) {

@@ -220,6 +220,14 @@ export function setBuildName(engine: Engine, sessionId: string, name: string): v
   else engine.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [NAMES_SCOPE, `name:${sessionId}`, n, Date.now()]);
 }
 
+/** Quiet = what the page groups under "N quiet sessions": not needing you, not stopped mid-task, not working, silent 2+ h. */
+export const isQuietSession = (s: { needsYou: boolean; stopped?: boolean; status: SessionStatus; lastEventAt: number }, now = Date.now()) => !s.needsYou && !s.stopped && s.status !== "running" && now - s.lastEventAt > 2 * 3600_000;
+
+/** "Clear them": hides exactly the sessions the page counts as quiet. History is kept. */
+export function hideQuiet(engine: Engine, now = Date.now()): number {
+  return engine.hideIdle(now, 2 * 3600_000, widgetData(engine, now).sessions.filter((s) => isQuietSession(s, now)).map((s) => s.id));
+}
+
 export function widgetData(engine: Engine, now = Date.now()): WidgetData {
   const { items, needs, isNeed } = glanceItems(engine, now);
   const pick = (k: "fiveHourPct" | "sevenDayPct") => {

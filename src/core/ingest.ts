@@ -214,6 +214,14 @@ export class Ingestor {
     return nextChecklist(prev, p, ts);
   }
 
+  /** A user request (not a system-injected message) newer than `ts` is already recorded for this session. */
+  private newerPrompt(sessionId: string, ts: number): boolean {
+    return !!this.store.get(
+      "SELECT 1 AS x FROM events WHERE session_id = ? AND hook_event = 'UserPromptSubmit' AND ts > ? AND summary NOT IN ('Prompt: Message from another Claude session','Prompt: Background task update','Prompt: System update','Prompt: Report from a helper') LIMIT 1",
+      [sessionId, ts],
+    );
+  }
+
   constructor(
     private readonly store: Store,
     private readonly resolveProject: (cwd: string) => string | null,
@@ -230,6 +238,12 @@ export class Ingestor {
   }
 
   ingest(p: RawHookPayload, ts: number, fingerprint: string, alsoSeenAs: string[] = []): IngestResult {
+    // One transaction per event: several BuildPilot processes (window, widget, glance) read the same spool, and the
+    // "is this the newest event?" check must not interleave with another process's update.
+    return this.store.transaction(() => this.ingestLocked(p, ts, fingerprint, alsoSeenAs));
+  }
+
+  private ingestLocked(p: RawHookPayload, ts: number, fingerprint: string, alsoSeenAs: string[]): IngestResult {
     // Cheap early exit; the INSERT OR IGNORE below is the real (race-safe) duplicate guard.
     const keys = [fingerprint, ...alsoSeenAs];
     if (this.store.get(`SELECT 1 AS x FROM events WHERE fingerprint IN (${keys.map(() => "?").join(",")})`, keys)) {
@@ -286,18 +300,21 @@ export class Ingestor {
         params.push(cwd, this.resolveProject(cwd));
       }
     }
-    if (p.hook_event_name === "SessionStart" && existing) sets.push("ended_at = NULL");
+    // An old SessionStart that arrives late (hooks run as separate processes) must not reopen a session that ended since.
+    if (p.hook_event_name === "SessionStart" && existing && isLatest) sets.push("ended_at = NULL");
     // A session hidden as idle comes back as soon as Claude does something there again.
     else if (existing?.ended_at != null && existing.status_reason === "Hidden as idle" && p.hook_event_name !== "SessionEnd" && isLatest) sets.push("ended_at = NULL");
     if (p.hook_event_name === "SessionEnd") {
       sets.push("ended_at = ?");
       params.push(ts);
     }
-    if (p.hook_event_name === "UserPromptSubmit" && p.prompt && !isSystemPrompt(cleanPrompt(p.prompt))) {
+    // The task is the NEWEST request: a prompt event delivered late never replaces a newer one.
+    if (p.hook_event_name === "UserPromptSubmit" && p.prompt && !isSystemPrompt(cleanPrompt(p.prompt)) && !this.newerPrompt(p.session_id, ts)) {
       sets.push("current_task = ?");
       params.push(clip(cleanPrompt(p.prompt), 300));
     }
-    const cl = this.checklistAfter(p, ts);
+    // Claude's whole-list checklist (TodoWrite) from an older event would roll the plan back.
+    const cl = !isLatest && p.tool_name === "TodoWrite" ? undefined : this.checklistAfter(p, ts);
     if (cl !== undefined) {
       sets.push("checklist = ?");
       params.push(cl ? JSON.stringify(cl) : null);

@@ -17,7 +17,7 @@ import { launchPlan } from "./launch";
 import { GoalType } from "../core/types";
 import { BuildPilotPanel, WebviewMessage } from "./sidebar";
 import { pageData } from "../core/page";
-import { setBuildName } from "../core/glance";
+import { hideQuiet, setBuildName } from "../core/glance";
 import { alertsFor, AlertMemory } from "../core/alerts";
 import { count, setConsent, shouldAsk } from "../core/counts";
 
@@ -402,7 +402,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       }
       case "hideIdle": {
         if (!(await confirm("Hide sessions that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again.", "Hide"))) return;
-        void vscode.window.setStatusBarMessage(`$(check) Hid ${eng.hideIdle()} quiet session(s).`, 4000);
+        void vscode.window.setStatusBarMessage(`$(check) Hid ${hideQuiet(eng)} quiet session(s).`, 4000);
         push();
         return;
       }

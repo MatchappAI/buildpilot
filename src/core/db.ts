@@ -285,6 +285,27 @@ export class Store {
     }
   }
 
+  private inTx = false;
+  /**
+   * Runs `fn` as one write transaction. IMMEDIATE takes the write lock up front, so a read-check-write (e.g. "is this
+   * event newer than the session's last one?") can't interleave with another process doing the same.
+   */
+  transaction<T>(fn: () => T): T {
+    if (this.inTx) return fn();
+    this.b.exec("BEGIN IMMEDIATE");
+    this.inTx = true;
+    try {
+      const r = fn();
+      this.b.exec("COMMIT");
+      return r;
+    } catch (e) {
+      try { this.b.exec("ROLLBACK"); } catch { /* already rolled back */ }
+      throw e;
+    } finally {
+      this.inTx = false;
+    }
+  }
+
   run(sql: string, params: SqlValue[] = []): void {
     this.lastChanges = this.b.run(sql, params);
   }

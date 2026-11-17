@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import { osLog } from "./oslog";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -100,6 +101,7 @@ export async function focusTmux(cwd: string): Promise<boolean> {
 
 /** Best effort: tmux, then Terminal/iTerm tab by tty. Returns a short description of what happened. */
 export async function findBuild(cwd: string, startedAt?: number | null): Promise<{ found: boolean; how: string }> {
+  if (osLog("focus", { cwd, startedAt: startedAt ?? null })) return { found: false, how: `It's running in a terminal in ${cwd}.` };
   if (await focusTmux(cwd)) return { found: true, how: "tmux" };
   const tty = await ttyForCwd(cwd, startedAt);
   if (tty) {

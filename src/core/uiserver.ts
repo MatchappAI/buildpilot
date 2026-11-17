@@ -11,8 +11,9 @@ import { worktrees, run, tooBroadForUndo, TOO_BROAD_FOR_UNDO } from "./git";
 import { GoalType } from "./types";
 import { shellQuote, writePromptFile } from "./prompts";
 import { findBuild } from "./termfind";
-import { dismissRisks, isBackground, setBuildName, widgetData } from "./glance";
+import { dismissRisks, hideQuiet, isBackground, setBuildName, widgetData } from "./glance";
 import { alertsFor, AlertMemory, claimAlert } from "./alerts";
+import { osLog } from "./oslog";
 
 /**
  * BuildPilot as its own app (no VS Code): a private local web server that serves the same one-page UI.
@@ -44,17 +45,6 @@ function safeEqual(a: string, b: string): boolean {
 export interface UiServerOptions { port?: number; token?: string; media: string; idleExitMs?: number }
 
 const MIME: Record<string, string> = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".ttf": "font/ttf" };
-
-/**
- * Test seam: with BUILDPILOT_OS_LOG set, OS side effects (Terminal, clipboard, notifications, opening links) are written
- * to that file as JSON lines instead of happening, so end-to-end runs never touch the user's screen or clipboard.
- */
-function osLog(kind: string, data: Record<string, unknown>): boolean {
-  const f = process.env.BUILDPILOT_OS_LOG;
-  if (!f) return false;
-  try { fs.appendFileSync(f, JSON.stringify({ kind, ...data, at: Date.now() }) + "\n"); } catch { /* best effort */ }
-  return true;
-}
 
 /** Open a terminal window in `dir` and run a fixed command there.
  * macOS: Terminal.app · Windows: Windows Terminal, else a cmd window · Linux: the first terminal found. */
@@ -354,7 +344,7 @@ export class UiServer {
         dismissRisks(eng, id, b.risks ?? []);
         return { flash: "Hidden. New warnings for this session will still show" };
       }
-      case "hideIdle": { const n = eng.hideIdle(); return { flash: n ? `Hid ${n} quiet session${n === 1 ? "" : "s"}. Their history is kept.` : "Nothing to hide: no session has been quiet for 2+ hours" }; }
+      case "hideIdle": { const n = hideQuiet(eng); return { flash: n ? `Hid ${n} quiet session${n === 1 ? "" : "s"}. Their history is kept.` : "Nothing to hide: no session has been quiet for 2+ hours" }; }
       case "whoChanged": {
         const rows = eng.fileHistory(str("query"));
         return { files: rows.map((r) => ({ ...r, file: path.basename(r.path) })) };
