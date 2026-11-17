@@ -8,6 +8,7 @@ import { LiveStatus, pluginConnected, readLiveStatus } from "./hooks";
 import { FREE_PROMPTS, plan as planOf, PRICE, PRO_POINTS } from "./license";
 import { Tip, tips } from "./tips";
 import { codexSessions } from "./codex";
+import { tooBroadForUndo } from "./git";
 import { TokenItem, tokenReport } from "./tokens";
 
 /**
@@ -301,7 +302,8 @@ export function pageData(engine: Engine, st: UiState | null, now = Date.now(), e
     builds,
     limits,
     biggest: top && builds.length > 1 ? { folder: top.folder, share: top.share!, cwd: top.cwd } : null,
-    isGit: st?.facts ? st.facts.isGit : null,
+    // Never suggest "Turn on undo" for the home folder (or above): it would put every file you own into Git.
+    isGit: st?.facts && !(st.project?.root && tooBroadForUndo(st.project.root)) ? st.facts.isGit : null,
     unsaved: changes ? changes.staged.length + changes.unstaged.length + changes.untracked.length : null,
     // Only sessions shown in the list (never demo or long-gone ones), so the tip always points at something you can see.
     stuck: (st?.out.issues ?? []).filter((i) => i.key.startsWith("loop:") && builds.some((b) => b.id === i.sessionId)).map((i) => i.title),

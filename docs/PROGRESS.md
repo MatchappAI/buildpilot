@@ -1,5 +1,9 @@
 # Progress (2026-11-16)
 
+## v0.12.5: live QA (branch `live-qa/2026-11-16`, not pushed)
+- Operated the real window in headless Chrome on a seeded throwaway home; 23 bugs fixed (3 P1, 9 P2, 11 P3), each re-run live. Report + tracker: docs/LIVE_QA_REPORT.md, screenshots qa/screenshots/.
+- `npm run ci`: 267/267. `npm run test:e2e`: 34 + 8 + 16 checks.
+
 ## v0.12.4: production-readiness audit (branch `audit/2026-11-16`, not pushed)
 - 27 issues fixed (1 P0, 3 P1, 8 P2, 15 P3); all with regression tests. Reports: APP_AUDIT, USER_JOURNEYS, QA_MATRIX, ISSUE_TRACKER, CHANGELOG_AUDIT, FINAL_READINESS_REPORT (docs/).
 - `npm run ci`: 254/254. `npm run test:e2e`: 34/34 + 7/7 (headless, throwaway home).

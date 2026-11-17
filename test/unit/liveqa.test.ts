@@ -11,6 +11,7 @@ import { Engine, UiState } from "../../src/core/engine";
 import { pageData, PageData } from "../../src/core/page";
 import { disambiguate } from "../../src/core/glance";
 import { tips } from "../../src/core/tips";
+import { tooBroadForUndo } from "../../src/core/git";
 import { UiServer } from "../../src/core/uiserver";
 import { makeRepo, tmpDir } from "./helpers";
 
@@ -159,6 +160,26 @@ describe("live QA regressions (engine + server)", () => {
     const t = tips({ now: Date.now(), builds: [b("1", { stopped: true }), b("2", { errors1h: 4 }), b("3", { turn: { steps: 2, files: 3, proof: "unverified", done: true } })] as never, limits: { fiveHourPct: 10 } as never, biggest: null, isGit: false, unsaved: null, stuck: [] });
     expect(t.map((x) => x.key.split(":")[0])).toContain("nogit");
     expect(t.find((x) => x.key.startsWith("errors"))?.action ?? t.length).toBeTruthy();
+  });
+
+  it("Turn on undo is refused for the home folder, the disk root and anything above home (never git add your whole home)", async () => {
+    expect(tooBroadForUndo(os.homedir())).toBe(true);
+    expect(tooBroadForUndo("/")).toBe(true);
+    expect(tooBroadForUndo(path.dirname(os.homedir()))).toBe(true);
+    expect(tooBroadForUndo(path.join(os.homedir(), "projects", "shop"))).toBe(false);
+    const home = tmpDir();
+    const engine = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") });
+    await engine.start();
+    const fake = tmpDir(); // stands in for a home folder with no Git
+    const srv = new UiServer(engine, { media: "" });
+    const prev = process.env.HOME; process.env.HOME = fake;
+    try {
+      await engine.openProject(fake);
+      const r = (await srv.onMessage({ type: "setupUndo" })) as { flash: string };
+      expect(r.flash).toMatch(/won't turn on undo for your whole home folder/);
+      expect(fs.existsSync(path.join(fake, ".git"))).toBe(false);
+      expect(pageData(engine, engine.snapshot()).tips.some((t) => t.key === "nogit")).toBe(false);
+    } finally { process.env.HOME = prev; engine.stop(); }
   });
 
   describe("window server", () => {

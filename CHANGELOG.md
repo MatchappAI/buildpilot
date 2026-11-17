@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.12.5: live QA, operating the real window (2026-11-16)
+**Fixes you'll notice**
+- Pressing Enter in a name box (session name, side build, license key) saves and closes it; it used to reopen the same box.
+- Buttons that act on one session (name, Go to tab, Resume, Looks fine) always finish: their answer was matched to the wrong id. Same fix in VS Code.
+- If BuildPilot stops while the window is open, a red line says so and presses say "Nothing was changed" (before: silent, stale page).
+- Nothing you type is lost while sessions update: the file box keeps its text, the prompt keeps your selection and scroll, and the written prompt survives a reload.
+- One press at a time: double clicks never send twice; "Write my prompt" shows "Writing…"; a double click can't close the dialog it just opened.
+- "Pause" is only offered for a session that is actually working. Sessions in the same folder are named by their request everywhere, including the menu-bar panel (which now also uses names you give and shows "Stopped").
+- Rows no longer overlap ("chat 78% full" vs "Start fresh"); the test result has its own line.
+- The project picker lists folders Claude worked in. Side builds disappear from the list as soon as they're removed.
+- Free plan: "Go Pro?" comes before you name a third build; the paywall closes once a Pro key is entered. The errors tip has a "See them" button; the no-undo tip isn't pushed out by session tips.
+**Safety**
+- "Turn on undo" is never offered or run for your home folder (or the disk root): it would have put every file you own into Git.
+**Testing**
+- `npm run test:e2e` adds `ui-live` (16 journeys on a seeded day: real mouse presses and keys, slow network, two tabs, abandon halfway, server stopped) and a free-plan paywall-first step. `scripts/render-widget.sh` draws the menu-bar panel to PNGs without showing anything. Report: docs/LIVE_QA_REPORT.md.
+
 ## 0.12.4: production-readiness audit (2026-11-16)
 **Safety**
 - `/bp-prompt` passes your words on stdin, so backticks, `$(…)` or quotes in a request are only text (they could run as shell commands before). `/bp-new`, `/bp-who`, `/bp-merge`, `/bp-license` quote their argument safely.

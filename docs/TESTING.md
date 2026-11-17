@@ -2,6 +2,13 @@
 
 Run everything: `npm run ci` (typecheck → lint → unit/engine tests). `npm run test:e2e` drives the real `bp ui` window in headless Chrome with a throwaway home (never a visible window; Terminal/clipboard/links/notifications are logged via `BUILDPILOT_OS_LOG`). `npm run test:smoke` opens a visible VS Code: only when the owner says so.
 
+## Results (2026-11-16 live QA, v0.12.5)
+| Gate | Result |
+|---|---|
+| `npm run ci` | ✅ 267/267 (incl. `liveqa.test.ts`: 13 regressions from the live pass) |
+| `npm run test:e2e` = `ui-e2e` + `ui-free` + `ui-live` (seeded day, real mouse/keys, 1.2 s latency, two tabs, abandon halfway, server stopped, axe) | ✅ 34 + 8 + 16 |
+| Menu-bar panel offscreen render (`scripts/render-widget.sh`, light/dark/floating) | ✅ looked at, see qa/screenshots |
+
 ## Results (2026-11-16 audit, v0.12.4)
 | Gate | Result |
 |---|---|

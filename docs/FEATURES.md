@@ -1,5 +1,11 @@
 # Features: implemented · partial · planned
 
+## 0.12.5 live QA (2026-11-16) — see docs/LIVE_QA_REPORT.md
+- ✅ Real-browser journeys on a seeded day (`test/e2e/ui-live.mjs`): rename, file finder under live updates, slow network, double presses, two tabs, side builds incl. abandon, project switch, reload, server stopped
+- ✅ Offline line when the window server stops; one press at a time; nothing typed lost on live refresh; prompt survives reload
+- ✅ Menu-bar panel rendered offscreen (`scripts/render-widget.sh`); same session names as the window
+- ✅ "Turn on undo" refused for the home folder / disk root
+
 ## 0.12.4 audit (2026-11-16) — see docs/APP_AUDIT.md, docs/ISSUE_TRACKER.md
 - ✅ Every CLI command, window button and side-build flow exercised end to end (headless window e2e: `npm run test:e2e`)
 - ✅ Plugin slash commands never run user text as shell; `bp prompt auto --stdin`

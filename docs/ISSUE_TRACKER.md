@@ -1,5 +1,7 @@
 # Issue tracker (audit 2026-11-16, branch `audit/2026-11-16`)
 
+Live QA follow-up (v0.12.5): 23 more issues found by operating the real window, all fixed and re-verified: see docs/LIVE_QA_REPORT.md. Row 21 (widget) is now rendered offscreen.
+
 Status words: **verified fixed** (fix + regression test + re-run evidence) · **implemented, not verified** · **still open** · **blocked** (needs credentials/env) · **needs product decision**.
 
 | # | P | Area | Issue | Root cause | Status | Evidence |

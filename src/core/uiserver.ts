@@ -7,7 +7,7 @@ import { claudeSettingsPath, connectPreview, installHooks, installStatusline, pl
 import type { Engine } from "./engine";
 import { pageData } from "./page";
 import { checkoutUrl, gate, gateParallel, plan, readUsage, recordUse, saveLicense } from "./license";
-import { worktrees, run } from "./git";
+import { worktrees, run, tooBroadForUndo, TOO_BROAD_FOR_UNDO } from "./git";
 import { GoalType } from "./types";
 import { shellQuote, writePromptFile } from "./prompts";
 import { findBuild } from "./termfind";
@@ -404,6 +404,7 @@ export class UiServer {
       }
       case "setupUndo": {
         if (!root) return null;
+        if (tooBroadForUndo(root)) return { flash: TOO_BROAD_FOR_UNDO };
         const steps: string[][] = [];
         if (!fs.existsSync(path.join(root, ".git"))) steps.push(["init", "-q"]);
         steps.push(["add", "-A"], ["-c", "user.name=BuildPilot", "-c", "user.email=buildpilot@localhost", "commit", "-q", "--allow-empty", "-m", "First save point (BuildPilot)"]);

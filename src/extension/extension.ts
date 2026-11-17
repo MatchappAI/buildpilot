@@ -8,7 +8,7 @@ import { pocketLink } from "./pocketLink";
 import { installCliCopy, installShell, shellStatus, uninstallShell } from "../core/shell";
 import { installWidget, pickRuntime, setStartAtLogin, uninstallWidget, widgetStatus } from "../core/widget";
 import { Alert, Engine, UiState } from "../core/engine";
-import { restoreFiles, diffSinceCheckpoint, run as runCmd, worktrees } from "../core/git";
+import { restoreFiles, diffSinceCheckpoint, run as runCmd, worktrees, tooBroadForUndo, TOO_BROAD_FOR_UNDO } from "../core/git";
 import { claudeSettingsPath, connectPreview, installHooks, installStatusline, pluginConnected, uninstallHooks, uninstallStatusline } from "../core/hooks";
 import { isLocalUrl } from "../core/checks";
 import { GOALS, writePromptFile } from "../core/prompts";
@@ -565,6 +565,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{ engi
       case "setupUndo": {
         const root = eng.currentProject?.root;
         if (!root) return;
+        if (tooBroadForUndo(root)) return void vscode.window.showWarningMessage(TOO_BROAD_FOR_UNDO);
         if (!requireTrust("set up undo")) return;
         if (!(await confirm("Turn on undo for this project?", "BuildPilot sets up Git here and saves everything as a first save point, so any later AI change can be undone. Nothing is uploaded anywhere.", "Turn on undo"))) return;
         const steps: string[][] = [];

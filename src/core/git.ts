@@ -181,3 +181,13 @@ export async function restoreFiles(root: string, sha: string, files: string[]): 
   if (r.code !== 0) throw new Error(r.stderr.trim());
   return { safety, restored: files };
 }
+
+/**
+ * Folders where "Turn on undo" (git init + add everything) must never run: the filesystem root, your home folder, or
+ * anything above it. Claude is often started in ~, and a repo there would sweep up every private file you own.
+ */
+export function tooBroadForUndo(root: string, home = os.homedir()): boolean {
+  const real = (p: string) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  return [[path.resolve(root), path.resolve(home)], [real(root), real(home)]].some(([r, h]) => r === path.parse(r!).root || r === h || h!.startsWith(r + path.sep));
+}
+export const TOO_BROAD_FOR_UNDO = "BuildPilot won't turn on undo for your whole home folder (it would save every file you own). Open a project folder instead.";
