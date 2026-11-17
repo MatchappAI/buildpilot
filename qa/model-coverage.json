@@ -1,18 +1,18 @@
 {
- "seed": 1,
+ "seed": 7,
  "seeds": 3,
  "layers": [
-  "transitions"
+  "controls"
  ],
- "startedAt": "2026-11-17T15:25:55.258Z",
+ "startedAt": "2026-11-17T16:49:31.679Z",
  "steps": {
-  "transitions": 92
+  "ui": 9
  },
  "failures": [],
  "shrunk": [],
  "suites": {
-  "buildTransitions": {
-   "ran": 92,
+  "uiControls": {
+   "pressed": 9,
    "failures": 0
   }
  },
@@ -329,13 +329,101 @@
   },
   "build": {
    "transitions": {
-    "covered": 92,
-    "feasible": 96,
+    "covered": 0,
+    "feasible": 92,
     "missing": [
-     "none|cli:merge",
-     "none|cli:done",
-     "removed|cli:merge",
-     "removed|cli:done"
+     "none|newBuild",
+     "none|cli:new",
+     "none|reviewBuild",
+     "none|mergeBuild",
+     "none|mergeBuild:force",
+     "none|removeBuild",
+     "clean|edit",
+     "clean|makeConflict",
+     "clean|breakTests",
+     "clean|reviewBuild",
+     "clean|mergeBuild",
+     "clean|mergeBuild:force",
+     "clean|cli:merge",
+     "clean|removeBuild",
+     "clean|cli:done",
+     "clean|cli:review",
+     "unsaved|edit",
+     "unsaved|commitInBuild",
+     "unsaved|makeConflict",
+     "unsaved|breakTests",
+     "unsaved|reviewBuild",
+     "unsaved|mergeBuild",
+     "unsaved|mergeBuild:force",
+     "unsaved|cli:merge",
+     "unsaved|removeBuild",
+     "unsaved|cli:done",
+     "unsaved|cli:review",
+     "saved|edit",
+     "saved|makeConflict",
+     "saved|breakTests",
+     "saved|reviewBuild",
+     "saved|mergeBuild",
+     "saved|mergeBuild:force",
+     "saved|cli:merge",
+     "saved|removeBuild",
+     "saved|cli:done",
+     "saved|cli:review",
+     "merged|edit",
+     "merged|makeConflict",
+     "merged|breakTests",
+     "merged|reviewBuild",
+     "merged|mergeBuild",
+     "merged|mergeBuild:force",
+     "merged|cli:merge",
+     "merged|removeBuild",
+     "merged|cli:done",
+     "merged|cli:review",
+     "removed|reviewBuild",
+     "removed|mergeBuild",
+     "removed|mergeBuild:force",
+     "removed|removeBuild",
+     "unsaved+conflict|edit",
+     "unsaved+conflict|commitInBuild",
+     "unsaved+conflict|makeConflict",
+     "unsaved+conflict|breakTests",
+     "unsaved+conflict|reviewBuild",
+     "unsaved+conflict|mergeBuild",
+     "unsaved+conflict|mergeBuild:force",
+     "unsaved+conflict|cli:merge",
+     "unsaved+conflict|removeBuild",
+     "unsaved+conflict|cli:done",
+     "unsaved+conflict|cli:review",
+     "saved+conflict|edit",
+     "saved+conflict|makeConflict",
+     "saved+conflict|fixConflict",
+     "saved+conflict|breakTests",
+     "saved+conflict|reviewBuild",
+     "saved+conflict|mergeBuild",
+     "saved+conflict|mergeBuild:force",
+     "saved+conflict|cli:merge",
+     "saved+conflict|removeBuild",
+     "saved+conflict|cli:done",
+     "saved+conflict|cli:review",
+     "unsaved+failing|edit",
+     "unsaved+failing|commitInBuild",
+     "unsaved+failing|makeConflict",
+     "unsaved+failing|reviewBuild",
+     "unsaved+failing|mergeBuild",
+     "unsaved+failing|mergeBuild:force",
+     "unsaved+failing|cli:merge",
+     "unsaved+failing|removeBuild",
+     "unsaved+failing|cli:done",
+     "unsaved+failing|cli:review",
+     "saved+failing|edit",
+     "saved+failing|makeConflict",
+     "saved+failing|reviewBuild",
+     "saved+failing|mergeBuild",
+     "saved+failing|mergeBuild:force",
+     "saved+failing|cli:merge",
+     "saved+failing|removeBuild",
+     "saved+failing|cli:done",
+     "saved+failing|cli:review"
     ]
    },
    "pairs": {
@@ -347,7 +435,7 @@
   "plan": {
    "transitions": {
     "covered": 0,
-    "feasible": 46,
+    "feasible": 44,
     "missing": [
      "free|buildPrompt",
      "free|promptUsed",
@@ -386,15 +474,13 @@
      "licensed|enterLicense:forged",
      "licensed|enterLicense:fuzz",
      "licensed|upgrade",
-     "licensed|trialEnds",
      "not-sellable|buildPrompt",
      "not-sellable|promptUsed",
      "not-sellable|enterLicense:valid",
      "not-sellable|enterLicense:expired",
      "not-sellable|enterLicense:forged",
      "not-sellable|enterLicense:fuzz",
-     "not-sellable|upgrade",
-     "not-sellable|trialEnds"
+     "not-sellable|upgrade"
     ]
    },
    "pairs": {
@@ -556,13 +642,13 @@
   },
   "page": {
    "transitions": {
-    "covered": 0
+    "covered": 9
    },
    "pairs": {
     "covered": 0
    },
    "controls": {
-    "covered": 0,
+    "covered": 8,
     "of": 31,
     "missing": [
      "connectAll",
@@ -573,8 +659,6 @@
      "toggleTheme",
      "toggleAlerts",
      "upgrade",
-     "enterLicense",
-     "newBuild",
      "toggleBuild",
      "renameBuild",
      "openBuild",
@@ -582,23 +666,22 @@
      "startFresh",
      "toggleErrors",
      "copyErrors",
-     "dismissRisk",
      "toggleQuiet",
      "hideIdle",
-     "openFinder",
      "whoChanged",
-     "undoFile",
      "reviewBuild",
-     "mergeBuild",
      "removeBuild",
-     "build",
      "sendPrompt",
      "useInOpen",
-     "copyPrompt",
      "tip"
     ]
    },
-   "screens": []
+   "screens": [
+    "sessions",
+    "prompt-written",
+    "paywall",
+    "finder"
+   ]
   },
   "fuzz": {
    "inputClasses": 0,
@@ -607,561 +690,63 @@
    "integration": 0
   }
  },
- "seconds": 1354,
- "totalSteps": 92,
+ "seconds": 35,
+ "totalSteps": 9,
  "raw": {
   "transitions": {
-   "build": {
-    "none|newBuild": {
+   "page": {
+    "sessions|press:dismissRisk": {
      "n": 1,
      "to": [
-      "clean"
+      "sessions"
      ]
     },
-    "none|cli:new": {
+    "sessions|press:build": {
      "n": 1,
      "to": [
-      "clean"
+      "prompt-written"
      ]
     },
-    "none|reviewBuild": {
+    "prompt-written|press:copyPrompt": {
      "n": 1,
      "to": [
-      "removed"
+      "prompt-written"
      ]
     },
-    "none|mergeBuild": {
+    "prompt-written|press:build": {
      "n": 1,
      "to": [
-      "removed"
+      "paywall"
      ]
     },
-    "none|mergeBuild:force": {
+    "paywall|press:enterLicense": {
      "n": 1,
      "to": [
-      "removed"
+      "dialog:input"
      ]
     },
-    "none|removeBuild": {
+    "sessions|press:openFinder": {
      "n": 1,
      "to": [
-      "removed"
+      "finder"
      ]
     },
-    "clean|edit": {
+    "finder|press:undoFile": {
      "n": 1,
      "to": [
-      "unsaved"
+      "dialog:confirm"
      ]
     },
-    "clean|makeConflict": {
+    "finder|press:newBuild": {
      "n": 1,
      "to": [
-      "saved+conflict"
+      "dialog:input"
      ]
     },
-    "clean|breakTests": {
+    "finder|press:mergeBuild": {
      "n": 1,
      "to": [
-      "unsaved+failing"
-     ]
-    },
-    "clean|reviewBuild": {
-     "n": 1,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|mergeBuild": {
-     "n": 1,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|cli:merge": {
-     "n": 1,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|removeBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "clean|cli:done": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "clean|cli:review": {
-     "n": 1,
-     "to": [
-      "clean"
-     ]
-    },
-    "unsaved|edit": {
-     "n": 1,
-     "to": [
-      "unsaved"
-     ]
-    },
-    "unsaved|commitInBuild": {
-     "n": 1,
-     "to": [
-      "saved"
-     ]
-    },
-    "unsaved|makeConflict": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "unsaved|breakTests": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "unsaved|reviewBuild": {
-     "n": 1,
-     "to": [
-      "unsaved"
-     ]
-    },
-    "unsaved|mergeBuild": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "unsaved|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "unsaved|cli:merge": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "unsaved|removeBuild": {
-     "n": 1,
-     "to": [
-      "unsaved"
-     ]
-    },
-    "unsaved|cli:done": {
-     "n": 1,
-     "to": [
-      "unsaved"
-     ]
-    },
-    "unsaved|cli:review": {
-     "n": 1,
-     "to": [
-      "unsaved"
-     ]
-    },
-    "saved|edit": {
-     "n": 1,
-     "to": [
-      "unsaved"
-     ]
-    },
-    "saved|makeConflict": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "saved|breakTests": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "saved|reviewBuild": {
-     "n": 1,
-     "to": [
-      "saved"
-     ]
-    },
-    "saved|mergeBuild": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "saved|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "saved|cli:merge": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "saved|removeBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "saved|cli:done": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "saved|cli:review": {
-     "n": 1,
-     "to": [
-      "saved"
-     ]
-    },
-    "merged|edit": {
-     "n": 1,
-     "to": [
-      "unsaved"
-     ]
-    },
-    "merged|makeConflict": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "merged|breakTests": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "merged|reviewBuild": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "merged|mergeBuild": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "merged|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "merged|cli:merge": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "merged|removeBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "merged|cli:done": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "merged|cli:review": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "removed|reviewBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "removed|mergeBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "removed|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "removed|removeBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "unsaved+conflict|edit": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict"
-     ]
-    },
-    "unsaved+conflict|commitInBuild": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "unsaved+conflict|makeConflict": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "unsaved+conflict|breakTests": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict+failing"
-     ]
-    },
-    "unsaved+conflict|reviewBuild": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict"
-     ]
-    },
-    "unsaved+conflict|mergeBuild": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "unsaved+conflict|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "unsaved+conflict|cli:merge": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "unsaved+conflict|removeBuild": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict"
-     ]
-    },
-    "unsaved+conflict|cli:done": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict"
-     ]
-    },
-    "unsaved+conflict|cli:review": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict"
-     ]
-    },
-    "saved+conflict|edit": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict"
-     ]
-    },
-    "saved+conflict|makeConflict": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "saved+conflict|fixConflict": {
-     "n": 1,
-     "to": [
-      "saved"
-     ]
-    },
-    "saved+conflict|breakTests": {
-     "n": 1,
-     "to": [
-      "unsaved+conflict+failing"
-     ]
-    },
-    "saved+conflict|reviewBuild": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "saved+conflict|mergeBuild": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "saved+conflict|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "saved+conflict|cli:merge": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "saved+conflict|removeBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "saved+conflict|cli:done": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "saved+conflict|cli:review": {
-     "n": 1,
-     "to": [
-      "saved+conflict"
-     ]
-    },
-    "unsaved+failing|edit": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "unsaved+failing|commitInBuild": {
-     "n": 1,
-     "to": [
-      "saved+failing"
-     ]
-    },
-    "unsaved+failing|makeConflict": {
-     "n": 1,
-     "to": [
-      "saved+conflict+failing"
-     ]
-    },
-    "unsaved+failing|reviewBuild": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "unsaved+failing|mergeBuild": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "unsaved+failing|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "unsaved+failing|cli:merge": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "unsaved+failing|removeBuild": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "unsaved+failing|cli:done": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "unsaved+failing|cli:review": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "saved+failing|edit": {
-     "n": 1,
-     "to": [
-      "unsaved+failing"
-     ]
-    },
-    "saved+failing|makeConflict": {
-     "n": 1,
-     "to": [
-      "saved+conflict+failing"
-     ]
-    },
-    "saved+failing|reviewBuild": {
-     "n": 1,
-     "to": [
-      "saved+failing"
-     ]
-    },
-    "saved+failing|mergeBuild": {
-     "n": 1,
-     "to": [
-      "saved+failing"
-     ]
-    },
-    "saved+failing|mergeBuild:force": {
-     "n": 1,
-     "to": [
-      "merged"
-     ]
-    },
-    "saved+failing|cli:merge": {
-     "n": 1,
-     "to": [
-      "saved+failing"
-     ]
-    },
-    "saved+failing|removeBuild": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "saved+failing|cli:done": {
-     "n": 1,
-     "to": [
-      "removed"
-     ]
-    },
-    "saved+failing|cli:review": {
-     "n": 1,
-     "to": [
-      "saved+failing"
+      "dialog:confirm"
      ]
     }
    }

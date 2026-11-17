@@ -16,9 +16,9 @@ import { buildUnderTest } from "./build.mjs";
 import { rng } from "./rng.mjs";
 import { recorder } from "./coverage.mjs";
 import { shrink, signature } from "./shrink.mjs";
-import { runSessionWalk, runConcurrency, sessionPaths, runSessionPaths } from "./session.mjs";
-import { runApiWalk, runIntegrationApi, runBuildPaths, buildPaths, runBuildTransitions } from "./api.mjs";
-import { runUiWalk, cfgFromRow } from "./ui.mjs";
+import { runSessionWalk, runConcurrency, sessionPaths, runSessionPaths, runSessionTransitions } from "./session.mjs";
+import { runApiWalk, runIntegrationApi, runBuildPaths, buildPaths, runBuildTransitions, runPlanStates } from "./api.mjs";
+import { runUiWalk, cfgFromRow, runUiControls } from "./ui.mjs";
 import { runCliMatrix, runPluginCommands } from "./cli.mjs";
 import { machines, modelJson, pairwiseRows, PAGE_CONTROLS } from "./model.mjs";
 import { REPO } from "../e2e/env.mjs";
@@ -31,7 +31,9 @@ const seed = Number(opt("seed", 1));
 const seeds = Number(opt("seeds", quick ? 1 : 3));
 const steps = opt("steps") ? Number(opt("steps")) : null;
 const ALL = ["session", "concurrency", "api", "transitions", "ui", "cli", "plugin", "integration", "pairwise", "paths"];
-const layers = (opt("layers") ?? (quick ? "session,concurrency,api,cli,plugin,integration" : ALL.join(","))).split(",");
+const layers0 = (opt("layers") ?? (quick ? "session,concurrency,api,cli,plugin,integration" : ALL.join(","))).split(",");
+// "transitions" = both directed (state × action) suites; "stransitions" / "btransitions" = one of them.
+const layers = layers0.flatMap((l) => (l === "transitions" ? ["stransitions", "ptransitions", "btransitions"] : [l]));
 const QA = path.join(REPO, "qa"); const REG = path.join(REPO, "test/model/regressions"); fs.mkdirSync(QA, { recursive: true }); fs.mkdirSync(REG, { recursive: true });
 const out = (s) => process.stdout.write(s + "\n");
 
@@ -100,17 +102,39 @@ for (let i = 0; i < seeds; i++) {
   if (layers.includes("ui")) {
     for (let k = 0; k < 2; k++) {
       const s2 = sub * 10 + k; const R = rng(s2); const cfg = uiCfg(R, s2);
-      const r = await runUiWalk({ B, R, steps: steps ?? 110, cfg, record: rec });
+      const r = await runUiWalk({ B, R, steps: steps ?? 110, cfg, record: rec, covered: rec.covered });
       addSteps("ui", r.steps); out(`ui        seed ${s2}: ${r.steps} steps ${r.failures.length ? "FAIL" : "ok"}`);
       if (r.failures.length) await onFailure("ui", s2, cfg, r, (c) => runUiWalk({ B, R: rng(s2), seq: c, cfg }));
     }
   }
 }
-if (layers.includes("transitions")) {
+if (layers.includes("stransitions")) {
+  {
+    let tr = rec.dump().transitions.session ?? {};
+    if (!Object.keys(tr).length) { const w = await runSessionWalk({ harness: B.harness, R: rng(seed), steps: 1500, record: rec, covered: rec.covered }); addSteps("session", w.steps); tr = rec.dump().transitions.session; }
+    const r = await runSessionTransitions({ harness: B.harness, transitions: tr, feasible: machines(B).session.feasible, record: rec, R: rng(seed) });
+    addSteps("transitions", r.ran); stats.suites.sessionTransitions = { ran: r.ran, failures: r.failures.length, unreached: r.unreached };
+    out(`session transitions: ${r.ran} (state, action) pairs tried from a fresh session, ${r.failures.length} failures${r.unreached.length ? `, unreached: ${r.unreached.join(", ")}` : ""}`);
+    for (const f of r.failures.slice(0, 10)) { out(`  ✗ ${f.state} × ${f.action} (route ${f.route.join(" → ")}): ${f.errors[0]}`); stats.failures.push({ layer: "session-transitions", ...f }); }
+  }
+}
+if (layers.includes("ptransitions")) {
+  const r = await runPlanStates({ B, record: rec });
+  addSteps("transitions", r.ran); stats.suites.planTransitions = { ran: r.ran, failures: r.failures.length };
+  out(`plan + window-session transitions: ${r.ran} (state, action) pairs tried, ${r.failures.length} failures`);
+  for (const f of r.failures) { out(`  ✗ ${f.state} × ${f.action}: ${f.errors[0]}`); stats.failures.push({ layer: "plan-transitions", ...f }); }
+}
+if (layers.includes("btransitions")) {
   const r = await runBuildTransitions({ B, record: rec, only: quick ? ["none", "clean", "unsaved"] : null });
   addSteps("transitions", r.ran); stats.suites.buildTransitions = { ran: r.ran, failures: r.failures.length };
   out(`side-build transitions: ${r.ran} (state, action) pairs tried, ${r.failures.length} failures`);
   for (const f of r.failures) { out(`  ✗ ${f.state} × ${f.action}: ${f.errors[0]}`); stats.failures.push({ layer: "build-transitions", ...f }); }
+}
+if (layers.includes("ui") || layers.includes("controls")) {
+  const r = await runUiControls({ B, record: rec });
+  addSteps("ui", r.ran); stats.suites.uiControls = { pressed: r.ran, failures: r.failures.length };
+  out(`window controls scenario: ${r.ran} presses, ${r.failures.length} failures`);
+  for (const f of r.failures) { out(`  ✗ ${f.action}: ${f.errors[0]}`); stats.failures.push({ layer: "ui-controls", ...f }); }
 }
 if (layers.includes("cli")) { const r = await runCliMatrix({ B, record: rec }); addSteps("cli", r.cases); stats.suites.cli = { cases: r.cases, failures: r.failures.length }; out(`cli: ${r.cases} cases, ${r.failures.length} failures`); for (const f of r.failures) { out(`  ✗ bp ${f.args.join(" ")}: ${f.errors.join(", ")}`); stats.failures.push({ layer: "cli", ...f }); } }
 if (layers.includes("plugin")) { const r = await runPluginCommands({ B, record: rec }); addSteps("plugin", r.cases); stats.suites.plugin = { cases: r.cases, failures: r.failures.length }; out(`plugin: ${r.cases} cases, ${r.failures.length} failures`); for (const f of r.failures) { out(`  ✗ /${f.command} (${f.cls}): ${f.errors.join(", ")}`); stats.failures.push({ layer: "plugin", ...f }); } }

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-17T15:48:48.948Z",
+  "generated": "2026-11-17T16:50:34.464Z",
   "machines": {
     "session": {
       "states": [
@@ -164,11 +164,14 @@
         "upgrade",
         "trialEnds"
       ],
-      "feasibleTransitions": 46,
+      "feasibleTransitions": 44,
       "infeasible": [
         "free|trialEnds",
-        "free-exhausted|trialEnds"
-      ]
+        "free-exhausted|trialEnds",
+        "licensed|trialEnds",
+        "not-sellable|trialEnds"
+      ],
+      "note": "trialEnds = the clock passes the trial's end (only visible while the plan shows the trial)"
     },
     "connection": {
       "states": [
@@ -381,6 +384,6 @@
     "machines": 7,
     "states": 55,
     "actions": 142,
-    "feasibleTransitions": 534
+    "feasibleTransitions": 532
   }
 }

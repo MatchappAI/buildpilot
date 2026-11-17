@@ -29,7 +29,7 @@ async function pageState(b, env) {
   return d;
 }
 
-export async function runUiWalk({ B, R, steps = 120, seq = null, cfg = {}, record, shots = null }) {
+export async function runUiWalk({ B, R, steps = 120, seq = null, cfg = {}, record, shots = null, covered = null }) {
   const W = await makeServerWorld(B, cfg);
   W.__key = () => B.mint();
   if (cfg.connected) { W.cli(["hooks", "install"]); W.cli(["statusline", "install"]); }
@@ -52,7 +52,10 @@ export async function runUiWalk({ B, R, steps = 120, seq = null, cfg = {}, recor
       const options = await actionsFor(b, st, env);
       // Each step carries its own sub-seed, so a recorded sequence replays the same choices (and can be shrunk).
       let name = seq ? seq[step].a : null; const sub = seq ? seq[step].s : R.int(0, 2 ** 31);
-      if (!name) name = R.weighted(options.map((o) => [o, o.startsWith("press:") || o.startsWith("dlg:") ? 6 : o.startsWith("type:") ? 3 : 1]));
+      // Coverage-guided: a control not pressed yet in this run (on any screen) gets a strong preference.
+      const fresh = covered ? options.filter((o) => o.startsWith("press:") && !covered.pressed.has(o.slice(6).split(".")[0])) : [];
+      if (!name) name = fresh.length && R.chance(0.6) ? R.pick(fresh) : R.weighted(options.map((o) => [o, o.startsWith("press:") || o.startsWith("dlg:") ? 6 : o.startsWith("type:") ? 3 : 1]));
+      if (covered && name.startsWith("press:")) covered.pressed.add(name.slice(6).split(".")[0]);
       if (!options.includes(name) && seq) continue;
       const SR = rng(sub);
       b.events.length = Math.min(b.events.length, 0);
@@ -159,9 +162,9 @@ async function doAction(name, { b, W, R, env, openUrl }) {
     return;
   }
   if (name === "bg:claudeEvent") {
-    const ev = R.pick(["UserPromptSubmit", "PermissionRequest", "Stop", "PostToolUseFailure", "Notification", "SessionEnd", "PostToolUse"]);
+    const ev = R.pick(["UserPromptSubmit", "PermissionRequest", "Stop", "PostToolUseFailure", "Notification", "SessionEnd", "PostToolUse", "PostToolUse:secret"]);
     const id = R.pick(["d1d1d1d1-0000-4000-8000-0000000000d1", "d2d2d2d2-0000-4000-8000-0000000000d2"]);
-    const p = { session_id: id, cwd: R.pick([W.proj, W.home]), hook_event_name: ev, nonce: Date.now() + Math.random(), ...(ev === "UserPromptSubmit" ? { prompt: R.pick(TEXT)[1].slice(0, 300) || "x" } : ev === "Notification" ? { notification_type: "permission_prompt", message: R.pick(TEXT)[1].slice(0, 200) } : ev === "PostToolUseFailure" ? { tool_name: "Bash", tool_input: { command: "npm test" }, error: R.pick(TEXT)[1].slice(0, 300) } : ev === "PostToolUse" ? { tool_name: "Edit", tool_input: { file_path: path.join(W.proj, "src/shared.txt") }, tool_response: {} } : {}) };
+    const p = { session_id: id, cwd: R.pick([W.proj, W.home]), hook_event_name: ev, nonce: Date.now() + Math.random(), ...(ev === "UserPromptSubmit" ? { prompt: R.pick(TEXT)[1].slice(0, 300) || "x" } : ev === "Notification" ? { notification_type: "permission_prompt", message: R.pick(TEXT)[1].slice(0, 200) } : ev === "PostToolUseFailure" ? { tool_name: "Bash", tool_input: { command: "npm test" }, error: R.pick(TEXT)[1].slice(0, 300) } : ev === "PostToolUse" ? { tool_name: "Edit", tool_input: { file_path: path.join(W.proj, "src/shared.txt") }, tool_response: {} } : ev === "PostToolUse:secret" ? { hook_event_name: "PostToolUse", tool_name: "Edit", tool_input: { file_path: path.join(W.proj, ".env") }, tool_response: {} } : {}) };
     const d = path.join(W.bph, "spool"); fs.mkdirSync(path.join(d, "tmp"), { recursive: true }); const f = `e${Date.now()}${R.int(0, 1e6)}`; fs.writeFileSync(path.join(d, "tmp", f), JSON.stringify(p)); fs.renameSync(path.join(d, "tmp", f), path.join(d, `${f}.json`));
     return ev;
   }
@@ -243,4 +246,52 @@ export function cfgFromRow(row, B) {
   const cfg = { label: `pw-${Object.values(row).join("-")}`, sellable: row.plan !== "not-sellable", trialDays: row.plan === "trial" ? 14 : row.plan === "trial-ending" ? 2 : 0, count: row.plan === "free-exhausted" ? 20 : 3, connected: row.connection === "connected", plugin: row.connection === "plugin", seeded: row.data === "seeded", theme: row.theme, alerts: row.alerts, viewport: row.viewport, scheme: row.scheme, noGit: row.project === "no-git" };
   if (row.plan === "licensed") cfg.license = B.mint();
   return cfg;
+}
+
+/**
+ * The controls a random walk reaches least often (they need a paywall, a risk, a finder result or a changed side build),
+ * pressed on purpose, each followed by the same page checks as every walk step.
+ */
+export async function runUiControls({ B, record }) {
+  const W = await makeServerWorld(B, { sellable: true, trialDays: 0, count: 19 });
+  W.cli(["hooks", "install"]); W.cli(["statusline", "install"]);
+  await W.stop(); await W.start();
+  const b = await launch({ width: 1280, height: 900 });
+  const env = { down: false, offline: false, throttle: 0, dark: false, narrow: false };
+  const failures = []; let ran = 0;
+  const spool = (p) => { const d = path.join(W.bph, "spool"); fs.mkdirSync(path.join(d, "tmp"), { recursive: true }); const f = `c${Date.now()}${Math.random().toString(36).slice(2, 6)}`; fs.writeFileSync(path.join(d, "tmp", f), JSON.stringify({ session_id: "c0c0c0c0-0000-4000-8000-0000000000c0", cwd: W.proj, nonce: f, ...p })); fs.renameSync(path.join(d, "tmp", f), path.join(d, `${f}.json`)); };
+  const press = async (act, wait) => {
+    const st = await pageState(b, env);
+    if (wait) await b.wait(wait, 20000).catch(() => {});
+    b.events.length = 0;
+    await b.press(`[data-act="${act}"]`); await settle(b, env);
+    const errs = await checkUi(b, W, env, 0);
+    record?.transition("page", st, `press:${act}`, await pageState(b, env)); ran++;
+    if (errs.length) failures.push({ action: act, errors: errs });
+  };
+  const answer = async (text) => { await b.wait(() => !!document.querySelector(".bp-modal"), 8000).catch(() => {}); if (text != null) { await b.eval(() => document.querySelector(".bp-modal input")?.focus()); await b.typeKeys(text); } await b.key("Enter"); await sleep(700); };
+  try {
+    await b.goto(W.cli(["ui", "--print"]).out.trim()); await b.wait(() => !!document.querySelector(".page"), 15000);
+    spool({ hook_event_name: "UserPromptSubmit", prompt: "wire the env" });
+    spool({ hook_event_name: "PostToolUse", tool_name: "Edit", tool_input: { file_path: path.join(W.proj, "src/shared.txt") }, tool_response: {} });
+    spool({ hook_event_name: "PostToolUse", tool_name: "Edit", tool_input: { file_path: path.join(W.proj, ".env") }, tool_response: {} });
+    await b.wait(() => !!document.querySelector('[data-act="dismissRisk"]'), 15000);
+    await press("dismissRisk");
+    await b.type("#req", "add a contact form"); await press("build", () => !!document.querySelector('[data-act="build"]'));
+    await b.wait(() => !!document.getElementById("ptext"), 10000); await press("copyPrompt");
+    await press("build"); await b.wait(() => !!document.querySelector('[data-act="enterLicense"]'), 10000);
+    await press("enterLicense"); await answer(B.mint());
+    await press("openFinder"); await b.typeKeys("shared"); await b.key("Enter"); await b.wait(() => !!document.querySelector('[data-act="undoFile"]'), 10000);
+    fs.appendFileSync(path.join(W.proj, "src/shared.txt"), "claude edit\n");
+    await press("undoFile"); await answer(null);
+    if (fs.readFileSync(path.join(W.proj, "src/shared.txt"), "utf8").includes("claude edit")) failures.push({ action: "undoFile", errors: ["file not put back"] });
+    await press("newBuild"); await answer("controls"); await answer(null);
+    await b.wait(() => !!document.querySelector(".side"), 20000);
+    const dir = W.osLog().filter((x) => x.kind === "terminal").pop()?.dir; if (dir) fs.writeFileSync(path.join(dir, "src/new.txt"), "x\n");
+    await b.wait(() => !!document.querySelector('[data-act="mergeBuild"]'), 20000);
+    await press("mergeBuild"); await answer(null); await b.wait(() => /Merged/.test(document.getElementById("flash")?.textContent ?? ""), 60000).catch(() => {});
+    if (!fs.existsSync(path.join(W.proj, "src/new.txt"))) failures.push({ action: "mergeBuild", errors: ["not merged"] });
+  } catch (e) { failures.push({ action: "scenario", errors: [e.message.slice(0, 200)] }); }
+  finally { await b.close(); await W.cleanup(); }
+  return { ran, failures };
 }

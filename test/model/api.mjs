@@ -491,3 +491,59 @@ export async function runBuildTransitions({ B, record, only = null }) {
   } finally { await W.cleanup(); }
   return { ran, failures };
 }
+
+/**
+ * Criterion (a), directed, for the plan and for session actions before any session exists: a world configured in each
+ * plan state, every plan action tried there (and every window session action on a world with no session yet).
+ */
+export async function runPlanStates({ B, record }) {
+  const A = apiActions(B);
+  const CFG = {
+    free: { sellable: true, trialDays: 0, count: 3 }, "free-exhausted": { sellable: true, trialDays: 0, count: 20 },
+    trial: { sellable: true, trialDays: 14 }, "trial-ending": { sellable: true, trialDays: 2 },
+    licensed: { sellable: true, trialDays: 0, licenseValid: true }, "not-sellable": { sellable: false, trialDays: 0 },
+  };
+  const R0 = { chance: (p) => p >= 0.5, pick: (xs) => xs[0], int: (a) => a, weighted: (p) => p[0][0], next: () => 0 };
+  const failures = []; let ran = 0;
+  const one = async (W, m, machine, name, from) => {
+    const before = fingerprint(W);
+    let r; try { r = await withTimeout(A[name].run(W, m, R0), 150_000, name); } catch (e) { failures.push({ state: from, action: name, errors: [e.message] }); return; }
+    if (m.pendingEvent) { await sleep(450); m.pendingEvent = false; }
+    ran++;
+    const errs = [];
+    if (r.res && (r.res.status >= 500 || r.res.status === -1)) errs.push(`HTTP ${r.res.status}`);
+    if (r.check) { const c = r.check(); if (c !== true) errs.push(c); }
+    if (r.expect === "refused" && fingerprint(W) !== before) errs.push(`should change nothing: ${diffFp(before, fingerprint(W))}`);
+    errs.push(...(await withTimeout(checkServer(W, m), 120_000, "checks").catch((e) => [e.message])));
+    record?.transition(machine, from, name, machine === "plan" ? summarize(m).plan : summarize(m).sessionUi);
+    if (errs.length) failures.push({ state: from, action: name, errors: errs });
+  };
+  for (const [st, cfg] of Object.entries(CFG)) {
+    for (const name of Object.keys(A).filter((k) => A[k].m === "plan" && (!A[k].pre || k !== "trialEnds" || ["trial", "trial-ending"].includes(st)))) {
+      const W = await makeServerWorld(B, { ...cfg, license: cfg.licenseValid ? B.mint() : undefined });
+      const m = { sellable: cfg.sellable !== false, trialLeft: cfg.trialDays ?? 0, licensed: !!cfg.licenseValid, count: cfg.count ?? 0, theme: "white", alerts: true, connected: false, plugin: false, builds: new Map(), mainDirty: false, sid: "abcd1234-0000-4000-8000-00000000beef", name: null, n: 0, edited: false };
+      if (summarize(m).plan !== st) failures.push({ state: st, action: name, errors: [`configured world is ${summarize(m).plan}`] });
+      else await one(W, m, "plan", name, st);
+      await W.cleanup();
+    }
+  }
+  // Session actions sent to the window before Claude has done anything (no session yet).
+  for (const name of Object.keys(A).filter((k) => A[k].m === "sessionUi" && !A[k].pre)) {
+    const W = await makeServerWorld(B, { sellable: true, trialDays: 14 });
+    const m = { sellable: true, trialLeft: 14, licensed: false, count: 0, theme: "white", alerts: true, connected: false, plugin: false, builds: new Map(), mainDirty: false, sid: "abcd1234-0000-4000-8000-00000000beef", name: null, n: 0, edited: false };
+    await one(W, m, "sessionUi", name, "absent");
+    await W.cleanup();
+  }
+  // Undo a Claude-edited file while the session is finished (idle) or failed.
+  for (const last of ["Stop", "StopFailure"]) {
+    const W = await makeServerWorld(B, { sellable: true, trialDays: 14 });
+    const m = { sellable: true, trialLeft: 14, licensed: false, count: 0, theme: "white", alerts: true, connected: false, plugin: false, builds: new Map(), mainDirty: false, sid: "abcd1234-0000-4000-8000-00000000beef", name: null, n: 0, edited: false };
+    const ev = (p) => { const d = path.join(W.bph, "spool"); fs.mkdirSync(path.join(d, "tmp"), { recursive: true }); const f = `e${m.n++}`; fs.writeFileSync(path.join(d, "tmp", f), JSON.stringify({ session_id: m.sid, cwd: W.proj, nonce: m.n, ...p })); fs.renameSync(path.join(d, "tmp", f), path.join(d, `${f}.json`)); };
+    ev({ hook_event_name: "PostToolUse", tool_name: "Edit", tool_input: { file_path: path.join(W.proj, "src/shared.txt") }, tool_response: {} });
+    await sleep(6000); ev({ hook_event_name: last }); await sleep(700);
+    m.edited = true; m.status = last === "Stop" ? "idle" : "failed";
+    await one(W, m, "sessionUi", "undoFile:edited", m.status);
+    await W.cleanup();
+  }
+  return { ran, failures };
+}

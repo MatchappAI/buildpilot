@@ -331,3 +331,55 @@ export async function runSessionPaths({ harness, paths, R }) {
   } finally { W.cleanup(); }
   return { paths: paths.length, ran, realized, failures };
 }
+
+/**
+ * Criterion (a) for sessions, directed: for every state, reach it on a fresh session by the shortest route the walks
+ * found, then try every action possible from it, checking the oracle and the database after each.
+ */
+export async function runSessionTransitions({ harness, transitions, feasible, record, R }) {
+  // Shortest action route from "absent" to each state, over the transitions the walks observed.
+  const edges = new Map();
+  for (const [k, v] of Object.entries(transitions)) { const [from, a] = k.split("|"); for (const to of v.to) if (to !== from) edges.set(from, [...(edges.get(from) ?? []), [a, to]]); }
+  const route = new Map([["absent", []]]); const q = ["absent"];
+  while (q.length) { const s = q.shift(); for (const [a, to] of edges.get(s) ?? []) if (!route.has(to)) { route.set(to, [...route.get(s), a]); q.push(to); } }
+  // "hidden" needs a self-loop first (time passing), which a shortest-route search over state changes skips.
+  route.set("hidden", ["UserPromptSubmit", "Stop", "Quiet3h", "hideIdle"]);
+  let W = await makeWorld(harness, "strans");
+  let n = 0, ran = 0; const failures = []; const unreached = [];
+  try {
+    for (const st of S_STATES) {
+      if (!route.has(st)) { unreached.push(st); continue; }
+      // One world per state: the page lists at most 60 sessions, so the cases of one state never push each other out.
+      W.cleanup(); W = await makeWorld(harness, "strans");
+      for (const name of Object.keys(S_ACTIONS)) {
+        if (!feasible(st, name)) continue;
+        const id = `t${String(++n).padStart(7, "0")}-0000-4000-8000-000000000000`;
+        let rec = fresh(); let now = Date.now() - 20 * 3600_000; let reached = true;
+        const apply = (nm, i) => {
+          const a = S_ACTIONS[nm]; if (a.pre && !a.pre(rec)) return false;
+          now += 1000;
+          if (a.quiet) now += 3 * 3600_000;
+          else if (a.hide) { const v = W.H.widgetData(W.engine, now).sessions.find((s) => s.id === id); W.H.hideQuiet(W.engine, now); if (v && !v.needsYou && !v.stopped && v.status !== "running" && now - v.lastEventAt > 2 * 3600_000) rec = { ...rec, status: "hidden", ended: now }; }
+          else if (a.rename) W.H.setBuildName(W.engine, id, "x");
+          else { const pl = payloadFor(nm, a, rec, { id, cwd: W.proj, now, R, step: n * 100 + i }); const isDup = !a.bad && dupOf(rec, pl.raw, pl.ts); W.deliver(pl.raw, pl.ts); const next = spec(rec, a, pl.p, pl.ts, isDup); if (!a.bad && !isDup) { next.acceptedBuckets = new Map(rec.acceptedBuckets); next.acceptedBuckets.set(pl.raw, [Math.floor(pl.ts / 5000)]); next.lastRaw = pl.raw; next.lastRawTs = pl.ts; } rec = next; }
+          return true;
+        };
+        for (const [i, p] of route.get(st).entries()) if (!apply(p, i)) { reached = false; break; }
+        if (!reached || stateOf(rec) !== st) continue;
+        // "Late" needs a finished turn on record: an old Stop delivered late gives one without changing the state.
+        if (name === "Late:PostToolUse" && rec.endTs == null) apply("OutOfOrder:Stop", 98);
+        if (stateOf(rec) !== st || !apply(name, 99)) continue;
+        ran++;
+        const row = W.row(id);
+        const db = !row ? "absent" : row.status === "completed" && row.status_reason === "Hidden as idle" && row.ended_at != null ? "hidden" : row.status;
+        const errs = [];
+        if (db !== stateOf(rec)) errs.push(`status ${db}, expected ${stateOf(rec)}`);
+        if (row && Number(row.event_count) !== rec.events) errs.push(`event_count ${row.event_count}, expected ${rec.events}`);
+        if (row && (row.ended_at != null) !== (rec.ended != null)) errs.push(`ended ${row.ended_at}, expected ${rec.ended}`);
+        record?.transition("session", st, name, stateOf(rec));
+        if (errs.length) failures.push({ state: st, action: name, route: route.get(st), errors: errs });
+      }
+    }
+  } finally { W.cleanup(); }
+  return { ran, failures, unreached };
+}

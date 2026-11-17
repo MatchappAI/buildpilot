@@ -2,7 +2,7 @@
 export function recorder() {
   const t = {}; const p = {}; const misc = {};
   // Flat sets for coverage-guided generators: "machine|state|action" and "machine|a>b".
-  const covered = { t: new Set(), p: new Set() };
+  const covered = { t: new Set(), p: new Set(), pressed: new Set() };
   return {
     covered,
     transition(m, from, action, to) { covered.t.add(`${m}|${from}|${action}`); ((t[m] ??= {})[`${from}|${action}`] ??= { n: 0, to: new Set() }).n++; t[m][`${from}|${action}`].to.add(to); },
