@@ -121,3 +121,14 @@ describe("plugin slash commands never put the user's words on a shell command li
     });
   }
 });
+
+describe("session names", () => {
+  it("control characters become spaces (a NUL used to cut the name short)", async () => {
+    const { setBuildName, buildName } = await import("../../src/core/glance");
+    const home = tmpDir();
+    const e = new Engine({ home, inMemory: true, claudeSettingsFile: path.join(home, "s.json") }); await e.start();
+    setBuildName(e, SID, "a\u0000b \u001b[31mred");
+    expect(buildName(e, SID)).toBe("a b [31mred");
+    e.stop();
+  });
+});

@@ -1,0 +1,17 @@
+{
+ "layer": "api",
+ "seed": 10002,
+ "cfg": {
+  "sellable": true,
+  "trialDays": 14,
+  "count": 18,
+  "plugin": true
+ },
+ "error": "session name \"a\", expected \"a\u0000b\"",
+ "seq": [
+  {
+   "a": "renameBuild:fuzz",
+   "s": 1001214609
+  }
+ ]
+}

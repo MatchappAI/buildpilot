@@ -9,6 +9,8 @@ import { rng } from "./rng.mjs";
 
 const sha = (f) => { try { return crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex").slice(0, 16); } catch { return "-"; } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Every step has a deadline: a hang is reported as a failure naming the action, never a silent stall. */
+export const withTimeout = (p, ms, what) => Promise.race([p, new Promise((_, j) => setTimeout(() => j(new Error(`${what} hung for ${ms / 1000} s`)), ms).unref())]);
 
 /** A throwaway HOME with a git project, the test CLI and a running window server. */
 export async function makeServerWorld(B, cfg = {}) {
@@ -45,7 +47,7 @@ export async function makeServerWorld(B, cfg = {}) {
     let r;
     // One retry on a network error: Node's fetch can reuse a keep-alive socket the server is just closing (a client
     // race; browsers retry the same way). A server that is really down fails both.
-    for (let attempt = 0; attempt < 2 && !r; attempt++) try { r = await fetch(`http://127.0.0.1:${info.port}${pathname}`, { method, body, headers: { "x-bp-token": info.token, ...(body != null ? { "content-type": "application/json" } : {}), ...headers } }); }
+    for (let attempt = 0; attempt < 2 && !r; attempt++) try { r = await fetch(`http://127.0.0.1:${info.port}${pathname}`, { method, body, signal: AbortSignal.timeout(90_000), headers: { "x-bp-token": info.token, ...(body != null ? { "content-type": "application/json" } : {}), ...headers } }); }
     catch (e) { if (attempt === 0) { await sleep(150); continue; } return { status: -1, text: `unreachable: ${e.cause?.code ?? e.message} (server ${server?.exitCode != null ? `exited ${server.exitCode}` : "running"})`, json: null }; }
     const text = await r.text(); let json = null; try { json = JSON.parse(text); } catch {}
     return { status: r.status, text, json };
@@ -113,7 +115,7 @@ export function apiActions(B) {
     "selectProject:unknown": { m: "project", run: async (W, m, R) => { const root = R.pick([os.homedir(), "/", "/etc", W.home, `${W.proj}/../..`, "", ...TEXT.map((x) => x[1]).slice(0, 8)]); const r = await W.msg({ type: "selectProject", root }); return { res: r, expect: "refused", check: () => r.json?.result?.flash === "BuildPilot doesn't know that folder" || (root === "" && r.json?.result?.flash) || `unknown folder accepted (${String(root).slice(0, 40)}): ${r.text.slice(0, 100)}` }; } },
     checkpoint: { m: "project", run: async (W) => { const r = await W.msg({ type: "checkpoint" }); return { res: r, expect: "refused", check: () => /Save point made \([0-9a-f]{8}\)/.test(r.json?.result?.flash) || r.text }; } },
     // ---------- sessions (from the page) ----------
-    "renameBuild:fuzz": { m: "sessionUi", run: async (W, m, R) => { const [cls, t] = R.pick([...TEXT, ...WRONG]); m.lastFuzz = cls; const id = R.pick([m.sid, "short", "../../etc", "a".repeat(80), m.sid]); const r = await W.msg({ type: "renameBuild", id, name: t }); const valid = /^[A-Za-z0-9-]{8,64}$/.test(id); if (valid && id === m.sid) m.name = (typeof t === "string" ? t : typeof t === "number" || typeof t === "boolean" ? String(t) : "").replace(/\s+/g, " ").trim().slice(0, 40).toWellFormed() || null; return { res: r, expect: valid ? "ok" : "refused" }; } },
+    "renameBuild:fuzz": { m: "sessionUi", run: async (W, m, R) => { const [cls, t] = R.pick([...TEXT, ...WRONG]); m.lastFuzz = cls; const id = R.pick([m.sid, "short", "../../etc", "a".repeat(80), m.sid]); const r = await W.msg({ type: "renameBuild", id, name: t }); const valid = /^[A-Za-z0-9-]{8,64}$/.test(id); if (valid && id === m.sid) m.name = (typeof t === "string" ? t : typeof t === "number" || typeof t === "boolean" ? String(t) : "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40).toWellFormed() || null; return { res: r, expect: valid ? "ok" : "refused" }; } },
     dismissRisk: { m: "sessionUi", run: async (W, m, R) => { const r = await W.msg({ type: "dismissRisk", id: R.pick([m.sid, "nope-nope-nope"]) }); return { res: r, expect: "ok" }; } },
     hideIdle: { m: "sessionUi", run: async (W) => { const r = await W.msg({ type: "hideIdle" }); return { res: r, expect: "ok" }; } },
     "openBuild:known": { m: "sessionUi", run: async (W, m) => { const r = await W.msg({ type: "openBuild", cwd: W.proj, id: m.sid }); return { res: r, expect: "refused", check: () => !!(r.json?.result?.show || r.json?.result?.flash) || r.text }; } },
@@ -297,7 +299,7 @@ export async function runApiWalk({ B, R, steps = 120, seq = null, cfg, record, c
       const stateBefore = summarize(m);
       const buildBefore = new Map([...m.builds].map(([k, v]) => [k, buildLabel(v, m)]));
       let r;
-      try { r = await a.run(W, m, SR); } catch (e) { failures.push({ step, action: name, errors: [`action threw: ${e.message.slice(0, 300)}`] }); log.push({ a: name, s: sub }); break; }
+      try { r = await withTimeout(a.run(W, m, SR), 150_000, name); } catch (e) { failures.push({ step, action: name, errors: [`action threw: ${e.message.slice(0, 300)}`] }); log.push({ a: name, s: sub }); break; }
       if (m.pendingEvent) { await sleep(450); m.pendingEvent = false; }
       log.push({ a: name, s: sub });
       if (a.m === "build") { const tb = r.b; const from = tb ? (tb.was ?? buildBefore.get(tb.dir) ?? "none") : "none"; record?.transition("build", from, name, tb && m.builds.has(tb.dir) ? buildLabel(m.builds.get(tb.dir), m) : from); }
@@ -424,7 +426,7 @@ export async function runBuildPaths({ B, paths, record }) {
           const gone = [...m.builds.values()].filter((b) => b.state === "removed").pop();
           const res = await W.msg({ type: name === "reviewBuild" ? "reviewBuild" : name, dir: gone.dir, branch: gone.branch });
           r = { res, expect: "refused", check: () => /isn't one of this project's side builds/.test(res.text) || res.text.slice(0, 120) };
-        } else r = await A[name].run(W, m, R0);
+        } else r = await withTimeout(A[name].run(W, m, R0), 150_000, name);
         if (m.pendingEvent) { await sleep(400); m.pendingEvent = false; }
         const errs = [];
         if (r.res && (r.res.status >= 500 || r.res.status === -1)) errs.push(`HTTP ${r.res.status}`);
@@ -468,19 +470,19 @@ export async function runBuildTransitions({ B, record, only = null }) {
       for (const a of actions.filter((x) => buildFeasible(st, x))) {
         tidy();
         let ok = true;
-        for (const p of prefix) { const r = await A[p].run(W, m, R0); if (r.check && r.check() !== true) { ok = false; failures.push({ state: st, action: a, errors: [`reaching ${st}: ${p}: ${r.check()}`] }); break; } }
+        for (const p of prefix) { const r = await withTimeout(A[p].run(W, m, R0), 150_000, p); if (r.check && r.check() !== true) { ok = false; failures.push({ state: st, action: a, errors: [`reaching ${st}: ${p}: ${r.check()}`] }); break; } }
         if (!ok) continue;
         const live = [...m.builds.values()].filter((b) => b.state !== "removed").pop();
         const now = live ? buildLabel(live, m) : st === "removed" ? "removed" : "none";
         if (now !== st) { failures.push({ state: st, action: a, errors: [`prefix ${prefix.join(" → ")} reached ${now}, not ${st}`] }); continue; }
         const before = fingerprint(W);
         if (A[a].pre && !A[a].pre(m)) continue;
-        const r = await A[a].run(W, m, R0); ran++;
+        let r; try { r = await withTimeout(A[a].run(W, m, R0), 150_000, a); } catch (e) { failures.push({ state: st, action: a, errors: [e.message] }); continue; } ran++;
         const errs = [];
         if (r.res && (r.res.status >= 500 || r.res.status === -1)) errs.push(`HTTP ${r.res.status}`);
         if (r.check) { const c = r.check(); if (c !== true) errs.push(c); }
         if (r.expect === "refused" && fingerprint(W) !== before) errs.push(`should change nothing: ${diffFp(before, fingerprint(W))}`);
-        errs.push(...(await checkServer(W, m)));
+        errs.push(...(await withTimeout(checkServer(W, m), 120_000, "checks").catch((e) => [e.message])));
         const after = r.b?.dir && m.builds.has(r.b.dir) ? buildLabel(m.builds.get(r.b.dir), m) : live && m.builds.has(live.dir) ? buildLabel(m.builds.get(live.dir), m) : st;
         record?.transition("build", st, a, after);
         if (errs.length) failures.push({ state: st, action: a, errors: errs });

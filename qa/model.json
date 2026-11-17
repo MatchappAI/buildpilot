@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-17T06:12:51.434Z",
+  "generated": "2026-11-17T15:48:48.948Z",
   "machines": {
     "session": {
       "states": [
@@ -92,13 +92,15 @@
         "cli:done",
         "cli:review"
       ],
-      "feasibleTransitions": 96,
+      "feasibleTransitions": 92,
       "infeasible": [
         "none|edit",
         "none|commitInBuild",
         "none|makeConflict",
         "none|fixConflict",
         "none|breakTests",
+        "none|cli:merge",
+        "none|cli:done",
         "none|cli:review",
         "clean|newBuild",
         "clean|cli:new",
@@ -122,6 +124,8 @@
         "removed|makeConflict",
         "removed|fixConflict",
         "removed|breakTests",
+        "removed|cli:merge",
+        "removed|cli:done",
         "removed|cli:review",
         "unsaved+conflict|newBuild",
         "unsaved+conflict|cli:new",
@@ -377,6 +381,6 @@
     "machines": 7,
     "states": 55,
     "actions": 142,
-    "feasibleTransitions": 538
+    "feasibleTransitions": 534
   }
 }

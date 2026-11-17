@@ -215,7 +215,8 @@ export function buildName(engine: Engine, sessionId: string): string | null {
   return typeof v === "string" && v ? v : null;
 }
 export function setBuildName(engine: Engine, sessionId: string, name: string): void {
-  const n = name.replace(/\s+/g, " ").trim().slice(0, 40);
+  // Control characters (NUL cut the name short in the database; escape codes would recolour a terminal) become spaces.
+  const n = name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
   if (!n) engine.store.run("DELETE FROM notes WHERE project_id = ? AND key = ?", [NAMES_SCOPE, `name:${sessionId}`]);
   else engine.store.run("INSERT INTO notes (project_id, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [NAMES_SCOPE, `name:${sessionId}`, n, Date.now()]);
 }

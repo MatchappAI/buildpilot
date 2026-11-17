@@ -13,7 +13,8 @@ export function buildFeasible(s, a) {
   if (a === "breakTests") return live(s) && !s.endsWith("+failing");
   if (a === "commitInBuild") return s.startsWith("unsaved");
   if (a === "fixConflict") return s === "saved+conflict";
-  if (a === "cli:review") return live(s);
+  // The CLI takes a build NAME: with no build there is nothing to name (unknown names are in the CLI matrix: bp merge nope).
+  if (a === "cli:review" || a === "cli:merge" || a === "cli:done") return live(s);
   return true; // review / merge / force / cli:merge / remove / cli:done: from any state (unknown or removed folders are refused)
 }
 

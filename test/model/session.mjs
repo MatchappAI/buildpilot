@@ -174,7 +174,7 @@ export async function runSessionWalk({ harness, R, steps = 300, seq = null, sess
       } else if (a.rename) {
         const nm = SR.pick(["checkout", "  spaced   out  ", "", "x".repeat(60), "<b>bold</b>", "日本語 🚀"]);
         W.H.setBuildName(W.engine, id, nm);
-        const norm = nm.replace(/\s+/g, " ").trim().slice(0, 40);
+        const norm = nm.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
         rec.name = norm || null;
       } else {
         const pl = payloadFor(name, a, rec, { id, cwd: W.proj, now, R: SR, step });

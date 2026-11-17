@@ -1,20 +1,25 @@
 {
  "seed": 1,
- "seeds": 1,
+ "seeds": 3,
  "layers": [
-  "api"
+  "transitions"
  ],
- "startedAt": "2026-11-17T05:56:30.908Z",
+ "startedAt": "2026-11-17T15:25:55.258Z",
  "steps": {
-  "api": 180
+  "transitions": 92
  },
  "failures": [],
  "shrunk": [],
- "suites": {},
+ "suites": {
+  "buildTransitions": {
+   "ran": 92,
+   "failures": 0
+  }
+ },
  "coverage": {
   "session": {
    "transitions": {
-    "covered": 3,
+    "covered": 0,
     "feasible": 297,
     "missing": [
      "absent|SessionStart:startup",
@@ -108,6 +113,7 @@
      "idle|RepeatLater",
      "idle|Malformed",
      "idle|Quiet3h",
+     "idle|hideIdle",
      "idle|rename",
      "running|SessionStart:startup",
      "running|SessionStart:resume",
@@ -141,6 +147,7 @@
      "running|RepeatLater",
      "running|Malformed",
      "running|Quiet3h",
+     "running|hideIdle",
      "running|rename",
      "awaiting_approval|SessionStart:startup",
      "awaiting_approval|SessionStart:resume",
@@ -174,6 +181,7 @@
      "awaiting_approval|RepeatLater",
      "awaiting_approval|Malformed",
      "awaiting_approval|Quiet3h",
+     "awaiting_approval|hideIdle",
      "awaiting_approval|rename",
      "blocked|SessionStart:startup",
      "blocked|SessionStart:resume",
@@ -314,137 +322,38 @@
     ]
    },
    "pairs": {
-    "covered": 46,
+    "covered": 0,
     "of": 1156
    },
-   "unmodelled": [
-    "running|resumeBuild:known",
-    "running|openBuild:unknown",
-    "running|openBuild:known",
-    "running|startFresh",
-    "running|resumeBuild:injection",
-    "running|undoFile:unknown",
-    "running|whoChanged:fuzz",
-    "running|claudeEvent",
-    "awaiting_approval|openBuild:known",
-    "awaiting_approval|undoFile:unknown",
-    "awaiting_approval|dismissRisk",
-    "awaiting_approval|resumeBuild:injection",
-    "awaiting_approval|resumeBuild:known",
-    "running|dismissRisk",
-    "awaiting_approval|renameBuild:fuzz",
-    "awaiting_approval|whoChanged:fuzz",
-    "awaiting_approval|openBuild:unknown",
-    "awaiting_approval|claudeEvent",
-    "idle|startFresh",
-    "idle|resumeBuild:known",
-    "idle|claudeEvent",
-    "idle|undoFile:unknown",
-    "running|renameBuild:fuzz"
-   ]
+   "unmodelled": []
   },
   "build": {
    "transitions": {
-    "covered": 13,
+    "covered": 92,
     "feasible": 96,
     "missing": [
-     "none|mergeBuild",
      "none|cli:merge",
      "none|cli:done",
-     "clean|makeConflict",
-     "clean|breakTests",
-     "unsaved|edit",
-     "unsaved|commitInBuild",
-     "unsaved|makeConflict",
-     "unsaved|breakTests",
-     "unsaved|reviewBuild",
-     "unsaved|mergeBuild",
-     "unsaved|mergeBuild:force",
-     "unsaved|cli:merge",
-     "unsaved|removeBuild",
-     "unsaved|cli:done",
-     "unsaved|cli:review",
-     "saved|edit",
-     "saved|makeConflict",
-     "saved|breakTests",
-     "saved|reviewBuild",
-     "saved|mergeBuild",
-     "saved|mergeBuild:force",
-     "saved|cli:merge",
-     "saved|removeBuild",
-     "saved|cli:done",
-     "saved|cli:review",
-     "merged|edit",
-     "merged|makeConflict",
-     "merged|breakTests",
-     "merged|reviewBuild",
-     "merged|mergeBuild",
-     "merged|mergeBuild:force",
-     "merged|cli:merge",
-     "merged|removeBuild",
-     "merged|cli:done",
-     "merged|cli:review",
-     "removed|reviewBuild",
-     "removed|mergeBuild",
-     "removed|mergeBuild:force",
      "removed|cli:merge",
-     "removed|removeBuild",
-     "removed|cli:done",
-     "unsaved+conflict|edit",
-     "unsaved+conflict|commitInBuild",
-     "unsaved+conflict|makeConflict",
-     "unsaved+conflict|breakTests",
-     "unsaved+conflict|reviewBuild",
-     "unsaved+conflict|mergeBuild",
-     "unsaved+conflict|mergeBuild:force",
-     "unsaved+conflict|cli:merge",
-     "unsaved+conflict|removeBuild",
-     "unsaved+conflict|cli:done",
-     "unsaved+conflict|cli:review",
-     "saved+conflict|edit",
-     "saved+conflict|makeConflict",
-     "saved+conflict|fixConflict",
-     "saved+conflict|breakTests",
-     "saved+conflict|reviewBuild",
-     "saved+conflict|mergeBuild",
-     "saved+conflict|mergeBuild:force",
-     "saved+conflict|cli:merge",
-     "saved+conflict|removeBuild",
-     "saved+conflict|cli:done",
-     "saved+conflict|cli:review",
-     "unsaved+failing|edit",
-     "unsaved+failing|commitInBuild",
-     "unsaved+failing|makeConflict",
-     "unsaved+failing|reviewBuild",
-     "unsaved+failing|mergeBuild",
-     "unsaved+failing|mergeBuild:force",
-     "unsaved+failing|cli:merge",
-     "unsaved+failing|removeBuild",
-     "unsaved+failing|cli:done",
-     "unsaved+failing|cli:review",
-     "saved+failing|edit",
-     "saved+failing|makeConflict",
-     "saved+failing|reviewBuild",
-     "saved+failing|mergeBuild",
-     "saved+failing|mergeBuild:force",
-     "saved+failing|cli:merge",
-     "saved+failing|removeBuild",
-     "saved+failing|cli:done",
-     "saved+failing|cli:review"
+     "removed|cli:done"
     ]
    },
    "pairs": {
-    "covered": 25,
+    "covered": 0,
     "of": 196
    },
    "unmodelled": []
   },
   "plan": {
    "transitions": {
-    "covered": 13,
+    "covered": 0,
     "feasible": 46,
     "missing": [
+     "free|buildPrompt",
      "free|promptUsed",
+     "free|enterLicense:valid",
+     "free|enterLicense:expired",
+     "free|enterLicense:forged",
      "free|enterLicense:fuzz",
      "free|upgrade",
      "free-exhausted|buildPrompt",
@@ -461,6 +370,7 @@
      "trial|enterLicense:forged",
      "trial|enterLicense:fuzz",
      "trial|upgrade",
+     "trial|trialEnds",
      "trial-ending|buildPrompt",
      "trial-ending|promptUsed",
      "trial-ending|enterLicense:valid",
@@ -469,9 +379,17 @@
      "trial-ending|enterLicense:fuzz",
      "trial-ending|upgrade",
      "trial-ending|trialEnds",
+     "licensed|buildPrompt",
+     "licensed|promptUsed",
+     "licensed|enterLicense:valid",
+     "licensed|enterLicense:expired",
+     "licensed|enterLicense:forged",
+     "licensed|enterLicense:fuzz",
+     "licensed|upgrade",
      "licensed|trialEnds",
      "not-sellable|buildPrompt",
      "not-sellable|promptUsed",
+     "not-sellable|enterLicense:valid",
      "not-sellable|enterLicense:expired",
      "not-sellable|enterLicense:forged",
      "not-sellable|enterLicense:fuzz",
@@ -480,36 +398,49 @@
     ]
    },
    "pairs": {
-    "covered": 27,
+    "covered": 0,
     "of": 64
    },
    "unmodelled": []
   },
   "connection": {
    "transitions": {
-    "covered": 9,
+    "covered": 0,
     "feasible": 16,
     "missing": [
+     "disconnected|connectAll",
+     "disconnected|disconnect",
+     "disconnected|fixDoubleHooks",
+     "disconnected|showConnectChanges",
      "connected|connectAll",
      "connected|disconnect",
      "connected|fixDoubleHooks",
      "connected|showConnectChanges",
+     "plugin|connectAll",
+     "plugin|disconnect",
+     "plugin|fixDoubleHooks",
+     "plugin|showConnectChanges",
      "plugin+hooks|connectAll",
+     "plugin+hooks|disconnect",
      "plugin+hooks|fixDoubleHooks",
      "plugin+hooks|showConnectChanges"
     ]
    },
    "pairs": {
-    "covered": 9,
+    "covered": 0,
     "of": 16
    },
    "unmodelled": []
   },
   "prefs": {
    "transitions": {
-    "covered": 4,
+    "covered": 0,
     "feasible": 12,
     "missing": [
+     "white/on|toggleTheme",
+     "white/on|toggleAlerts",
+     "white/off|toggleTheme",
+     "white/off|toggleAlerts",
      "auto/on|toggleTheme",
      "auto/on|toggleAlerts",
      "auto/off|toggleTheme",
@@ -521,22 +452,104 @@
     ]
    },
    "pairs": {
-    "covered": 2,
+    "covered": 0,
     "of": 4
+   },
+   "unmodelled": []
+  },
+  "sessionUi": {
+   "transitions": {
+    "covered": 0,
+    "feasible": 59,
+    "missing": [
+     "absent|renameBuild:fuzz",
+     "absent|dismissRisk",
+     "absent|hideIdle",
+     "absent|openBuild:known",
+     "absent|openBuild:unknown",
+     "absent|resumeBuild:known",
+     "absent|resumeBuild:injection",
+     "absent|startFresh",
+     "absent|whoChanged:fuzz",
+     "absent|undoFile:unknown",
+     "absent|claudeEvent",
+     "running|renameBuild:fuzz",
+     "running|dismissRisk",
+     "running|hideIdle",
+     "running|openBuild:known",
+     "running|openBuild:unknown",
+     "running|resumeBuild:known",
+     "running|resumeBuild:injection",
+     "running|startFresh",
+     "running|whoChanged:fuzz",
+     "running|undoFile:unknown",
+     "running|undoFile:edited",
+     "running|claudeEvent",
+     "awaiting_approval|renameBuild:fuzz",
+     "awaiting_approval|dismissRisk",
+     "awaiting_approval|hideIdle",
+     "awaiting_approval|openBuild:known",
+     "awaiting_approval|openBuild:unknown",
+     "awaiting_approval|resumeBuild:known",
+     "awaiting_approval|resumeBuild:injection",
+     "awaiting_approval|startFresh",
+     "awaiting_approval|whoChanged:fuzz",
+     "awaiting_approval|undoFile:unknown",
+     "awaiting_approval|undoFile:edited",
+     "awaiting_approval|claudeEvent",
+     "idle|renameBuild:fuzz",
+     "idle|dismissRisk",
+     "idle|hideIdle",
+     "idle|openBuild:known",
+     "idle|openBuild:unknown",
+     "idle|resumeBuild:known",
+     "idle|resumeBuild:injection",
+     "idle|startFresh",
+     "idle|whoChanged:fuzz",
+     "idle|undoFile:unknown",
+     "idle|undoFile:edited",
+     "idle|claudeEvent",
+     "failed|renameBuild:fuzz",
+     "failed|dismissRisk",
+     "failed|hideIdle",
+     "failed|openBuild:known",
+     "failed|openBuild:unknown",
+     "failed|resumeBuild:known",
+     "failed|resumeBuild:injection",
+     "failed|startFresh",
+     "failed|whoChanged:fuzz",
+     "failed|undoFile:unknown",
+     "failed|undoFile:edited",
+     "failed|claudeEvent"
+    ]
+   },
+   "pairs": {
+    "covered": 0,
+    "of": 144
    },
    "unmodelled": []
   },
   "project": {
    "transitions": {
-    "covered": 10,
+    "covered": 0,
     "feasible": 12,
     "missing": [
      "clean|projects",
-     "clean|checkpoint"
+     "clean|selectProject:known",
+     "clean|selectProject:unknown",
+     "clean|checkpoint",
+     "clean|mainDirty",
+     "clean|cli:builds",
+     "dirty|projects",
+     "dirty|selectProject:known",
+     "dirty|selectProject:unknown",
+     "dirty|checkpoint",
+     "dirty|mainClean",
+     "dirty|cli:builds"
     ]
    },
    "pairs": {
-    "covered": 13,
+    "covered": 0,
     "of": 49
    },
    "unmodelled": []
@@ -588,511 +601,36 @@
    "screens": []
   },
   "fuzz": {
-   "inputClasses": 28,
+   "inputClasses": 0,
    "cli": 0,
    "plugin": 0,
    "integration": 0
   }
  },
- "seconds": 46,
- "totalSteps": 180,
+ "seconds": 1354,
+ "totalSteps": 92,
  "raw": {
   "transitions": {
-   "session": {
-    "running|resumeBuild:known": {
-     "n": 5,
-     "to": [
-      "running"
-     ]
-    },
-    "running|hideIdle": {
-     "n": 4,
-     "to": [
-      "running"
-     ]
-    },
-    "running|openBuild:unknown": {
-     "n": 4,
-     "to": [
-      "running"
-     ]
-    },
-    "running|openBuild:known": {
-     "n": 2,
-     "to": [
-      "running"
-     ]
-    },
-    "running|startFresh": {
-     "n": 3,
-     "to": [
-      "running"
-     ]
-    },
-    "running|resumeBuild:injection": {
-     "n": 5,
-     "to": [
-      "running"
-     ]
-    },
-    "running|undoFile:unknown": {
-     "n": 2,
-     "to": [
-      "running"
-     ]
-    },
-    "running|whoChanged:fuzz": {
-     "n": 3,
-     "to": [
-      "running"
-     ]
-    },
-    "running|claudeEvent": {
-     "n": 3,
-     "to": [
-      "awaiting_approval",
-      "running"
-     ]
-    },
-    "awaiting_approval|openBuild:known": {
-     "n": 1,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|undoFile:unknown": {
-     "n": 1,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|dismissRisk": {
-     "n": 2,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|resumeBuild:injection": {
-     "n": 2,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|resumeBuild:known": {
-     "n": 3,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "running|dismissRisk": {
-     "n": 2,
-     "to": [
-      "running"
-     ]
-    },
-    "awaiting_approval|renameBuild:fuzz": {
-     "n": 1,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|whoChanged:fuzz": {
-     "n": 1,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|hideIdle": {
-     "n": 1,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|openBuild:unknown": {
-     "n": 1,
-     "to": [
-      "awaiting_approval"
-     ]
-    },
-    "awaiting_approval|claudeEvent": {
-     "n": 1,
-     "to": [
-      "idle"
-     ]
-    },
-    "idle|startFresh": {
-     "n": 1,
-     "to": [
-      "idle"
-     ]
-    },
-    "idle|resumeBuild:known": {
-     "n": 1,
-     "to": [
-      "idle"
-     ]
-    },
-    "idle|hideIdle": {
-     "n": 3,
-     "to": [
-      "idle"
-     ]
-    },
-    "idle|claudeEvent": {
-     "n": 1,
-     "to": [
-      "idle"
-     ]
-    },
-    "idle|undoFile:unknown": {
-     "n": 1,
-     "to": [
-      "idle"
-     ]
-    },
-    "running|renameBuild:fuzz": {
-     "n": 2,
-     "to": [
-      "running"
-     ]
-    }
-   },
-   "project": {
-    "clean|cli:builds": {
-     "n": 2,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|mainDirty": {
-     "n": 3,
-     "to": [
-      "dirty"
-     ]
-    },
-    "dirty|cli:builds": {
-     "n": 1,
-     "to": [
-      "dirty"
-     ]
-    },
-    "dirty|checkpoint": {
-     "n": 2,
-     "to": [
-      "dirty"
-     ]
-    },
-    "dirty|selectProject:known": {
-     "n": 1,
-     "to": [
-      "dirty"
-     ]
-    },
-    "dirty|projects": {
-     "n": 1,
-     "to": [
-      "dirty"
-     ]
-    },
-    "clean|selectProject:known": {
-     "n": 2,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|selectProject:unknown": {
-     "n": 1,
-     "to": [
-      "clean"
-     ]
-    },
-    "dirty|selectProject:unknown": {
-     "n": 2,
-     "to": [
-      "dirty"
-     ]
-    },
-    "dirty|mainClean": {
-     "n": 1,
-     "to": [
-      "clean"
-     ]
-    }
-   },
-   "connection": {
-    "disconnected|disconnect": {
-     "n": 2,
-     "to": [
-      "disconnected"
-     ]
-    },
-    "disconnected|showConnectChanges": {
-     "n": 2,
-     "to": [
-      "disconnected"
-     ]
-    },
-    "disconnected|fixDoubleHooks": {
-     "n": 1,
-     "to": [
-      "disconnected"
-     ]
-    },
-    "disconnected|connectAll": {
-     "n": 1,
-     "to": [
-      "connected"
-     ]
-    },
-    "plugin|fixDoubleHooks": {
-     "n": 2,
-     "to": [
-      "plugin"
-     ]
-    },
-    "plugin|disconnect": {
-     "n": 2,
-     "to": [
-      "plugin"
-     ]
-    },
-    "plugin|connectAll": {
-     "n": 1,
-     "to": [
-      "plugin+hooks"
-     ]
-    },
-    "plugin+hooks|disconnect": {
-     "n": 1,
-     "to": [
-      "plugin"
-     ]
-    },
-    "plugin|showConnectChanges": {
-     "n": 1,
-     "to": [
-      "plugin"
-     ]
-    }
-   },
-   "plan": {
-    "licensed|upgrade": {
-     "n": 4,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|buildPrompt": {
-     "n": 6,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|enterLicense:expired": {
-     "n": 4,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|enterLicense:valid": {
-     "n": 3,
-     "to": [
-      "licensed"
-     ]
-    },
-    "not-sellable|enterLicense:valid": {
-     "n": 1,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|enterLicense:forged": {
-     "n": 2,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|enterLicense:fuzz": {
-     "n": 7,
-     "to": [
-      "licensed"
-     ]
-    },
-    "trial|trialEnds": {
-     "n": 1,
-     "to": [
-      "free"
-     ]
-    },
-    "free|enterLicense:expired": {
-     "n": 3,
-     "to": [
-      "free"
-     ]
-    },
-    "free|enterLicense:forged": {
-     "n": 2,
-     "to": [
-      "free"
-     ]
-    },
-    "free|buildPrompt": {
-     "n": 1,
-     "to": [
-      "free"
-     ]
-    },
-    "free|enterLicense:valid": {
-     "n": 1,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|promptUsed": {
-     "n": 1,
-     "to": [
-      "licensed"
-     ]
-    }
-   },
-   "env": {
-    "licensed|restartServer": {
-     "n": 4,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|raw:body": {
-     "n": 4,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|raw:unknownType": {
-     "n": 3,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|raw:wrongTypes": {
-     "n": 4,
-     "to": [
-      "licensed"
-     ]
-    },
-    "licensed|raw:auth": {
-     "n": 3,
-     "to": [
-      "licensed"
-     ]
-    },
-    "not-sellable|raw:wrongTypes": {
-     "n": 1,
-     "to": [
-      "not-sellable"
-     ]
-    },
-    "free|raw:auth": {
-     "n": 1,
-     "to": [
-      "free"
-     ]
-    },
-    "free|raw:body": {
-     "n": 1,
-     "to": [
-      "free"
-     ]
-    },
-    "free|raw:unknownType": {
-     "n": 1,
-     "to": [
-      "free"
-     ]
-    },
-    "free|restartServer": {
-     "n": 1,
-     "to": [
-      "free"
-     ]
-    }
-   },
-   "prefs": {
-    "white/on|toggleAlerts": {
-     "n": 2,
-     "to": [
-      "white/off"
-     ]
-    },
-    "white/off|toggleAlerts": {
-     "n": 1,
-     "to": [
-      "white/on"
-     ]
-    },
-    "white/on|toggleTheme": {
-     "n": 2,
-     "to": [
-      "auto/on"
-     ]
-    },
-    "white/off|toggleTheme": {
-     "n": 1,
-     "to": [
-      "auto/off"
-     ]
-    }
-   },
    "build": {
-    "none|reviewBuild": {
-     "n": 5,
+    "none|newBuild": {
+     "n": 1,
      "to": [
-      "none"
+      "clean"
      ]
     },
     "none|cli:new": {
-     "n": 4,
+     "n": 1,
      "to": [
       "clean"
      ]
     },
-    "none|newBuild": {
-     "n": 5,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|mergeBuild": {
-     "n": 2,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|removeBuild": {
-     "n": 3,
+    "none|reviewBuild": {
+     "n": 1,
      "to": [
       "removed"
      ]
     },
-    "clean|cli:review": {
-     "n": 2,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|cli:merge": {
-     "n": 2,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|reviewBuild": {
-     "n": 2,
-     "to": [
-      "clean"
-     ]
-    },
-    "clean|cli:done": {
+    "none|mergeBuild": {
      "n": 1,
      "to": [
       "removed"
@@ -1101,7 +639,13 @@
     "none|mergeBuild:force": {
      "n": 1,
      "to": [
-      "none"
+      "removed"
+     ]
+    },
+    "none|removeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
      ]
     },
     "clean|edit": {
@@ -1110,382 +654,519 @@
       "unsaved"
      ]
     },
+    "clean|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "clean|breakTests": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "clean|reviewBuild": {
+     "n": 1,
+     "to": [
+      "clean"
+     ]
+    },
+    "clean|mergeBuild": {
+     "n": 1,
+     "to": [
+      "clean"
+     ]
+    },
     "clean|mergeBuild:force": {
      "n": 1,
      "to": [
       "clean"
      ]
     },
-    "none|removeBuild": {
+    "clean|cli:merge": {
      "n": 1,
      "to": [
-      "none"
+      "clean"
+     ]
+    },
+    "clean|removeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "clean|cli:done": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "clean|cli:review": {
+     "n": 1,
+     "to": [
+      "clean"
+     ]
+    },
+    "unsaved|edit": {
+     "n": 1,
+     "to": [
+      "unsaved"
+     ]
+    },
+    "unsaved|commitInBuild": {
+     "n": 1,
+     "to": [
+      "saved"
+     ]
+    },
+    "unsaved|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "unsaved|breakTests": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "unsaved|reviewBuild": {
+     "n": 1,
+     "to": [
+      "unsaved"
+     ]
+    },
+    "unsaved|mergeBuild": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "unsaved|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "unsaved|cli:merge": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "unsaved|removeBuild": {
+     "n": 1,
+     "to": [
+      "unsaved"
+     ]
+    },
+    "unsaved|cli:done": {
+     "n": 1,
+     "to": [
+      "unsaved"
+     ]
+    },
+    "unsaved|cli:review": {
+     "n": 1,
+     "to": [
+      "unsaved"
+     ]
+    },
+    "saved|edit": {
+     "n": 1,
+     "to": [
+      "unsaved"
+     ]
+    },
+    "saved|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "saved|breakTests": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "saved|reviewBuild": {
+     "n": 1,
+     "to": [
+      "saved"
+     ]
+    },
+    "saved|mergeBuild": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "saved|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "saved|cli:merge": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "saved|removeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "saved|cli:done": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "saved|cli:review": {
+     "n": 1,
+     "to": [
+      "saved"
+     ]
+    },
+    "merged|edit": {
+     "n": 1,
+     "to": [
+      "unsaved"
+     ]
+    },
+    "merged|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "merged|breakTests": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "merged|reviewBuild": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "merged|mergeBuild": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "merged|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "merged|cli:merge": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "merged|removeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "merged|cli:done": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "merged|cli:review": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "removed|reviewBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "removed|mergeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "removed|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "removed|removeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "unsaved+conflict|edit": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict"
+     ]
+    },
+    "unsaved+conflict|commitInBuild": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "unsaved+conflict|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "unsaved+conflict|breakTests": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict+failing"
+     ]
+    },
+    "unsaved+conflict|reviewBuild": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict"
+     ]
+    },
+    "unsaved+conflict|mergeBuild": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "unsaved+conflict|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "unsaved+conflict|cli:merge": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "unsaved+conflict|removeBuild": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict"
+     ]
+    },
+    "unsaved+conflict|cli:done": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict"
+     ]
+    },
+    "unsaved+conflict|cli:review": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict"
+     ]
+    },
+    "saved+conflict|edit": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict"
+     ]
+    },
+    "saved+conflict|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "saved+conflict|fixConflict": {
+     "n": 1,
+     "to": [
+      "saved"
+     ]
+    },
+    "saved+conflict|breakTests": {
+     "n": 1,
+     "to": [
+      "unsaved+conflict+failing"
+     ]
+    },
+    "saved+conflict|reviewBuild": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "saved+conflict|mergeBuild": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "saved+conflict|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "saved+conflict|cli:merge": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "saved+conflict|removeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "saved+conflict|cli:done": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "saved+conflict|cli:review": {
+     "n": 1,
+     "to": [
+      "saved+conflict"
+     ]
+    },
+    "unsaved+failing|edit": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "unsaved+failing|commitInBuild": {
+     "n": 1,
+     "to": [
+      "saved+failing"
+     ]
+    },
+    "unsaved+failing|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict+failing"
+     ]
+    },
+    "unsaved+failing|reviewBuild": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "unsaved+failing|mergeBuild": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "unsaved+failing|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "unsaved+failing|cli:merge": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "unsaved+failing|removeBuild": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "unsaved+failing|cli:done": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "unsaved+failing|cli:review": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "saved+failing|edit": {
+     "n": 1,
+     "to": [
+      "unsaved+failing"
+     ]
+    },
+    "saved+failing|makeConflict": {
+     "n": 1,
+     "to": [
+      "saved+conflict+failing"
+     ]
+    },
+    "saved+failing|reviewBuild": {
+     "n": 1,
+     "to": [
+      "saved+failing"
+     ]
+    },
+    "saved+failing|mergeBuild": {
+     "n": 1,
+     "to": [
+      "saved+failing"
+     ]
+    },
+    "saved+failing|mergeBuild:force": {
+     "n": 1,
+     "to": [
+      "merged"
+     ]
+    },
+    "saved+failing|cli:merge": {
+     "n": 1,
+     "to": [
+      "saved+failing"
+     ]
+    },
+    "saved+failing|removeBuild": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "saved+failing|cli:done": {
+     "n": 1,
+     "to": [
+      "removed"
+     ]
+    },
+    "saved+failing|cli:review": {
+     "n": 1,
+     "to": [
+      "saved+failing"
      ]
     }
    }
   },
-  "pairs": {
-   "any": {
-    "resumeBuild:known>cli:builds": 1,
-    "cli:builds>disconnect": 1,
-    "disconnect>upgrade": 1,
-    "upgrade>restartServer": 1,
-    "restartServer>hideIdle": 1,
-    "hideIdle>raw:body": 1,
-    "raw:body>toggleAlerts": 1,
-    "toggleAlerts>toggleAlerts": 1,
-    "toggleAlerts>raw:unknownType": 1,
-    "raw:unknownType>openBuild:unknown": 1,
-    "openBuild:unknown>mainDirty": 1,
-    "mainDirty>resumeBuild:known": 1,
-    "resumeBuild:known>raw:body": 1,
-    "raw:body>openBuild:unknown": 1,
-    "openBuild:unknown>openBuild:unknown": 1,
-    "openBuild:unknown>openBuild:known": 1,
-    "openBuild:known>buildPrompt": 1,
-    "buildPrompt>enterLicense:expired": 1,
-    "enterLicense:expired>startFresh": 1,
-    "startFresh>showConnectChanges": 1,
-    "showConnectChanges>showConnectChanges": 1,
-    "showConnectChanges>startFresh": 1,
-    "startFresh>raw:wrongTypes": 1,
-    "raw:wrongTypes>resumeBuild:injection": 1,
-    "resumeBuild:injection>upgrade": 1,
-    "upgrade>reviewBuild": 1,
-    "reviewBuild>upgrade": 1,
-    "upgrade>undoFile:unknown": 1,
-    "undoFile:unknown>disconnect": 1,
-    "disconnect>reviewBuild": 1,
-    "reviewBuild>raw:wrongTypes": 2,
-    "raw:wrongTypes>whoChanged:fuzz": 1,
-    "whoChanged:fuzz>whoChanged:fuzz": 1,
-    "whoChanged:fuzz>cli:new": 1,
-    "cli:new>newBuild": 1,
-    "newBuild>cli:builds": 1,
-    "cli:builds>raw:auth": 1,
-    "raw:auth>fixDoubleHooks": 1,
-    "fixDoubleHooks>claudeEvent": 1,
-    "claudeEvent>newBuild": 1,
-    "newBuild>cli:new": 1,
-    "cli:new>mergeBuild": 1,
-    "mergeBuild>openBuild:known": 1,
-    "openBuild:known>checkpoint": 1,
-    "checkpoint>undoFile:unknown": 1,
-    "undoFile:unknown>dismissRisk": 1,
-    "dismissRisk>enterLicense:valid": 1,
-    "enterLicense:valid>buildPrompt": 1,
-    "buildPrompt>enterLicense:valid": 2,
-    "enterLicense:valid>removeBuild": 1,
-    "removeBuild>connectAll": 1,
-    "connectAll>cli:review": 1,
-    "cli:review>selectProject:known": 1,
-    "selectProject:known>resumeBuild:injection": 1,
-    "resumeBuild:injection>resumeBuild:injection": 2,
-    "resumeBuild:injection>checkpoint": 1,
-    "checkpoint>cli:merge": 1,
-    "cli:merge>toggleTheme": 1,
-    "toggleTheme>resumeBuild:known": 1,
-    "raw:wrongTypes>enterLicense:valid": 1,
-    "enterLicense:valid>enterLicense:forged": 1,
-    "enterLicense:forged>upgrade": 1,
-    "upgrade>raw:unknownType": 1,
-    "raw:unknownType>raw:unknownType": 1,
-    "raw:unknownType>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>dismissRisk": 1,
-    "dismissRisk>dismissRisk": 1,
-    "dismissRisk>startFresh": 1,
-    "startFresh>openBuild:known": 1,
-    "openBuild:known>raw:auth": 1,
-    "raw:auth>reviewBuild": 1,
-    "raw:wrongTypes>hideIdle": 1,
-    "hideIdle>claudeEvent": 1,
-    "claudeEvent>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>enterLicense:fuzz": 2,
-    "enterLicense:fuzz>renameBuild:fuzz": 1,
-    "renameBuild:fuzz>restartServer": 1,
-    "restartServer>toggleTheme": 1,
-    "toggleTheme>dismissRisk": 1,
-    "dismissRisk>raw:wrongTypes": 1,
-    "raw:wrongTypes>newBuild": 1,
-    "newBuild>reviewBuild": 2,
-    "reviewBuild>enterLicense:expired": 1,
-    "enterLicense:expired>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>whoChanged:fuzz": 1,
-    "whoChanged:fuzz>raw:body": 1,
-    "raw:body>resumeBuild:known": 1,
-    "resumeBuild:known>hideIdle": 1,
-    "hideIdle>resumeBuild:known": 1,
-    "resumeBuild:known>openBuild:unknown": 1,
-    "openBuild:unknown>cli:review": 1,
-    "cli:review>raw:body": 1,
-    "raw:body>claudeEvent": 1,
-    "claudeEvent>cli:done": 1,
-    "cli:done>startFresh": 1,
-    "startFresh>mainDirty": 1,
-    "mainDirty>projects": 1,
-    "projects>buildPrompt": 1,
-    "buildPrompt>buildPrompt": 1,
-    "buildPrompt>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>resumeBuild:known": 1,
-    "resumeBuild:known>reviewBuild": 1,
-    "reviewBuild>reviewBuild": 1,
-    "reviewBuild>raw:auth": 1,
-    "raw:auth>hideIdle": 1,
-    "hideIdle>mergeBuild:force": 1,
-    "mergeBuild:force>enterLicense:forged": 1,
-    "enterLicense:forged>hideIdle": 1,
-    "hideIdle>cli:new": 1,
-    "cli:new>claudeEvent": 1,
-    "claudeEvent>hideIdle": 1,
-    "hideIdle>undoFile:unknown": 1,
-    "undoFile:unknown>edit": 1,
-    "edit>buildPrompt": 1,
-    "buildPrompt>restartServer": 1,
-    "restartServer>restartServer": 1,
-    "trialEnds>enterLicense:expired": 1,
-    "enterLicense:expired>fixDoubleHooks": 1,
-    "fixDoubleHooks>fixDoubleHooks": 1,
-    "fixDoubleHooks>renameBuild:fuzz": 1,
-    "renameBuild:fuzz>renameBuild:fuzz": 1,
-    "renameBuild:fuzz>resumeBuild:injection": 1,
-    "resumeBuild:injection>raw:auth": 1,
-    "raw:auth>selectProject:known": 1,
-    "selectProject:known>selectProject:unknown": 1,
-    "selectProject:unknown>enterLicense:forged": 1,
-    "enterLicense:forged>enterLicense:expired": 1,
-    "enterLicense:expired>enterLicense:expired": 1,
-    "enterLicense:expired>raw:body": 1,
-    "raw:body>disconnect": 1,
-    "disconnect>claudeEvent": 1,
-    "claudeEvent>raw:unknownType": 1,
-    "raw:unknownType>resumeBuild:known": 1,
-    "resumeBuild:known>restartServer": 1,
-    "restartServer>undoFile:unknown": 1,
-    "undoFile:unknown>toggleAlerts": 1,
-    "toggleAlerts>selectProject:known": 1,
-    "selectProject:known>resumeBuild:known": 1,
-    "resumeBuild:known>mainDirty": 1,
-    "mainDirty>enterLicense:forged": 1,
-    "enterLicense:forged>newBuild": 1,
-    "reviewBuild>hideIdle": 1,
-    "hideIdle>connectAll": 1,
-    "connectAll>buildPrompt": 1,
-    "enterLicense:valid>toggleTheme": 1,
-    "toggleTheme>mergeBuild": 1,
-    "mergeBuild>mergeBuild:force": 1,
-    "mergeBuild:force>enterLicense:valid": 1,
-    "enterLicense:valid>disconnect": 1,
-    "disconnect>resumeBuild:injection": 1,
-    "resumeBuild:injection>openBuild:unknown": 1,
-    "openBuild:unknown>removeBuild": 1,
-    "removeBuild>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>promptUsed": 1,
-    "promptUsed>resumeBuild:injection": 1,
-    "resumeBuild:injection>enterLicense:expired": 1,
-    "enterLicense:expired>selectProject:unknown": 1,
-    "selectProject:unknown>cli:new": 1,
-    "cli:new>removeBuild": 1,
-    "removeBuild>removeBuild": 1,
-    "removeBuild>buildPrompt": 1,
-    "buildPrompt>hideIdle": 1,
-    "hideIdle>selectProject:unknown": 1,
-    "selectProject:unknown>mainClean": 1,
-    "mainClean>showConnectChanges": 1,
-    "showConnectChanges>whoChanged:fuzz": 1,
-    "whoChanged:fuzz>disconnect": 1,
-    "disconnect>cli:builds": 1,
-    "cli:builds>enterLicense:expired": 1,
-    "enterLicense:expired>resumeBuild:known": 1,
-    "resumeBuild:known>newBuild": 1,
-    "newBuild>cli:merge": 1
-   },
-   "session": {
-    "resumeBuild:known>hideIdle": 4,
-    "hideIdle>openBuild:unknown": 1,
-    "openBuild:unknown>resumeBuild:known": 1,
-    "resumeBuild:known>openBuild:unknown": 2,
-    "openBuild:unknown>openBuild:unknown": 1,
-    "openBuild:unknown>openBuild:known": 1,
-    "openBuild:known>startFresh": 1,
-    "startFresh>startFresh": 1,
-    "startFresh>resumeBuild:injection": 1,
-    "resumeBuild:injection>undoFile:unknown": 1,
-    "undoFile:unknown>whoChanged:fuzz": 1,
-    "whoChanged:fuzz>whoChanged:fuzz": 1,
-    "whoChanged:fuzz>claudeEvent": 1,
-    "claudeEvent>openBuild:known": 1,
-    "openBuild:known>undoFile:unknown": 1,
-    "undoFile:unknown>dismissRisk": 1,
-    "dismissRisk>resumeBuild:injection": 1,
-    "resumeBuild:injection>resumeBuild:injection": 2,
-    "resumeBuild:injection>resumeBuild:known": 1,
-    "dismissRisk>dismissRisk": 1,
-    "dismissRisk>startFresh": 1,
-    "startFresh>openBuild:known": 1,
-    "openBuild:known>hideIdle": 1,
-    "hideIdle>claudeEvent": 2,
-    "claudeEvent>renameBuild:fuzz": 1,
-    "renameBuild:fuzz>dismissRisk": 1,
-    "dismissRisk>whoChanged:fuzz": 1,
-    "whoChanged:fuzz>resumeBuild:known": 2,
-    "hideIdle>resumeBuild:known": 1,
-    "openBuild:unknown>claudeEvent": 1,
-    "claudeEvent>startFresh": 1,
-    "startFresh>resumeBuild:known": 1,
-    "hideIdle>hideIdle": 1,
-    "claudeEvent>hideIdle": 1,
-    "hideIdle>undoFile:unknown": 1,
-    "renameBuild:fuzz>renameBuild:fuzz": 1,
-    "renameBuild:fuzz>resumeBuild:injection": 1,
-    "resumeBuild:injection>claudeEvent": 1,
-    "claudeEvent>resumeBuild:known": 1,
-    "resumeBuild:known>undoFile:unknown": 1,
-    "undoFile:unknown>resumeBuild:known": 1,
-    "hideIdle>resumeBuild:injection": 1,
-    "resumeBuild:injection>openBuild:unknown": 1,
-    "openBuild:unknown>resumeBuild:injection": 1,
-    "resumeBuild:injection>hideIdle": 1,
-    "hideIdle>whoChanged:fuzz": 1
-   },
-   "env": {
-    "restartServer>raw:body": 1,
-    "raw:body>raw:unknownType": 2,
-    "raw:unknownType>raw:body": 1,
-    "raw:body>raw:wrongTypes": 1,
-    "raw:wrongTypes>raw:wrongTypes": 1,
-    "raw:wrongTypes>raw:auth": 1,
-    "raw:wrongTypes>raw:unknownType": 1,
-    "raw:unknownType>raw:unknownType": 1,
-    "raw:unknownType>raw:auth": 1,
-    "raw:auth>raw:wrongTypes": 1,
-    "raw:wrongTypes>restartServer": 1,
-    "restartServer>raw:wrongTypes": 1,
-    "raw:wrongTypes>raw:body": 1,
-    "raw:body>raw:body": 1,
-    "raw:body>raw:auth": 1,
-    "raw:auth>restartServer": 1,
-    "restartServer>restartServer": 1,
-    "raw:auth>raw:body": 1,
-    "raw:unknownType>restartServer": 1
-   },
-   "prefs": {
-    "toggleAlerts>toggleAlerts": 1,
-    "toggleAlerts>toggleTheme": 2
-   },
-   "project": {
-    "cli:builds>mainDirty": 1,
-    "mainDirty>cli:builds": 1,
-    "cli:builds>checkpoint": 1,
-    "checkpoint>selectProject:known": 1,
-    "selectProject:known>checkpoint": 1,
-    "mainDirty>projects": 1,
-    "selectProject:known>selectProject:unknown": 1,
-    "selectProject:unknown>selectProject:known": 1,
-    "selectProject:known>mainDirty": 1,
-    "mainDirty>selectProject:unknown": 1,
-    "selectProject:unknown>selectProject:unknown": 1,
-    "selectProject:unknown>mainClean": 1,
-    "mainClean>cli:builds": 1
-   },
-   "plan": {
-    "upgrade>buildPrompt": 1,
-    "buildPrompt>enterLicense:expired": 2,
-    "enterLicense:expired>upgrade": 1,
-    "upgrade>upgrade": 1,
-    "upgrade>enterLicense:valid": 1,
-    "enterLicense:valid>buildPrompt": 1,
-    "buildPrompt>enterLicense:valid": 2,
-    "enterLicense:valid>enterLicense:forged": 1,
-    "enterLicense:forged>upgrade": 1,
-    "upgrade>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>enterLicense:fuzz": 3,
-    "enterLicense:fuzz>enterLicense:expired": 1,
-    "enterLicense:expired>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>buildPrompt": 1,
-    "buildPrompt>buildPrompt": 1,
-    "buildPrompt>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>enterLicense:forged": 1,
-    "enterLicense:forged>buildPrompt": 2,
-    "trialEnds>enterLicense:expired": 1,
-    "enterLicense:expired>enterLicense:forged": 2,
-    "enterLicense:forged>enterLicense:expired": 1,
-    "enterLicense:expired>enterLicense:expired": 1,
-    "enterLicense:valid>enterLicense:valid": 1,
-    "enterLicense:valid>enterLicense:fuzz": 1,
-    "enterLicense:fuzz>promptUsed": 1,
-    "promptUsed>enterLicense:expired": 1,
-    "enterLicense:expired>buildPrompt": 1
-   },
-   "connection": {
-    "disconnect>showConnectChanges": 2,
-    "showConnectChanges>showConnectChanges": 1,
-    "showConnectChanges>disconnect": 2,
-    "disconnect>fixDoubleHooks": 1,
-    "fixDoubleHooks>connectAll": 1,
-    "fixDoubleHooks>fixDoubleHooks": 1,
-    "fixDoubleHooks>disconnect": 1,
-    "disconnect>connectAll": 1,
-    "connectAll>disconnect": 1
-   },
-   "build": {
-    "reviewBuild>reviewBuild": 2,
-    "reviewBuild>cli:new": 1,
-    "cli:new>newBuild": 1,
-    "newBuild>newBuild": 1,
-    "newBuild>cli:new": 1,
-    "cli:new>mergeBuild": 1,
-    "mergeBuild>removeBuild": 1,
-    "removeBuild>cli:review": 1,
-    "cli:review>cli:merge": 1,
-    "reviewBuild>newBuild": 1,
-    "newBuild>reviewBuild": 2,
-    "reviewBuild>cli:review": 1,
-    "cli:review>cli:done": 1,
-    "cli:done>reviewBuild": 1,
-    "reviewBuild>mergeBuild:force": 1,
-    "mergeBuild:force>cli:new": 1,
-    "cli:new>edit": 1,
-    "reviewBuild>mergeBuild": 1,
-    "mergeBuild>mergeBuild:force": 1,
-    "mergeBuild:force>removeBuild": 1,
-    "removeBuild>cli:new": 1,
-    "cli:new>removeBuild": 1,
-    "removeBuild>removeBuild": 1,
-    "removeBuild>newBuild": 1,
-    "newBuild>cli:merge": 1
-   }
-  },
-  "misc": {
-   "fuzz": {
-    "raw:body:array": 1,
-    "raw:body:truncated": 1,
-    "buildPrompt:like-wild": 1,
-    "raw:wrongTypes:bool": 2,
-    "raw:wrongTypes:nested": 1,
-    "whoChanged:fuzz:json": 1,
-    "whoChanged:fuzz:null": 1,
-    "newBuild:boundary-41": 2,
-    "newBuild:nul": 1,
-    "buildPrompt:attr": 1,
-    "raw:wrongTypes:array": 2,
-    "enterLicense:fuzz:control": 1,
-    "enterLicense:fuzz:apostrophe": 2,
-    "enterLicense:fuzz:backslash": 2,
-    "renameBuild:fuzz:number-like": 1,
-    "whoChanged:fuzz:control": 2,
-    "raw:body:not-json": 1,
-    "raw:body:string": 1,
-    "buildPrompt:long-300": 1,
-    "buildPrompt:one-char": 3,
-    "enterLicense:fuzz:rtl": 1,
-    "renameBuild:fuzz:path-traversal": 1,
-    "renameBuild:fuzz:quotes": 1,
-    "raw:body:null": 1,
-    "newBuild:empty": 1,
-    "enterLicense:fuzz:quotes": 1,
-    "buildPrompt:empty": 1,
-    "newBuild:long-300": 1
-   }
-  }
+  "pairs": {},
+  "misc": {}
  }
 }
