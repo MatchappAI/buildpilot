@@ -516,21 +516,38 @@ export class UiServer {
     const m = document.createElement("div"); m.className = "bp-modal"; m.innerHTML = '<div class="bp-box" role="dialog" aria-modal="true" aria-labelledby="bp-dlg-t">' + html.replace("<b>", '<b id="bp-dlg-t">') + "</div>";
     document.body.appendChild(m);
     const app = document.getElementById("app"); if (app) app.setAttribute("aria-hidden", "true");
-    const done = (v) => { m.remove(); if (app) app.removeAttribute("aria-hidden"); if (prev && prev.focus) prev.focus(); resolve(v); };
+    const opened = Date.now();
+    let closed = false;
+    const done = (v) => { if (closed) return; closed = true; document.removeEventListener("keydown", onKey); m.remove(); if (app && !document.querySelector(".bp-modal")) app.removeAttribute("aria-hidden"); if (prev && prev.focus && document.contains(prev)) prev.focus(); resolve(v); };
+    // Escape closes only the top dialog; the listener goes away with its dialog.
+    const onKey = (e) => { if (e.key === "Escape" && [...document.querySelectorAll(".bp-modal")].pop() === m) { e.preventDefault(); done(null); } };
     // keep Tab inside the dialog
     m.addEventListener("keydown", (e) => { if (e.key !== "Tab") return; const f = [...m.querySelectorAll("button, input, textarea, [href], [tabindex]:not([tabindex='-1'])")]; if (!f.length) return; const first = f[0], last = f[f.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } });
-    m.addEventListener("click", (e) => { if (e.target === m) done(null); });
-    document.addEventListener("keydown", function k(e) { if (e.key === "Escape") { document.removeEventListener("keydown", k); done(null); } });
+    // A click on the dimmed area closes it, but not the second click of a double click that opened it.
+    m.addEventListener("click", (e) => { if (e.target === m && Date.now() - opened > 500) done(null); });
+    document.addEventListener("keydown", onKey);
     onReady(m.querySelector(".bp-box"), done);
   });
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const ask = (title, detail, ok = "OK") => modal("<b>" + esc(title) + "</b><p>" + esc(detail) + '</p><div class="row"><button data-x>Cancel</button><button class="ok" data-ok>' + esc(ok) + "</button></div>", (b, done) => { b.querySelector("[data-x]").onclick = () => done(false); const o = b.querySelector("[data-ok]"); o.onclick = () => done(true); o.focus(); });
   const show = (text) => modal("<pre>" + esc(text) + '</pre><div class="row"><button class="ok" data-ok>Close</button></div>', (b, done) => { const o = b.querySelector("[data-ok]"); o.onclick = () => done(true); o.focus(); });
-  const input = (title, placeholder, password) => modal("<b>" + esc(title) + '</b><p><input type="' + (password ? "password" : "text") + '" placeholder="' + esc(placeholder) + '"></p><div class="row"><button data-x>Cancel</button><button class="ok" data-ok>OK</button></div>', (b, done) => { const i = b.querySelector("input"); i.focus(); i.onkeydown = (e) => { if (e.key === "Enter") done(i.value); }; b.querySelector("[data-x]").onclick = () => done(null); b.querySelector("[data-ok]").onclick = () => done(i.value); });
+  const input = (title, placeholder, password) => modal("<b>" + esc(title) + '</b><p><input type="' + (password ? "password" : "text") + '" placeholder="' + esc(placeholder) + '"></p><div class="row"><button data-x>Cancel</button><button class="ok" data-ok>OK</button></div>', (b, done) => { const i = b.querySelector("input"); i.focus(); i.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); done(i.value); } }; b.querySelector("[data-x]").onclick = () => done(null); b.querySelector("[data-ok]").onclick = () => done(i.value); });
   const pick = (title, items) => modal("<b>" + esc(title) + '</b><ul class="pick">' + items.map((x, n) => '<li><button type="button" data-n="' + n + '">' + esc(x.name) + ' <span style="color:#5f6368">' + esc(x.root) + "</span></button></li>").join("") + '</ul><div class="row"><button data-x>Cancel</button></div>', (b, done) => { b.querySelectorAll("[data-n]").forEach((el) => (el.onclick = () => done(items[+el.dataset.n]))); b.querySelector("[data-x]").onclick = () => done(null); const first = b.querySelector("[data-n]"); if (first) first.focus(); });
-  const post = async (m) => (await (await fetch("/api/msg", { method: "POST", headers: H, body: JSON.stringify(m) })).json()).result;
-  const toast = (text) => { const el = document.getElementById("flash"); if (el) { el.textContent = text; el.classList.add("on"); setTimeout(() => el.classList.remove("on"), 2600); } };
-  const pushState = async () => { try { const s = await (await fetch("/api/state", { headers: H })).json(); window.postMessage(s, "*"); } catch {} };
+  // If the BuildPilot server stops (bp ui closed, computer restarted), say so instead of showing old data as if it were live.
+  const offline = (down) => {
+    let el = document.getElementById("bp-offline");
+    if (!down) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement("div"); el.id = "bp-offline"; el.className = "offline"; el.setAttribute("role", "alert"); el.textContent = "BuildPilot stopped running, so this page isn't updating. Run bp ui in a terminal to open it again."; document.body.prepend(el); }
+  };
+  let fails = 0;
+  const post = async (m) => {
+    let r;
+    try { r = await fetch("/api/msg", { method: "POST", headers: H, body: JSON.stringify(m) }); } catch { offline(true); return { flash: "Couldn't reach BuildPilot. Nothing was changed." }; }
+    if (r.status === 401) { offline(true); return { flash: "This page has expired. Run bp ui to open a fresh one." }; }
+    try { const j = await r.json(); return r.ok ? j.result : { flash: "Something went wrong: " + String(j.error || r.status).slice(0, 120) }; } catch { return { flash: "Something went wrong. Try again." }; }
+  };
+  const toast = (text) => { const el = document.getElementById("flash"); if (el) { el.textContent = text; el.classList.add("on"); clearTimeout(window.__bpToast); window.__bpToast = setTimeout(() => el.classList.remove("on"), 2600); } const live = document.getElementById("live"); if (live) live.textContent = text; };
+  const pushState = async () => { try { const r = await fetch("/api/state", { headers: H }); if (!r.ok) throw 0; const s = await r.json(); fails = 0; offline(false); window.postMessage(s, "*"); } catch { if (++fails >= 2) offline(true); } };
   let st = {};
   window.acquireVsCodeApi = () => ({
     getState: () => { try { return JSON.parse(localStorage.getItem("bp-view") || "{}"); } catch { return st; } },

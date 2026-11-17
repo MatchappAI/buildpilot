@@ -320,3 +320,11 @@ button.link, .linkbtn, .b-act .link, .b-risk .link { min-height: 24px; padding-t
   .pencil, .chev { opacity: 1; }
 }
 .b-prog .part { white-space: nowrap; margin-right: 4px; }
+/* ---- 0.12.5 live QA ---- */
+/* Two actions in a row ("Start fresh" + "Go to tab") stack in their column instead of running over "chat 78% full". */
+@media (min-width: 521px) { .builds > li:not(.group):not(.quiet) > .b-act { flex-direction: column; align-items: flex-end; gap: 0; } }
+/* The test result gets its own line, so a wrapped line never starts with a stray dot. */
+.b-prog .part.proof { flex-basis: 100%; }
+/* Lost connection to the BuildPilot window server. */
+.offline { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); width: min(640px, calc(100% - 32px)); box-sizing: border-box; box-shadow: 0 6px 24px rgba(0,0,0,.12); z-index: 8; margin: 0; padding: 10px 14px; border-radius: 10px; background: #fdecea; color: #8a1c12; border: 1px solid #f5c2bc; font-size: 14px; }
+[aria-busy="true"] { opacity: .7; cursor: progress; }

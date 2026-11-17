@@ -7,7 +7,7 @@ import { guessGoal } from "../core/goal";
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 const vscode = acquireVsCodeApi();
 
-interface ViewState { request: string }
+interface ViewState { request: string; prompt?: string; built?: BuiltPrompt | null; builtFor?: string }
 const vs: ViewState = { request: "", ...((vscode.getState() as Partial<ViewState> | undefined) ?? {}) };
 const persist = () => vscode.setState(vs);
 
@@ -26,8 +26,9 @@ if (typeof matchMedia === "function") matchMedia("(prefers-color-scheme: dark)")
 let standalone = false;
 let alertsOn = true;
 const FREE = 20;
-let promptText = "";
-let built: BuiltPrompt | null = null;
+// The written prompt survives a reload (closing the window by mistake shouldn't lose your edits).
+let promptText = typeof vs.prompt === "string" ? vs.prompt : "";
+let built: BuiltPrompt | null = promptText && vs.built ? vs.built : null;
 let paywalled = false;
 let lastKey = "";
 
@@ -89,8 +90,11 @@ function flash(text: string): void {
   if (el) { el.textContent = text; el.classList.add("on"); }
   const live = document.getElementById("live");
   if (live) live.textContent = text;
+  // One timer for every toast (the window's own script shares it), so a new message never vanishes early.
+  const w = window as unknown as { __bpToast?: ReturnType<typeof setTimeout> };
   if (flashTimer) clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => document.getElementById("flash")?.classList.remove("on"), 2400);
+  if (w.__bpToast) clearTimeout(w.__bpToast);
+  flashTimer = w.__bpToast = setTimeout(() => document.getElementById("flash")?.classList.remove("on"), 2600);
 }
 
 /** The BuildPilot mark (inline so it works in VS Code and the standalone window without loading files). */
@@ -104,22 +108,26 @@ function ring(pct: number): string {
   return `<svg class="ring tone-${pct < 70 ? "calm" : toneChat(pct)}" viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="9" cy="9" r="${r}" class="ring-bg"/><circle cx="9" cy="9" r="${r}" class="ring-fg" stroke-dasharray="${((v / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 9 9)"/></svg>`;
 }
 
+/** The name people see for a session everywhere: their own name, else the folder plus a few words of the request when the folder has several. */
+const who = (x: { name?: string | null; folder: string; hint?: string | null }) => x.name ?? (x.hint ? `${x.folder} (${x.hint})` : x.folder);
+
 /** One calm line at the top when something needs attention (most urgent first, max 2). */
 function headsUp(): string {
   if (!P || !P.connected) return "";
   const items: string[] = [];
   const need = P.builds.find((b) => b.needsYou);
-  if (need) items.push(`<div class="hu hu-need"><span><b>${esc(need.name ?? need.folder)}</b> needs your OK${need.waitingFor ? `: <code>${esc(clip(need.waitingFor, 60))}</code>` : ""}</span><button class="primary small-btn" data-act="openBuild" data-cwd="${esc(need.cwd)}" data-id="${esc(need.id)}">${standalone ? "Go to tab" : "Review"}</button></div>`);
+  if (need) items.push(`<div class="hu hu-need"><span><b>${esc(who(need))}</b> needs your OK${need.waitingFor ? `: <code>${esc(clip(need.waitingFor, 60))}</code>` : ""}</span><button class="primary small-btn" data-act="openBuild" data-cwd="${esc(need.cwd)}" data-id="${esc(need.id)}">${standalone ? "Go to tab" : "Review"}</button></div>`);
   const L = P.limits;
   if ((L.fiveHourPct ?? 0) >= 80) {
-    const hog = [...P.builds].filter((b) => b.share != null && b.agent !== "codex").sort((a, b) => b.share! - a.share!)[0];
-    const act = hog && P.builds.length > 1 && (hog.share ?? 0) >= 30 ? `<button class="secondary small-btn" data-act="tip" data-tip="pause" data-cwd="${esc(hog.cwd)}" title="Opens its terminal so you can press Esc to pause it. Your files are kept.">Pause ${esc(hog.name ?? hog.folder)} (${hog.share}%)</button>` : "";
+    // Only a session that is actually working can be paused.
+    const hog = [...P.builds].filter((b) => b.share != null && b.agent !== "codex" && b.status === "running").sort((a, b) => b.share! - a.share!)[0];
+    const act = hog && P.builds.length > 1 && (hog.share ?? 0) >= 30 ? `<button class="secondary small-btn" data-act="tip" data-tip="pause" data-cwd="${esc(hog.cwd)}" title="Opens its terminal so you can press Esc to pause it. Your files are kept.">Pause ${esc(who(hog))} (${hog.share}%)</button>` : "";
     items.push(`<div class="hu hu-limit"><span><b>${Math.round(L.fiveHourPct!)}%</b> of your 5-hour limit used${L.fullAt ? ` · runs out around <b>${clock(L.fullAt)}</b>` : ""}${L.fiveHourResetsAt ? ` · back at ${clock(L.fiveHourResetsAt)}` : ""}</span>${act}</div>`);
   }
   const stopped = P.builds.find((b) => b.stopped);
-  if (stopped && items.length < 2) items.push(`<div class="hu hu-stop"><span><b>${esc(stopped.name ?? stopped.folder)}</b> stopped mid-task</span><button class="secondary small-btn" data-act="resumeBuild" data-id="${esc(stopped.id)}" data-cwd="${esc(stopped.cwd)}">Resume</button></div>`);
+  if (stopped && items.length < 2) items.push(`<div class="hu hu-stop"><span><b>${esc(who(stopped))}</b> stopped mid-task</span><button class="secondary small-btn" data-act="resumeBuild" data-id="${esc(stopped.id)}" data-cwd="${esc(stopped.cwd)}">Resume</button></div>`);
   const err = P.builds.find((b) => (b.errors1h ?? 0) >= 3);
-  if (err && items.length < 2) items.push(`<div class="hu hu-err"><span><b>${esc(err.name ?? err.folder)}</b> hit ${err.errors1h} errors this hour</span><button class="secondary small-btn" data-act="toggleErrors" data-id="${esc(err.id)}">See them</button></div>`);
+  if (err && items.length < 2) items.push(`<div class="hu hu-err"><span><b>${esc(who(err))}</b> hit ${err.errors1h} errors this hour</span><button class="secondary small-btn" data-act="toggleErrors" data-id="${esc(err.id)}">See them</button></div>`);
   return items.length ? `<section class="headsup" aria-label="Needs attention">${items.slice(0, 2).join("")}</section>` : "";
 }
 
@@ -138,7 +146,7 @@ function announce(): void {
   if (!P) return;
   const parts: string[] = [];
   const needs = P.builds.filter((b) => b.needsYou);
-  if (needs.length) parts.push(`${needs.map((b) => b.name ?? b.folder).join(", ")} ${needs.length === 1 ? "needs" : "need"} you`);
+  if (needs.length) parts.push(`${needs.map(who).join(", ")} ${needs.length === 1 ? "needs" : "need"} you`);
   if ((P.limits.fiveHourPct ?? 0) >= 80) parts.push(`${Math.round(P.limits.fiveHourPct!)} percent of your 5-hour limit used`);
   const msg = parts.join(". ");
   if (msg && msg !== lastSpoken) { const el = document.getElementById("live"); if (el) el.textContent = msg; }
@@ -150,6 +158,10 @@ function render(): void {
   const focusedId = (document.activeElement as HTMLElement | null)?.id;
   const fKey = focusKey(document.activeElement);
   const sel = (document.activeElement as HTMLTextAreaElement | null)?.selectionStart ?? null;
+  const selEnd = (document.activeElement as HTMLTextAreaElement | null)?.selectionEnd ?? null;
+  const selDir = (document.activeElement as HTMLTextAreaElement | null)?.selectionDirection ?? "none";
+  // A live refresh redraws the page: keep where each text box was scrolled to.
+  const scrolls = new Map([...document.querySelectorAll<HTMLTextAreaElement>("textarea[id]")].map((t) => [t.id, t.scrollTop]));
   if (!S || !P) {
     app.innerHTML = `<div class="loading">Starting BuildPilot…</div>`;
     return;
@@ -177,13 +189,14 @@ function render(): void {
   if (req) req.value = vs.request;
   const out = document.getElementById("ptext") as HTMLTextAreaElement | null;
   if (out) out.value = promptText;
+  for (const [id, top] of scrolls) { const t = document.getElementById(id); if (t) t.scrollTop = top; }
   bind();
   announce();
   if (focusedId || fKey) {
     let el = (focusedId ? document.getElementById(focusedId) : null) as HTMLTextAreaElement | null;
     if (!el && fKey) try { el = document.querySelector(fKey) as HTMLTextAreaElement | null; } catch { /* bad selector */ }
     el?.focus({ preventScroll: true });
-    if (el && sel != null && "setSelectionRange" in el) try { el.setSelectionRange(sel, sel); } catch { /* not text */ }
+    if (el && sel != null && "setSelectionRange" in el) try { el.setSelectionRange(sel, selEnd ?? sel, selDir); } catch { /* not text */ }
   }
 }
 
@@ -234,6 +247,8 @@ const expanded = new Set<string>();
 const errOpen = new Set<string>();
 let showQuiet = false;
 let fileQuery = "";
+/** What is typed in the file box right now (kept across live refreshes, before Find is pressed). */
+let fileDraft = "";
 let fileResults: { sessionId: string; cwd: string; path: string; file: string; lastTs: number; edits: number }[] | null = null;
 let finderOpen = false;
 
@@ -267,9 +282,9 @@ function progressLine(x: Build): string {
   const t = x.turn;
   if (!t || (!t.steps && !t.files)) return "";
   const proof = t.proof === "verified" ? `<span class="ok-text">✓ tests passed after the last change</span>` : t.proof === "failing" ? `<span class="bad-text">✗ tests failing</span>` : t.proof === "unverified" ? `<span class="warn-text">${t.done ? "finished, not tested yet" : "not tested yet"}</span>` : "";
-  const parts = [`${t.steps} step${t.steps === 1 ? "" : "s"}`, t.files ? `${t.files} file${t.files === 1 ? "" : "s"} changed` : "", proof].filter(Boolean);
-  // Each part is its own piece with a dot before it, so a wrapped line never ends or starts with a stray "·".
-  return `<div class="b-prog">${parts.map((x, i) => `<span class="part">${i ? `<span class="sep" aria-hidden="true">· </span>` : ""}${x}</span>`).join("")}</div>`;
+  const parts = [`${t.steps} step${t.steps === 1 ? "" : "s"}`, t.files ? `${t.files} file${t.files === 1 ? "" : "s"} changed` : ""].filter(Boolean);
+  // Counts on one piece, the test result on its own: a wrapped line never starts with a stray "·".
+  return `<div class="b-prog"><span class="part">${parts.join(" · ")}</span>${proof ? `<span class="part proof">${proof}</span>` : ""}</div>`;
 }
 
 function buildRow(x: Build): string {
@@ -325,7 +340,7 @@ function buildDetails(x: Build): string {
 function fileFinder(): string {
   return `<div class="finder">
     <label class="lbl" for="fileq">Who changed a file?</label>
-    <div class="finder-row"><input id="fileq" type="text" placeholder="e.g. checkout.tsx" value="${esc(fileQuery)}"><button class="secondary small-btn" data-act="whoChanged">Find</button></div>
+    <div class="finder-row"><input id="fileq" type="text" placeholder="e.g. checkout.tsx" value="${esc(fileDraft)}"><button class="secondary small-btn" data-act="whoChanged">Find</button></div>
     ${fileResults == null ? "" : fileResults.length ? `<ul class="files">${fileResults.map((r) => `<li><div><b>${esc(r.file)}</b> <span class="muted small">changed ${r.edits}× by ${esc(P!.builds.find((b) => b.id === r.sessionId)?.name ?? P!.builds.find((b) => b.id === r.sessionId)?.folder ?? r.cwd.split("/").pop() ?? "a session")}, ${ago(r.lastTs)}</span></div>${fileResults!.filter((o) => o.path === r.path).length > 1 ? `<span class="warn-text small" title="Undo goes back to the last commit, so it also removes the other sessions' changes to this file">changed by ${fileResults!.filter((o) => o.path === r.path).length} sessions</span>` : ""}<button class="link" data-act="undoFile" data-path="${esc(r.path)}" title="Put this file back to its last saved (committed) version. This removes every session's changes to it since then.">Undo this file</button></li>`).join("")}</ul>` : `<p class="muted small">No session has changed a file matching “${esc(fileQuery)}” recently.</p>`}
   </div>`;
 }
@@ -447,7 +462,7 @@ function promptSection(): string {
     <div class="actions center"><button class="primary" data-act="build">Write my prompt</button>${counter}</div>
     ${paywalled ? paywallCard() : ""}
     ${built ? `
-      <p class="summary">Your request, <b>“${esc(vs.request.trim().replace(/[.!]+$/, ""))}”</b>, written up for Claude in ${esc(folder)}: your project's setup, a short plan first and checks at the end.${built.missingInfo.length ? ` Worth adding: ${esc(built.missingInfo[0]!)}` : ""}</p>
+      <p class="summary">Your request, <b>“${esc((vs.builtFor ?? vs.request).trim().replace(/[.!]+$/, ""))}”</b>, written up for Claude in ${esc(folder)}: your project's setup, a short plan first and checks at the end.${built.missingInfo.length ? ` Worth adding: ${esc(built.missingInfo[0]!)}` : ""}</p>
       <label class="lbl" for="ptext">Your prompt. Edit anything.</label>
       <textarea id="ptext" class="mono" rows="${Math.min(40, Math.max(12, promptText.split("\n").length + 1))}"></textarea>
       <div class="actions"><button class="primary" data-act="sendPrompt">Start Claude with this</button><button class="secondary" data-act="useInOpen" title="Copies it and switches to your open terminal, so you can paste it into the Claude chat you already have">Use in my open Claude</button><button class="link" data-act="copyPrompt">Copy</button></div>
@@ -459,9 +474,10 @@ function promptSection(): string {
 function bind(): void {
   document.getElementById("req")?.addEventListener("input", (e) => { vs.request = (e.target as HTMLTextAreaElement).value; persist(); });
   document.getElementById("req")?.addEventListener("keydown", (e) => { const k = e as KeyboardEvent; if (k.key === "Enter" && (k.metaKey || k.ctrlKey)) void buildNow(); });
+  document.getElementById("fileq")?.addEventListener("input", (e) => { fileDraft = (e.target as HTMLInputElement).value; });
   document.getElementById("fileq")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") (document.querySelector('[data-act="whoChanged"]') as HTMLElement | null)?.click(); });
-  document.getElementById("ptext")?.addEventListener("input", (e) => { promptText = (e.target as HTMLTextAreaElement).value; });
-  document.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); void act(el); }));
+  document.getElementById("ptext")?.addEventListener("input", (e) => { promptText = (e.target as HTMLTextAreaElement).value; vs.prompt = promptText; persist(); });
+  document.querySelectorAll<HTMLElement>("[data-act]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); void guarded(el); }));
 }
 
 async function buildNow(): Promise<void> {
@@ -472,17 +488,39 @@ async function buildNow(): Promise<void> {
     return;
   }
   const r = await call<{ prompt: BuiltPrompt; remaining: number | null } | { paywall: { url: string } } | null>("buildPrompt", { goal: guessGoal(text), request: text, beginner: true, planFirst: true, defer: true });
-  if (!r) return;
+  if (!r || (!("paywall" in r) && !("prompt" in r && r.prompt))) return; // couldn't reach BuildPilot: the window already said so
   if ("paywall" in r) {
     paywalled = true;
     built = null;
+    vs.prompt = ""; vs.built = null; persist();
     return render();
   }
   paywalled = false;
   built = r.prompt;
   promptText = r.prompt.text;
+  vs.prompt = promptText; vs.built = built; vs.builtFor = text; persist();
   render();
   document.getElementById("ptext")?.scrollIntoView?.({ block: "nearest" });
+}
+
+/** One press at a time per control: a double click or an impatient second press never sends the same thing twice.
+ * While it's in flight the control says so (aria-busy), and "Write my prompt" reads "Writing…". */
+const inFlight = new Set<string>();
+const flightKey = (el: HTMLElement) => FOCUS_ATTRS.map((a) => el.getAttribute(a) ?? "").join("|");
+async function guarded(el: HTMLElement): Promise<void> {
+  const k = flightKey(el);
+  if (inFlight.has(k)) return;
+  inFlight.add(k);
+  const slow = setTimeout(() => {
+    const now = (focusKey(el) ? document.querySelector(focusKey(el)!) : null) as HTMLElement | null ?? el; // the page may have been redrawn
+    now.setAttribute("aria-busy", "true");
+    if (now.dataset.act === "build") now.textContent = "Writing…";
+  }, 250);
+  try { await act(el); } finally {
+    clearTimeout(slow);
+    inFlight.delete(k);
+    document.querySelectorAll('[aria-busy="true"]').forEach((b) => { b.removeAttribute("aria-busy"); if ((b as HTMLElement).dataset.act === "build") b.textContent = "Write my prompt"; });
+  }
 }
 
 async function act(el: HTMLElement): Promise<void> {
@@ -508,7 +546,8 @@ async function act(el: HTMLElement): Promise<void> {
     case "openFinder": { finderOpen = true; render(); document.getElementById("fileq")?.focus(); return; }
     case "renameBuild": { await call("renameBuild", { id: el.dataset.id }); return; }
     case "whoChanged": {
-      fileQuery = ((document.getElementById("fileq") as HTMLInputElement | null)?.value ?? "").trim();
+      fileDraft = (document.getElementById("fileq") as HTMLInputElement | null)?.value ?? fileDraft;
+      fileQuery = fileDraft.trim();
       if (!fileQuery) { flash("Type a file name"); return; }
       const r = await call<{ files: typeof fileResults } | null>("whoChanged", { query: fileQuery });
       fileResults = r?.files ?? [];

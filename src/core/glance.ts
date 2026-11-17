@@ -189,7 +189,13 @@ function disambiguate(b: { task: string | null; id: string; cwd?: string }): str
     const br = head.startsWith("ref: refs/heads/") ? head.slice(16) : null;
     if (br && br !== "main" && br !== "master") return br.replace(/^bp\//, "");
   } catch { /* not a repo root or a worktree (.git file): fall back to the prompt */ }
-  const words = (b.task ?? "").replace(/[^\p{L}\p{N}\s-]/gu, " ").split(/\s+/).filter((w) => w.length > 2).slice(0, 4).join(" ");
+  // A few words from the request, without dangling filler at either end ("the login button", not "the login button does").
+  const FILLER = /^(the|and|for|with|does|did|that|this|then|but|from|into|onto|are|was|were|has|have|its|our|your|can|could|please|just|also|now|not|any|some)$/i;
+  const w = (b.task ?? "").replace(/[^\p{L}\p{N}\s-]/gu, " ").split(/\s+/).filter((x) => x.length > 2).slice(0, 5);
+  while (w.length > 1 && FILLER.test(w[0]!)) w.shift();
+  w.splice(4);
+  while (w.length > 1 && FILLER.test(w[w.length - 1]!)) w.pop();
+  const words = w.join(" ");
   return words || b.id.slice(0, 6);
 }
 
