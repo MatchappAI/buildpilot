@@ -39,14 +39,15 @@ function call<T = unknown>(type: string, data: Record<string, unknown> = {}): Pr
   const id = ++seq;
   return new Promise((resolve) => {
     waiting.set(id, resolve as (v: unknown) => void);
-    vscode.postMessage({ type, id, ...data });
+    // `rid` matches the answer to this call. Never `id`: many messages carry a session id under that name.
+    vscode.postMessage({ type, ...data, rid: id });
   });
 }
 window.addEventListener("message", (e: MessageEvent) => {
-  const m = e.data as { type: string; id?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean; theme?: string; standalone?: boolean; alerts?: boolean } };
-  if (m.type === "reply" && m.id) {
-    waiting.get(m.id)?.(m.result);
-    waiting.delete(m.id);
+  const m = e.data as { type: string; rid?: number; result?: unknown; state?: UiState; page?: PageData; settings?: { trusted?: boolean; theme?: string; standalone?: boolean; alerts?: boolean } };
+  if (m.type === "reply" && m.rid) {
+    waiting.get(m.rid)?.(m.result);
+    waiting.delete(m.rid);
   } else if (m.type === "state") {
     S = m.state ?? null;
     P = m.page ?? null;
@@ -55,6 +56,7 @@ window.addEventListener("message", (e: MessageEvent) => {
     theme = themePref === "match" || (themePref === "auto" && systemDark()) ? "match" : "white";
     standalone = !!m.settings?.standalone;
     alertsOn = m.settings?.alerts !== false;
+    if (P?.plan.pro) paywalled = false; // a key was just entered (here or in another window): the paywall goes away
     // Skip re-rendering when nothing visible changed (the 30 s tick only moves the clock).
     const key = JSON.stringify({ p: P, n: S?.project?.root, a: S?.analyzing, t: Math.floor((S?.generatedAt ?? 0) / 60_000), trusted, theme, themePref, alertsOn, standalone });
     if (key === lastKey) return;

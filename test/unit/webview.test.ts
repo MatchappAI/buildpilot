@@ -58,11 +58,11 @@ function mount(p: PageData, opts: { paywall?: boolean; trusted?: boolean; standa
     setState: (s: unknown) => (st = s),
     postMessage: (m: Record<string, unknown>) => {
       sent.push(m);
-      const reply = (result: unknown) => setTimeout(() => w.postMessage({ type: "reply", id: m.id, result }, "*"), 0);
+      const reply = (result: unknown) => setTimeout(() => w.postMessage({ type: "reply", rid: m.rid, result }, "*"), 0);
       if (m.type === "buildPrompt") reply(opts.paywall ? { paywall: { url: "https://buy.stripe.com/x" } } : { prompt: built, remaining: 3 });
       else if (m.type === "sendToClaude") reply(opts.cancelSend ? null : { flash: "Claude is starting in Terminal", sent: true });
       else if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: opts.trusted ?? true, standalone: opts.standalone ?? false } }, "*"), 0);
-      else if (m.id) reply(null);
+      else if (m.rid) reply(null);
     },
   });
   w.eval(fs.readFileSync(bundle, "utf8"));

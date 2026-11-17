@@ -29,11 +29,15 @@ struct WidgetSession: Codable, Identifiable, Equatable {
     let risks: [String]?
     let turn: Turn?
     let checklist: Checklist?
+    let hint: String?
 
     struct Turn: Codable, Equatable { let steps: Int; let files: Int; let proof: String?; let done: Bool }
     struct Checklist: Codable, Equatable { let done: Int; let total: Int; let current: String? }
 
-    var label: String { name ?? folder }
+    /// Same name as in the window: the one you gave it, else the folder plus a few words when a folder has several sessions.
+    var label: String { name ?? hint.map { "\(folder) (\($0))" } ?? folder }
+    /// Status word that agrees with the line under it (a stopped session isn't "Quiet").
+    var shownWord: String { stopped == true ? "Stopped" : word.prefix(1).uppercased() + word.dropFirst() }
     /// One plain line: what it's doing / waiting for / how far along / whether it's proven.
     var line: String {
         if needsYou { return waitingFor.map { "Waiting for your OK: \($0)" } ?? reason }
@@ -320,11 +324,11 @@ struct SessionRow: View {
     var body: some View {
         Button { Open.session(s.cwd, id: s.id) } label: {
             HStack(alignment: .top, spacing: 8) {
-                StatusDot(status: s.status).padding(.top, 5)
+                StatusDot(status: s.stopped == true ? "failed" : s.status).padding(.top, 5)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(s.folder).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        Text(s.word.prefix(1).uppercased() + s.word.dropFirst())
+                        Text(s.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        Text(s.shownWord)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(s.needsYou ? Color.orange : Color.secondary)
                         Spacer(minLength: 4)
@@ -333,7 +337,7 @@ struct SessionRow: View {
                                 .foregroundStyle(c >= 90 ? Color.red : c >= 70 ? Color.orange : Color.secondary)
                         }
                     }
-                    if s.line.lowercased() != s.word.lowercased() {
+                    if s.line.lowercased() != s.word.lowercased() && !(s.stopped == true && s.line == "Stopped mid-task") {
                         Text(s.line).font(.system(size: 12)).lineLimit(2).foregroundStyle(s.needsYou ? Color.primary : Color.secondary)
                     }
                     if !s.needsYou, let t = s.task, !s.line.contains(t) {
@@ -349,9 +353,9 @@ struct SessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
-        .help("Go to \(s.folder)'s terminal")
+        .help("Go to \(s.label)'s terminal")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(s.folder), \(s.word). \(s.needsYou ? s.reason : (s.task ?? ""))\(s.contextPct.map { ". Chat \(Int($0.rounded())) percent full" } ?? ""). \(ago(s.lastEventAt))")
+        .accessibilityLabel("\(s.label), \(s.shownWord). \(s.needsYou ? s.reason : (s.task ?? ""))\(s.contextPct.map { ". Chat \(Int($0.rounded())) percent full" } ?? ""). \(ago(s.lastEventAt))")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { Open.session(s.cwd, id: s.id) }
         .accessibilityHint("Brings this session's terminal tab forward")

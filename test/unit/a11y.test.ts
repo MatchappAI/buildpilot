@@ -32,7 +32,7 @@ const b = (o: Partial<PageData["builds"][number]>): PageData["builds"][number] =
 async function audit(p: PageData, opts: { standalone?: boolean; expand?: boolean; theme?: string } = {}) {
   const dom = new JSDOM(`<!doctype html><html lang="en"><head><title>BuildPilot</title><style>${css}</style></head><body><div id="app"></div></body></html>`, { runScripts: "outside-only", url: "https://webview.local/" });
   const w = dom.window as unknown as Window & typeof globalThis & { acquireVsCodeApi: unknown; eval(s: string): unknown; axe: { run(ctx: unknown, o: unknown): Promise<{ violations: { id: string; impact: string; help: string; nodes: { html: string }[] }[] }> } };
-  w.acquireVsCodeApi = () => ({ getState: () => ({}), setState: () => {}, postMessage: (m: Record<string, unknown>) => { if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: true, standalone: !!opts.standalone, theme: opts.theme } }, "*"), 0); else if (m.id) setTimeout(() => w.postMessage({ type: "reply", id: m.id, result: null }, "*"), 0); } });
+  w.acquireVsCodeApi = () => ({ getState: () => ({}), setState: () => {}, postMessage: (m: Record<string, unknown>) => { if (m.type === "ready") setTimeout(() => w.postMessage({ type: "state", state, page: p, settings: { trusted: true, standalone: !!opts.standalone, theme: opts.theme } }, "*"), 0); else if (m.rid) setTimeout(() => w.postMessage({ type: "reply", rid: m.rid, result: null }, "*"), 0); } });
   w.eval(bundle);
   await new Promise((r) => setTimeout(r, 60));
   if (opts.expand) { (w.document.querySelector('[data-act="toggleBuild"]') as HTMLElement | null)?.click(); await new Promise((r) => setTimeout(r, 30)); }

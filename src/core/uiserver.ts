@@ -11,7 +11,7 @@ import { worktrees, run } from "./git";
 import { GoalType } from "./types";
 import { shellQuote, writePromptFile } from "./prompts";
 import { findBuild } from "./termfind";
-import { dismissRisks, setBuildName, widgetData } from "./glance";
+import { dismissRisks, isBackground, setBuildName, widgetData } from "./glance";
 import { alertsFor, AlertMemory, claimAlert } from "./alerts";
 
 /**
@@ -415,6 +415,12 @@ export class UiServer {
         const cp = await eng.checkpoint("save point");
         return { flash: `Save point made (${cp.sha.slice(0, 8)})` };
       }
+      case "newBuildCheck": {
+        // Asked before the name/confirm dialogs, so a free user hears about the limit first, not after typing a name.
+        if (!root) return { flash: "Pick a project first" };
+        const g = gateParallel(eng.home, Math.max(0, (await worktrees(root)).length - 1));
+        return g.allowed ? { ok: true } : { paywall: g.paywall.message, url: g.paywall.url };
+      }
       case "newBuild": {
         if (!root) return { flash: "Pick a project first" };
         const extra = Math.max(0, (await worktrees(root)).length - 1);
@@ -425,7 +431,7 @@ export class UiServer {
         const w = await eng.createWorktree(str("label") || "build");
         const install = fs.existsSync(path.join(w.dir, "package.json")) ? `${eng.snapshot().facts?.packageManager === "pnpm" ? "pnpm" : eng.snapshot().facts?.packageManager === "yarn" ? "yarn" : "npm"} install && ` : "";
         await openTerminal(w.dir, `${install}claude`);
-        void this.refreshSide();
+        await this.refreshSide(); // the list the page gets next already shows it
         return { flash: `New build ${path.basename(w.dir)} started in Terminal` };
       }
       case "reviewBuild": {
@@ -450,7 +456,7 @@ export class UiServer {
         const branch = (await eng.extraBuilds()).find((b) => path.resolve(b.dir) === path.resolve(dir))?.branch;
         if (!branch) return { flash: "That isn't one of this project's side builds" };
         const r = await eng.mergeBuild(branch);
-        void this.refreshSide();
+        await this.refreshSide();
         if (r.merged) return { flash: `${r.message}${tests}` };
         if (r.conflicts.length) {
           const main = (await run("git", ["branch", "--show-current"], eng.currentProject!.root)).stdout.trim() || "main";
@@ -462,7 +468,7 @@ export class UiServer {
       case "removeBuild": {
         if (!(await this.knownBuild(str("dir")))) return { flash: "That isn't one of this project's side builds" };
         try { await eng.removeBuild(str("dir")); } catch (e) { return { flash: (e as Error).message }; }
-        void this.refreshSide();
+        await this.refreshSide(); // never show a removed folder for a few more seconds
         return { flash: "Removed (its branch is kept)" };
       }
       case "upgrade": { const g = gate(eng.home); openUrl(g.allowed ? checkoutUrl(readUsage(eng.home).installId) : g.paywall.url); return null; }
@@ -470,7 +476,12 @@ export class UiServer {
       case "toggleTheme": { const to = str("to"); this.savePrefs({ theme: to === "white" || to === "match" || to === "auto" ? to : this.theme() === "white" ? "auto" : "white" }); return null; }
       case "projects": {
         const rows = eng.store.all<{ root: string; name: string }>("SELECT root, name FROM projects ORDER BY COALESCE(last_analyzed_at, created_at) DESC LIMIT 15").filter((r) => fs.existsSync(r.root));
-        return rows.map((r) => ({ root: r.root, name: path.basename(r.root) }));
+        // Folders Claude worked in are projects too (a session in ~/blog should make "blog" pickable), newest first.
+        const roots = rows.map((r) => path.resolve(r.root));
+        const inside = (d: string) => roots.some((r) => d === r || d.startsWith(r + path.sep));
+        const seen = eng.store.all<{ cwd: string }>("SELECT cwd, MAX(last_event_at) AS t FROM sessions WHERE cwd IS NOT NULL AND cwd != '' GROUP BY cwd ORDER BY t DESC LIMIT 40")
+          .map((r) => path.resolve(r.cwd)).filter((d) => !inside(d) && !isBackground(d) && fs.existsSync(d));
+        return [...rows.map((r) => r.root), ...seen].slice(0, 15).map((root) => ({ root, name: path.basename(root) }));
       }
       case "selectProject": {
         const r = str("root");
@@ -553,17 +564,17 @@ export class UiServer {
     getState: () => { try { return JSON.parse(localStorage.getItem("bp-view") || "{}"); } catch { return st; } },
     setState: (s) => { st = s; try { localStorage.setItem("bp-view", JSON.stringify(s)); } catch {} },
     postMessage: async (m) => {
-      const reply = (result) => { if (m.id) window.postMessage({ type: "reply", id: m.id, result }, "*"); };
+      const reply = (result) => { if (m.rid) window.postMessage({ type: "reply", rid: m.rid, result }, "*"); };
       if (m.type === "ready") { await pushState(); return reply(null); }
       if (CONFIRM[m.type] && !(await ask(CONFIRM[m.type][0], CONFIRM[m.type][1], "Continue"))) return reply(null);
       if (m.type === "showConnectChanges") { const r = await post(m); await show("BuildPilot adds these entries to ~/.claude/settings.json:\\n\\n" + r.show); return reply(null); }
       if (m.type === "enterLicense") { const k = await input("Paste your BuildPilot Pro key", "BP1.…", true); if (k) { const r = await post({ type: "enterLicense", key: k }); if (r?.flash) toast(r.flash); await pushState(); } return reply(null); }
-      if (m.type === "newBuild") { const label = await input("New side build: what's it for? (a few words)", "e.g. checkout page"); if (label === null) return reply(null); if (!(await ask("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy next to your project (with your .env files), installs packages, and opens Claude in Terminal. Two builds use your plan limit about twice as fast.", "Start build"))) return reply(null); m.label = label; }
+      if (m.type === "newBuild") { const pre = await post({ type: "newBuildCheck" }); if (!pre || !pre.ok) { if (pre && typeof pre.paywall === "string") { if (await ask("Go Pro?", pre.paywall.replace(/: https?:\\/\\/\\S+$/, "."), "Get Pro")) await post({ type: "upgrade" }); } else if (pre && pre.flash) toast(pre.flash); return reply(null); } const label = await input("New side build: what's it for? (a few words)", "e.g. checkout page"); if (label === null) return reply(null); if (!(await ask("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy next to your project (with your .env files), installs packages, and opens Claude in Terminal. Two builds use your plan limit about twice as fast.", "Start build"))) return reply(null); m.label = label; }
       if (m.type === "renameBuild") { const n = await input("Name this session (leave empty to clear)", "e.g. checkout page"); if (n === null) return reply(null); m.name = n; }
       if (m.type === "selectProject") { const list = await post({ type: "projects" }); if (!list || !list.length) { await show("No projects yet.\\n\\nOpen BuildPilot from inside a project folder (cd my-app, then bp ui), or start Claude in a project: it shows up here after Claude does something there."); return reply(null); } const p = await pick("Choose a project", list); if (!p) return reply(null); m.root = p.root; }
       let r = await post(m);
       if (r && r.confirmAgain) { if (await ask(r.confirmAgain, "Merging now would bring failing code into your main project.", "Merge anyway")) r = await post({ ...m, force: true }); else return reply(null); }
-      if (r && typeof r.paywall === "string") { if (await ask("Go Pro?", r.paywall.replace(/: https?:\\/\\/\\S+$/, "."), "Get Pro")) window.open(r.url, "_blank"); return reply(null); }
+      if (r && typeof r.paywall === "string") { if (await ask("Go Pro?", r.paywall.replace(/: https?:\\/\\/\\S+$/, "."), "Get Pro")) await post({ type: "upgrade" }); return reply(null); }
       if (r && r.show) await show(r.show);
       if (r && r.flash) toast(r.flash);
       reply(r ?? null);

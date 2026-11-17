@@ -3,7 +3,8 @@ import * as vscode from "vscode";
 
 export interface WebviewMessage {
   type: string;
-  id?: number;
+  /** Matches a reply to its call (`id` is free for the message itself, e.g. a session id). */
+  rid?: number;
   [k: string]: unknown;
 }
 
@@ -62,7 +63,7 @@ export class BuildPilotPanel {
       } catch (e) {
         error = (e as Error).message;
       }
-      if (m.id !== undefined) void w.postMessage({ type: "reply", id: m.id, result, error });
+      if (m.rid !== undefined) void w.postMessage({ type: "reply", rid: m.rid, result, error });
     });
     panel.onDidDispose(() => (this.panel = null));
     for (const q of this.queue.splice(0)) void w.postMessage(q);

@@ -17,7 +17,7 @@ for (const [name, sc] of Object.entries(fx.scenarios)) {
 const SC = ${JSON.stringify(sc)}; const FX = { state: ${JSON.stringify(fx.state)}, built: ${JSON.stringify(fx.built)} };
 let st = { request: SC.request || "" };
 window.acquireVsCodeApi = () => ({ getState: () => st, setState: (s) => { st = s; }, postMessage: (m) => {
-  const reply = (result) => setTimeout(() => window.postMessage({ type: "reply", id: m.id, result }, "*"), 0);
+  const reply = (result) => setTimeout(() => window.postMessage({ type: "reply", rid: m.rid, result }, "*"), 0);
   if (m.type === "ready") { window.postMessage({ type: "state", state: FX.state, page: SC.page, settings: { trusted: true } }, "*"); if (SC.buildFirst) setTimeout(() => document.querySelector('[data-act=build]')?.click(), 100); }
   else if (m.type === "buildPrompt") reply(SC.paywall ? { paywall: { url: "https://buy.stripe.com/x" } } : { prompt: FX.built, remaining: SC.page.plan.freeLeft });
   else reply(null);
