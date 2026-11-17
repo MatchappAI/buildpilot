@@ -129,23 +129,33 @@ export class IntegrationApi {
       }
       if (req.method === "POST" && url.pathname === "/v1/prompt") {
         let body = "";
+        let tooBig = false;
         req.on("data", (c: Buffer) => {
+          if (tooBig) return;
           body += c.toString("utf8");
-          if (body.length > 20_000) req.destroy();
+          // Answer "too large" instead of dropping the connection (the caller then knows why).
+          if (body.length > 20_000) { tooBig = true; res.shouldKeepAlive = false; this.send(res, 413, { error: "request too large (max 20,000 characters)" }); }
         });
         req.on("end", () => {
+          if (tooBig) return;
           let parsed: { goal?: string; request?: string };
           try {
             parsed = JSON.parse(body || "{}");
           } catch {
             return this.send(res, 400, { error: "invalid JSON" });
           }
+          // `null`, a number or a list is valid JSON but not a request (reading .goal of null used to stop the server).
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return this.send(res, 400, { error: "expected a JSON object" });
+          try {
           const goalId = (GOALS.some((g) => g.id === parsed.goal) ? parsed.goal : "feature") as GoalType;
           if (typeof parsed.request !== "string" || !parsed.request.trim()) return this.send(res, 400, { error: "request (string) is required" });
           const r = this.engine.gatedPrompt({ goal: goalId, request: parsed.request });
           if ("paywall" in r) return this.send(res, 402, { error: r.paywall.message, upgradeUrl: r.paywall.url });
           const p = r.prompt;
           return this.send(res, 200, { prompt: p.text, missingInfo: p.missingInfo, assumptions: p.assumptions, freeRemaining: r.remaining });
+          } catch (e) {
+            return this.send(res, 500, { error: (e as Error).message });
+          }
         });
         return;
       }

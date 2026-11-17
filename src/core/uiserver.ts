@@ -175,7 +175,8 @@ export class UiServer {
     this.alertTimer = setInterval(() => void this.checkAlerts(), 15_000);
     void this.checkAlerts();
     if (this.opts.idleExitMs) this.idle = setInterval(() => { if (Date.now() - this.lastSeen > this.opts.idleExitMs!) void this.stop().then(() => process.exit(0)); }, 30_000);
-    void this.refreshSide();
+    // The first page load already shows the side builds (not an empty list for a few seconds after bp ui starts).
+    await this.refreshSide();
   }
 
   private uiPrefs(): { theme?: string; alerts?: boolean } {
@@ -268,8 +269,10 @@ export class UiServer {
       if (req.method === "GET" && url.pathname === "/api/state") return this.send(res, 200, this.statePayload());
       if (req.method === "POST" && url.pathname === "/api/msg") {
         let body = "";
-        for await (const c of req) { body += c; if (body.length > 300_000) return this.send(res, 413, { error: "too large" }); }
-        const m = JSON.parse(body || "{}") as Record<string, unknown>;
+        for await (const c of req) { body += c; if (body.length > 300_000) { res.shouldKeepAlive = false; req.unpipe(); return this.send(res, 413, { error: "too large" }); } }
+        let m: Record<string, unknown>;
+        try { m = JSON.parse(body.replace(/^\uFEFF/, "") || "{}") as Record<string, unknown>; } catch { return this.send(res, 400, { error: "invalid JSON" }); }
+        if (!m || typeof m !== "object" || Array.isArray(m)) return this.send(res, 400, { error: "expected a JSON object" });
         const result = await this.onMessage(m);
         return this.send(res, 200, { result: result ?? null });
       }
@@ -308,7 +311,8 @@ export class UiServer {
   async onMessage(m: Record<string, unknown>): Promise<unknown> {
     const eng = this.engine;
     const root = eng.currentProject?.root ?? null;
-    const str = (k: string) => String(m[k] ?? "");
+    // Fields come from the page as strings; anything else (a buggy or hostile caller) counts as empty.
+    const str = (k: string) => { const v = m[k]; return typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : ""; };
     switch (m.type) {
       case "ready": return null;
       case "buildPrompt": return eng.gatedPrompt({ goal: str("goal") as GoalType, request: str("request"), beginner: true, planFirst: m.planFirst !== false }, undefined, !m.defer);
@@ -541,20 +545,23 @@ export class UiServer {
   const input = (title, placeholder, password) => modal("<b>" + esc(title) + '</b><p><input type="' + (password ? "password" : "text") + '" placeholder="' + esc(placeholder) + '"></p><div class="row"><button data-x>Cancel</button><button class="ok" data-ok>OK</button></div>', (b, done) => { const i = b.querySelector("input"); i.focus(); i.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); done(i.value); } }; b.querySelector("[data-x]").onclick = () => done(null); b.querySelector("[data-ok]").onclick = () => done(i.value); });
   const pick = (title, items) => modal("<b>" + esc(title) + '</b><ul class="pick">' + items.map((x, n) => '<li><button type="button" data-n="' + n + '">' + esc(x.name) + ' <span style="color:#5f6368">' + esc(x.root) + "</span></button></li>").join("") + '</ul><div class="row"><button data-x>Cancel</button></div>', (b, done) => { b.querySelectorAll("[data-n]").forEach((el) => (el.onclick = () => done(items[+el.dataset.n]))); b.querySelector("[data-x]").onclick = () => done(null); const first = b.querySelector("[data-n]"); if (first) first.focus(); });
   // If the BuildPilot server stops (bp ui closed, computer restarted), say so instead of showing old data as if it were live.
-  const offline = (down) => {
+  // A 401 means BuildPilot is running again but restarted (new key), so this page can't talk to it: say that, not "stopped".
+  const offline = (down, expired) => {
     let el = document.getElementById("bp-offline");
     if (!down) { if (el) el.remove(); return; }
-    if (!el) { el = document.createElement("div"); el.id = "bp-offline"; el.className = "offline"; el.setAttribute("role", "alert"); el.textContent = "BuildPilot stopped running, so this page isn't updating. Run bp ui in a terminal to open it again."; document.body.prepend(el); }
+    if (!el) { el = document.createElement("div"); el.id = "bp-offline"; el.className = "offline"; el.setAttribute("role", "alert"); document.body.prepend(el); }
+    const t = expired ? "BuildPilot restarted, so this page is out of date. Run bp ui in a terminal to open a fresh one." : "BuildPilot stopped running, so this page isn't updating. Run bp ui in a terminal to open it again.";
+    if (el.textContent !== t) el.textContent = t;
   };
   let fails = 0;
   const post = async (m) => {
     let r;
     try { r = await fetch("/api/msg", { method: "POST", headers: H, body: JSON.stringify(m) }); } catch { offline(true); return { flash: "Couldn't reach BuildPilot. Nothing was changed." }; }
-    if (r.status === 401) { offline(true); return { flash: "This page has expired. Run bp ui to open a fresh one." }; }
+    if (r.status === 401) { offline(true, true); return { flash: "This page is out of date (BuildPilot restarted). Nothing was changed. Run bp ui to open a fresh one." }; }
     try { const j = await r.json(); return r.ok ? j.result : { flash: "Something went wrong: " + String(j.error || r.status).slice(0, 120) }; } catch { return { flash: "Something went wrong. Try again." }; }
   };
   const toast = (text) => { const el = document.getElementById("flash"); if (el) { el.textContent = text; el.classList.add("on"); clearTimeout(window.__bpToast); window.__bpToast = setTimeout(() => el.classList.remove("on"), 2600); } const live = document.getElementById("live"); if (live) live.textContent = text; };
-  const pushState = async () => { try { const r = await fetch("/api/state", { headers: H }); if (!r.ok) throw 0; const s = await r.json(); fails = 0; offline(false); window.postMessage(s, "*"); } catch { if (++fails >= 2) offline(true); } };
+  const pushState = async () => { try { const r = await fetch("/api/state", { headers: H }); if (r.status === 401) { offline(true, true); return; } if (!r.ok) throw 0; const s = await r.json(); fails = 0; offline(false); window.postMessage(s, "*"); } catch { if (++fails >= 2) offline(true); } };
   let st = {};
   window.acquireVsCodeApi = () => ({
     getState: () => { try { return JSON.parse(localStorage.getItem("bp-view") || "{}"); } catch { return st; } },

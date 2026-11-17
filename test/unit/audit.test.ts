@@ -122,7 +122,7 @@ describe("plugin commands never run user text as shell", () => {
     }
     const p = fs.readFileSync(path.join(dir, "bp-prompt.md"), "utf8");
     expect(p).not.toMatch(/!`[^`]*\$ARGUMENTS/);
-    expect(p).toContain("--stdin <<'BP_REQUEST_END'");
+    expect(p).toContain("--stdin <<'BP_REQUEST_END_7c41'");
   });
 
   it("bp prompt auto --stdin treats backticks, $( ) and quotes as plain text", () => {

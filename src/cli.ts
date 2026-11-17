@@ -21,7 +21,7 @@ import { buildpilotHome, claudeSettingsPath, hookStatus, installHooks, installSt
 import { folderLabel, glance, isYourTurn, oneLine, widgetData } from "./core/glance";
 import { installWidget, pickRuntime, uninstallWidget, widgetStatus } from "./core/widget";
 import { GOALS } from "./core/prompts";
-import { gateParallel, paywallText, readLicense, saveLicense } from "./core/license";
+import { gateParallel, paywallText, plan, readLicense, saveLicense } from "./core/license";
 import { worktrees } from "./core/git";
 import { pageData, PageData } from "./core/page";
 import { guessGoal } from "./core/goal";
@@ -73,6 +73,15 @@ async function main(): Promise<void> {
   const json = args.includes("--json");
   const [rawCmd = "status", ...rest] = args.filter((a) => a !== "--json");
   const cmd = rawCmd === "--help" || rawCmd === "-h" ? "help" : rawCmd === "--version" || rawCmd === "-v" ? "version" : rawCmd;
+  // --stdin: the argument comes on stdin, never through a shell command line (the plugin's slash commands use this, so a
+  // quote, $(…) or backtick typed after /bp-who, /bp-new, /bp-merge or /bp-license is just text).
+  if (["who", "new", "review", "merge", "done", "license"].includes(cmd) && rest.includes("--stdin")) {
+    let text = "";
+    try { text = fs.readFileSync(0, "utf8"); } catch { /* no stdin */ }
+    rest.splice(rest.indexOf("--stdin"), 1);
+    const v = text.replace(/\s+/g, " ").trim().slice(0, 500);
+    if (v) rest.unshift(v);
+  }
   if (!COMMANDS.has(cmd)) {
     const near = [...COMMANDS].find((c) => editDistance(c, cmd.toLowerCase()) <= 2 && cmd.length > 2);
     return usage(`Unknown command "${rawCmd}".${near ? ` Did you mean bp ${near}?` : ""} See all commands: bp help`);
@@ -394,7 +403,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     // For the menu-bar widget and notifications: bring a session's Terminal/iTerm tab (or tmux pane) forward.
     // Exit 3 = its tab wasn't found (the caller can open a Terminal in that folder instead).
     const cwd = rest[0] ? path.resolve(rest[0]) : "";
-    if (!cwd || !fs.existsSync(cwd)) { process.exitCode = 2; return; }
+    if (!cwd || !fs.existsSync(cwd)) return usage(`${cwd ? `No folder ${cwd}. ` : ""}Usage: bp jump <folder> [session id]   brings that session's terminal tab forward (bp go picks one for you)`);
     const { findBuild } = await import("./core/termfind");
     let startedAt: number | null = null;
     if (rest[1]) { const e = new Engine({ light: true }); await e.start(); startedAt = e.sessionStartedAt(rest[1]); e.stop(); }
@@ -428,9 +437,10 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     await engine.start();
     await engine.openProject(folder);
     const builds = await engine.extraBuilds();
-    const b = builds.find((x) => path.basename(x.dir) === rest[0] || x.branch === rest[0] || x.branch === `bp/${rest[0]}` || path.basename(x.dir).endsWith(`-${rest[0]}`)) ?? (builds.length === 1 && !rest[0] ? builds[0] : undefined);
+    const want = rest.find((x) => !x.startsWith("--"));
+    const b = builds.find((x) => path.basename(x.dir) === want || x.branch === want || x.branch === `bp/${want}` || path.basename(x.dir).endsWith(`-${want}`)) ?? (builds.length === 1 && !want ? builds[0] : undefined);
     if (!b) {
-      console.log(`${rest[0] ? `No side build called "${rest[0]}". ` : ""}Which build? ${builds.map((x) => path.basename(x.dir)).join(", ") || "(none; start one with bp new)"}`);
+      console.log(`${want ? `No side build called "${want}". ` : ""}Which build? ${builds.map((x) => path.basename(x.dir)).join(", ") || "(none; start one with bp new)"}`);
       engine.stop();
       process.exitCode = 1;
       return;
@@ -439,8 +449,22 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
     if (cmd === "review") {
       console.log(ch.files.length ? `${path.basename(b.dir)} (${b.branch}): ${ch.files.length} file${ch.files.length === 1 ? "" : "s"}${ch.unsaved ? `, ${ch.unsaved} not saved yet` : ""}\n${ch.files.map((f) => `  ${f.status} ${f.path}`).join("\n")}\nSee the full diff:  git -C "${b.dir}" diff ${ch.base ?? "HEAD"}` : `${path.basename(b.dir)} hasn't changed anything yet.`);
     } else {
+      let failing = false;
+      if (ch.files.length && plan(engine.home).pro) {
+        // Pro: the same promise as the window, tests run before every merge (bp merge <name> --force merges anyway).
+        let hasTest = false;
+        try { hasTest = !!JSON.parse(fs.readFileSync(path.join(b.dir, "package.json"), "utf8")).scripts?.test; } catch { /* none */ }
+        if (hasTest) {
+          const { run } = await import("./core/git");
+          const t = await run("npm", ["test"], b.dir, { timeoutMs: 10 * 60_000 });
+          failing = t.code !== 0 && !rest.includes("--force");
+        }
+      }
       if (!ch.files.length) console.log("Nothing to merge yet.");
-      else {
+      else if (failing) {
+        console.log(`${path.basename(b.dir)}'s tests FAIL, so nothing was merged. See why:  cd "${b.dir}" && npm test\nMerge anyway:  bp merge ${arg(path.basename(b.dir))} --force`);
+        process.exitCode = 1;
+      } else {
         if (ch.unsaved) await engine.saveBuild(b.dir, `Work from ${path.basename(b.dir)} (saved by BuildPilot before merging)`);
         const r = await engine.mergeBuild(b.branch);
         console.log(r.merged ? `${r.message} Remove its folder: bp done ${arg(path.basename(b.dir))}` : `${r.message}${r.conflicts.length ? `\n  ${r.conflicts.join("\n  ")}\nAsk the Claude in that build: "git merge <your main branch>, resolve the conflicts, run tests, commit", then bp merge again.` : ""}`);

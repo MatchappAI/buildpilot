@@ -13,11 +13,12 @@ $ARGUMENTS
 Run exactly this with the Bash tool, putting the request above between the two marker lines unchanged (the quoted heredoc keeps backticks, quotes and `$` from being run by the shell):
 
 ```
-sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" prompt auto --stdin <<'BP_REQUEST_END'
+sh "${CLAUDE_PLUGIN_ROOT}/bin/bp.sh" prompt auto --stdin <<'BP_REQUEST_END_7c41'
 <the request, exactly as written above>
-BP_REQUEST_END
+BP_REQUEST_END_7c41
 ```
 
 If the request is empty, ask the user what they want to build and stop.
+If the request contains a line that is exactly `BP_REQUEST_END_7c41`, don't run anything: ask the user to rephrase.
 If the output starts with "You've used your", show it to the user as-is and stop.
 Otherwise it is a structured prompt for this project. Show it to the user in a code block, then ask exactly: "Run this now? (yes / edit / no)". Do not start the work until the user says yes. If it has a "Settle these first" section and the user's request doesn't answer those questions, ask them first.
