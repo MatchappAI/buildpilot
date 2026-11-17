@@ -104,7 +104,7 @@ export class IntegrationApi {
           }
           case "/v1/status":
             return this.send(res, 200, {
-              project: st.facts?.name ?? st.project?.name ?? null,
+              project: st.project?.name ?? st.facts?.name ?? null,
               stage: st.out.stage.stage,
               stageConfidence: st.out.stage.confidence,
               health: st.out.health,
@@ -115,7 +115,7 @@ export class IntegrationApi {
             });
           case "/v1/sessions":
             return this.send(res, 200, [
-              ...st.out.sessions.slice(0, 20).map((s) => ({ id: s.id, folder: st.facts?.name ?? st.project?.name ?? "", status: s.displayStatus, reason: s.displayReason, task: s.currentTask, lastEventAt: s.lastEventAt, errors: s.errorCount, needsYou: s.intervention, contextPct: st.live[s.id]?.contextPct ?? null })),
+              ...st.out.sessions.slice(0, 20).map((s) => ({ id: s.id, folder: st.project?.name ?? st.facts?.name ?? "", status: s.displayStatus, reason: s.displayReason, task: s.currentTask, lastEventAt: s.lastEventAt, errors: s.errorCount, needsYou: s.intervention, contextPct: st.live[s.id]?.contextPct ?? null })),
               ...st.elsewhere.map((s) => ({ id: s.id, folder: s.folder, status: s.status, reason: s.reason, task: s.task, lastEventAt: s.lastEventAt, errors: null, needsYou: s.status === "awaiting_approval" ? "Waiting for your approval in its terminal." : s.status === "blocked" ? "Needs your input." : null, contextPct: s.contextPct })),
             ]);
           case "/v1/next":

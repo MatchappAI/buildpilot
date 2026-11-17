@@ -117,11 +117,11 @@ describe("engine end-to-end", () => {
       expect((await fetch("http://127.0.0.1:47999/v1/brief", { headers: { authorization: "Bearer wrong" } })).status).toBe(401);
       const r = await fetch("http://127.0.0.1:47999/v1/brief?format=text", { headers: { authorization: `Bearer ${token}` } });
       expect(r.status).toBe(200);
-      expect(await r.text()).toMatch(/demo/);
+      expect(await r.text()).toMatch(/^bp-repo-/);
       const p = await fetch("http://127.0.0.1:47999/v1/prompt", { method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ goal: "bugfix", request: "login button does nothing on mobile" }) });
       expect(((await p.json()) as { prompt: string }).prompt).toContain("Fix a bug");
       const s = await fetch("http://127.0.0.1:47999/v1/status", { headers: { authorization: `Bearer ${token}` } });
-      expect(((await s.json()) as { project: string }).project).toBe("demo");
+      expect(((await s.json()) as { project: string }).project).toMatch(/^bp-repo-/);
     } finally {
       await api.stop();
     }

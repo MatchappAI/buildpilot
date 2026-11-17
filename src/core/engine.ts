@@ -856,7 +856,7 @@ export class Engine extends EventEmitter {
   /** "Brief" for voice/glasses/notifications: 1–3 short sentences, no markdown. */
   brief(state = this.snapshot()): string {
     if (!state.project) return "BuildPilot has no project open.";
-    const name = state.facts?.name ?? state.project.name;
+    const name = state.project.name ?? state.facts?.name;
     const parts: string[] = [];
     const active = state.out.sessions.filter((s) => !s.endedAt && state.generatedAt - s.lastEventAt < 3600_000);
     const waiting = active.filter((s) => s.displayStatus === "awaiting_approval" || s.displayStatus === "blocked");

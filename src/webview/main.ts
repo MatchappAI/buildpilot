@@ -176,7 +176,7 @@ function render(): void {
     <header class="head">
       <h1 class="brand">${MARK}<span>Build<b>Pilot</b></span></h1>
       ${planPill()}
-      ${standalone ? `<button class="link proj" data-act="selectProject" title="Prompts, tips and side builds use this project">Project: ${esc(S.facts?.name ?? S.project?.name ?? "choose")} ▾</button>` : ""}
+      ${standalone ? `<button class="link proj" data-act="selectProject" title="Prompts, tips and side builds use this project">Project: ${esc(S.project?.name ?? S.facts?.name ?? "choose")} ▾</button>` : ""}
     </header>
     ${trialNotice()}
     ${headsUp()}
@@ -457,7 +457,7 @@ function paywallCard(): string {
 function promptSection(): string {
   const p = P!.plan;
   const counter = !p.pro && p.freeLeft != null && !paywalled ? `<span class="muted small" title="A prompt only counts when you start or copy it">${p.freeLeft} of ${FREE} free prompts left</span>` : "";
-  const folder = S?.facts?.name ?? S?.project?.name ?? "this project";
+  const folder = S?.project?.name ?? S?.facts?.name ?? "this project";
   return `<section class="block" aria-label="Prompt">
     <h2 class="label">Next prompt</h2>
     <label class="q" for="req">What do you want to build next?</label>

@@ -4,7 +4,7 @@
     <header class="head">
       <h1 class="brand">${ot}<span>Build<b>Pilot</b></span></h1>
       ${ht()}
-      ${k?`<button class="link proj" data-act="selectProject" title="Prompts, tips and side builds use this project">Project: ${n(y.facts?.name??y.project?.name??"choose")} \u25BE</button>`:""}
+      ${k?`<button class="link proj" data-act="selectProject" title="Prompts, tips and side builds use this project">Project: ${n(y.project?.name??y.facts?.name??"choose")} \u25BE</button>`:""}
     </header>
     ${gt()}
     ${pt()}
@@ -66,7 +66,7 @@ ${n(t.task.slice(0,600))}`:""}">${yt(t)}</div>
     <ul>${t.points.map(e=>`<li>${n(e)}</li>`).join("")}</ul>
     <div class="actions"><button class="primary" data-act="upgrade">Get Pro \xB7 ${n(t.price)}</button><button class="link" data-act="enterLicense">I have a license key</button></div>
     <p class="muted tiny">Separate from your Claude plan. Cancel anytime. Watching builds, limits and tips stays free. The checkout link includes a random id only so your payment can be matched to your key.</p>
-  </div>`}function At(){let t=i.plan,e=!t.pro&&t.freeLeft!=null&&!j?`<span class="muted small" title="A prompt only counts when you start or copy it">${t.freeLeft} of ${at} free prompts left</span>`:"",s=y?.facts?.name??y?.project?.name??"this project";return`<section class="block" aria-label="Prompt">
+  </div>`}function At(){let t=i.plan,e=!t.pro&&t.freeLeft!=null&&!j?`<span class="muted small" title="A prompt only counts when you start or copy it">${t.freeLeft} of ${at} free prompts left</span>`:"",s=y?.project?.name??y?.facts?.name??"this project";return`<section class="block" aria-label="Prompt">
     <h2 class="label">Next prompt</h2>
     <label class="q" for="req">What do you want to build next?</label>
     <textarea id="req" rows="3" placeholder="e.g. Add a contact form that emails me"></textarea>

@@ -569,7 +569,7 @@ More: bp (this folder) · sessions · brief · handoff · audit · visual [url]
       console.log(engine.brief(st));
       break;
     case "status":
-      console.log(`${st.facts?.name}: ${st.out.health.label}`);
+      console.log(`${st.project?.name ?? st.facts?.name}: ${st.out.health.label}`);
       if (st.out.progress.total > 0) console.log(`Progress: ${st.out.progress.label}`);
       for (const i of st.out.issues.slice(0, 10)) console.log(`  [${i.severity}] ${i.title}`);
       if (st.out.next) console.log(`Next: ${st.out.next.title}\n  ${st.out.next.why}`);
