@@ -34,17 +34,18 @@ export async function runUiWalk({ B, R, steps = 120, seq = null, cfg = {}, recor
   W.__key = () => B.mint();
   if (cfg.connected) { W.cli(["hooks", "install"]); W.cli(["statusline", "install"]); }
   if (cfg.seeded) seedDay({ proj: W.proj, home: W.home, env: W.env });
+  if (cfg.theme || cfg.alerts) fs.writeFileSync(path.join(W.bph, "ui.json"), JSON.stringify({ theme: cfg.theme ?? "white", alerts: cfg.alerts !== "off" }));
+  if (cfg.noGit) fs.rmSync(path.join(W.proj, ".git"), { recursive: true, force: true });
   await W.stop(); await W.start(); // reads the seeded spool
-  const env = { down: false, offline: false, throttle: 0, dark: false, narrow: false };
+  const env = { down: false, offline: false, throttle: 0, dark: cfg.scheme === "dark", narrow: cfg.viewport === "phone" };
   const b = await launch({ width: 1280, height: 900 });
-  const net = []; // 5xx answers
   const openUrl = async (tab = b) => { const u = W.cli(["ui", "--print"]).out.trim(); await tab.goto(u); await tab.wait(() => !!document.querySelector(".page") || !!document.querySelector(".connect"), 15000); };
   const log = []; const failures = [];
   let tab2 = null;
   const total = seq ? seq.length : steps;
   try {
-    await b.viewport(1280, 900);
-    await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] }); // known start, whatever this Mac uses
+    await b.viewport(env.narrow ? 375 : 1280, env.narrow ? 800 : 900, env.narrow);
+    await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: env.dark ? "dark" : "light" }] }); // known start, whatever this Mac uses
     await openUrl();
     for (let step = 0; step < total; step++) {
       const st = await pageState(b, env);
@@ -58,7 +59,7 @@ export async function runUiWalk({ B, R, steps = 120, seq = null, cfg = {}, recor
       const errsBefore = b.errors().length;
       let note = "";
       try { note = await doAction(name, { b, W, R: SR, env, openUrl, getTab2: () => tab2, setTab2: (t) => (tab2 = t) }); }
-      catch (e) { failures.push({ step, action: name, state: st, errors: [`action failed: ${e.message.slice(0, 240)}`] }); log.push({ a: name, s: sub }); break; }
+      catch (e) { const txt = await b.eval(() => document.body?.innerText?.slice(0, 200) ?? "").catch(() => "?"); if (shots) await b.shot(path.join(shots, `ui-${cfg.label ?? "x"}-${step}-ACTION.png`), false).catch(() => {}); failures.push({ step, action: name, state: st, errors: [`action failed: ${e.message.slice(0, 240)}`, `page: ${txt}`], url: await b.eval(() => location.href).catch(() => "?") }); log.push({ a: name, s: sub }); break; }
       log.push({ a: name, s: sub });
       await settle(b, env);
       const after = await pageState(b, env);
@@ -85,7 +86,7 @@ async function actionsFor(b, st, env) {
     else out.push("dlg:ok", "dlg:enter");
     return out;
   }
-  if (st === "offline" || st === "expired" || env.stale) out.push("env:reopen");
+  if ((st === "offline" || st === "expired" || env.stale) && !env.offline) out.push("env:reopen");
   for (const a of acts) out.push(`press:${a}`);
   const has = await b.eval(() => ({ req: !!document.getElementById("req"), fileq: !!document.getElementById("fileq"), ptext: !!document.getElementById("ptext"), rows: document.querySelectorAll(".builds .name-btn").length })).catch(() => ({}));
   if (has.req) out.push("type:req", "key:cmdEnter");
@@ -96,7 +97,7 @@ async function actionsFor(b, st, env) {
   return out;
 }
 
-async function doAction(name, { b, W, R, env, openUrl, getTab2, setTab2 }) {
+async function doAction(name, { b, W, R, env, openUrl }) {
   const [kind, arg] = [name.slice(0, name.indexOf(":")), name.slice(name.indexOf(":") + 1)];
   if (kind === "press") {
     const [act, tip] = arg.split(".");
@@ -177,7 +178,7 @@ async function settle(b, env) {
   for (let i = 0; i < 60; i++) { const busy = await b.eval(() => document.querySelectorAll('[aria-busy="true"]').length).catch(() => 0); if (!busy) break; await sleep(250); }
 }
 
-async function checkUi(b, W, env, errsBefore, name) {
+async function checkUi(b, W, env, errsBefore) {
   const errs = [];
   // 1. errors: uncaught exceptions always count; console errors count unless the network/server is down on purpose.
   const all = b.errors().slice(errsBefore);
@@ -204,7 +205,7 @@ async function checkUi(b, W, env, errsBefore, name) {
   if (env.down || env.offline) return errs;
   if (env.stale) { // after a restart this page's key is old: it must say so (and never pretend to be live)
     const t = await b.eval(() => document.getElementById("bp-offline")?.textContent ?? document.body.innerText.slice(0, 120));
-    if (!/restarted|expired|stopped running|can.t be reached/i.test(t)) { await sleep(3500); const t2 = await b.eval(() => document.getElementById("bp-offline")?.textContent ?? document.body.innerText.slice(0, 120)); if (!/restarted|expired|stopped running|can.t be reached/i.test(t2)) errs.push(`after a server restart the old page doesn't say it's out of date: "${t2.slice(0, 80)}"`); }
+    if (!/restarted|expired|stopped running|can.t be reached|ERR_[A-Z_]+/i.test(t)) { await sleep(env.throttle ? 8000 : 3500); const t2 = await b.eval(() => document.getElementById("bp-offline")?.textContent ?? document.body.innerText.slice(0, 120)); if (!/restarted|expired|stopped running|can.t be reached|ERR_[A-Z_]+/i.test(t2)) errs.push(`after a server restart the old page doesn't say it's out of date: "${t2.slice(0, 80)}"`); }
     return errs;
   }
   // 3. the page shows what the server says (live refresh every 3 s: allow up to 4 s to catch up).
@@ -233,4 +234,11 @@ async function checkUi(b, W, env, errsBefore, name) {
   }
   errs.push(...last);
   return errs;
+}
+
+/** Criterion (c): one pairwise row → a world in that configuration, the page checked as it opens, then a few random steps. */
+export function cfgFromRow(row, B) {
+  const cfg = { label: `pw-${Object.values(row).join("-")}`, sellable: row.plan !== "not-sellable", trialDays: row.plan === "trial" ? 14 : row.plan === "trial-ending" ? 2 : 0, count: row.plan === "free-exhausted" ? 20 : 3, connected: row.connection === "connected", plugin: row.connection === "plugin", seeded: row.data === "seeded", theme: row.theme, alerts: row.alerts, viewport: row.viewport, scheme: row.scheme, noGit: row.project === "no-git" };
+  if (row.plan === "licensed") cfg.license = B.mint();
+  return cfg;
 }

@@ -392,6 +392,8 @@ export class UiServer {
         uninstallHooks(claudeSettingsPath("user"), eng.home);
         if (root) { const pf = claudeSettingsPath("project", root); if (fs.existsSync(pf)) uninstallHooks(pf, eng.home); }
         uninstallStatusline(claudeSettingsPath("user"), eng.home);
+        // The plugin brings its own hooks: say so instead of claiming BuildPilot is off when sessions will keep showing.
+        if (pluginConnected(claudeSettingsPath("user"))) return { show: "BuildPilot's own lines are removed from ~/.claude/settings.json.\n\nThe BuildPilot plugin is still on in Claude Code, so your sessions keep showing here. To turn it off too, run this in Claude Code:\n\n  /plugin disable buildpilot@buildpilot" };
         return { flash: "Disconnected. Your Claude Code settings are back to how they were" };
       }
       case "fixDoubleHooks": {
@@ -411,8 +413,12 @@ export class UiServer {
         return { flash: "Undo is on. First save point made" };
       }
       case "checkpoint": {
-        const cp = await eng.checkpoint("save point");
-        return { flash: `Save point made (${cp.sha.slice(0, 8)})` };
+        try {
+          const cp = await eng.checkpoint("save point");
+          return { flash: `Save point made (${cp.sha.slice(0, 8)})` };
+        } catch (e) {
+          return { flash: `Couldn't make a save point: ${(e as Error).message}` };
+        }
       }
       case "newBuildCheck": {
         // Asked before the name/confirm dialogs, so a free user hears about the limit first, not after typing a name.
@@ -519,9 +525,13 @@ export class UiServer {
     hideIdle: ["Hide sessions that have been quiet for 2+ hours?", "They disappear from the list. Their history is kept, and they come back if Claude does something there again."],
     undoFile: ["Put this file back to its last saved version?", "Undoes every change since your last commit for this one file. BuildPilot makes a safety save point of the current version first."],
     resumeBuild: ["Resume this Claude conversation?", "Opens Terminal in that folder and continues the same chat (claude --resume)."],
-    removeBuild: ["Remove this build's folder?", "Its branch is kept, so nothing is lost. Folders with unsaved changes are never removed."],
+    removeBuild: ["Remove this build's folder?", "Its branch is kept, so nothing is lost: you can still merge it later with git merge. Folders with unsaved changes are never removed."],
   };
-  const modal = (html, onReady) => new Promise((resolve) => {
+  // One dialog at a time: a second flow (e.g. a slow answer arriving after another button was pressed) waits its turn
+  // instead of stacking on top of the open one.
+  let dlgChain = Promise.resolve();
+  const modal = (html, onReady) => { const p = dlgChain.then(() => openModal(html, onReady)); dlgChain = p.catch(() => {}); return p; };
+  const openModal = (html, onReady) => new Promise((resolve) => {
     const prev = document.activeElement;
     const m = document.createElement("div"); m.className = "bp-modal"; m.innerHTML = '<div class="bp-box" role="dialog" aria-modal="true" aria-labelledby="bp-dlg-t">' + html.replace("<b>", '<b id="bp-dlg-t">') + "</div>";
     document.body.appendChild(m);
@@ -570,11 +580,11 @@ export class UiServer {
       const reply = (result) => { if (m.rid) window.postMessage({ type: "reply", rid: m.rid, result }, "*"); };
       if (m.type === "ready") { await pushState(); return reply(null); }
       if (CONFIRM[m.type] && !(await ask(CONFIRM[m.type][0], CONFIRM[m.type][1], "Continue"))) return reply(null);
-      if (m.type === "showConnectChanges") { const r = await post(m); await show("BuildPilot adds these entries to ~/.claude/settings.json:\\n\\n" + r.show); return reply(null); }
+      if (m.type === "showConnectChanges") { const r = await post(m); if (!r || typeof r.show !== "string") { if (r && r.flash) toast(r.flash); return reply(null); } await show("BuildPilot adds these entries to ~/.claude/settings.json:\\n\\n" + r.show); return reply(null); }
       if (m.type === "enterLicense") { const k = await input("Paste your BuildPilot Pro key", "BP1.…", true); if (k) { const r = await post({ type: "enterLicense", key: k }); if (r?.flash) toast(r.flash); await pushState(); } return reply(null); }
       if (m.type === "newBuild") { const pre = await post({ type: "newBuildCheck" }); if (!pre || !pre.ok) { if (pre && typeof pre.paywall === "string") { if (await ask("Go Pro?", pre.paywall.replace(/: https?:\\/\\/\\S+$/, "."), "Get Pro")) await post({ type: "upgrade" }); } else if (pre && pre.flash) toast(pre.flash); return reply(null); } const label = await input("New side build: what's it for? (a few words)", "e.g. checkout page"); if (label === null) return reply(null); if (!(await ask("Start a new build in its own copy of the project?", "BuildPilot makes a separate copy next to your project (with your .env files), installs packages, and opens Claude in Terminal. Two builds use your plan limit about twice as fast.", "Start build"))) return reply(null); m.label = label; }
       if (m.type === "renameBuild") { const n = await input("Name this session (leave empty to clear)", "e.g. checkout page"); if (n === null) return reply(null); m.name = n; }
-      if (m.type === "selectProject") { const list = await post({ type: "projects" }); if (!list || !list.length) { await show("No projects yet.\\n\\nOpen BuildPilot from inside a project folder (cd my-app, then bp ui), or start Claude in a project: it shows up here after Claude does something there."); return reply(null); } const p = await pick("Choose a project", list); if (!p) return reply(null); m.root = p.root; }
+      if (m.type === "selectProject") { const list = await post({ type: "projects" }); if (list && !Array.isArray(list)) { if (list.flash) toast(list.flash); return reply(null); } if (!list || !list.length) { await show("No projects yet.\\n\\nOpen BuildPilot from inside a project folder (cd my-app, then bp ui), or start Claude in a project: it shows up here after Claude does something there."); return reply(null); } const p = await pick("Choose a project", list); if (!p) return reply(null); m.root = p.root; }
       let r = await post(m);
       if (r && r.confirmAgain) { if (await ask(r.confirmAgain, "Merging now would bring failing code into your main project.", "Merge anyway")) r = await post({ ...m, force: true }); else return reply(null); }
       if (r && typeof r.paywall === "string") { if (await ask("Go Pro?", r.paywall.replace(/: https?:\\/\\/\\S+$/, "."), "Get Pro")) await post({ type: "upgrade" }); return reply(null); }

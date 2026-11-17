@@ -2,6 +2,7 @@
 // store (node:sqlite file), with virtual time. The oracle below is written from the documented rules (docs/FEATURES.md,
 // ingest.ts comments), not copied from the code: after every step the database and the page data must agree with it.
 import fs from "fs"; import path from "path"; import os from "os"; import { createRequire } from "module";
+import { rng } from "./rng.mjs";
 
 export const S_STATES = ["absent", "unknown", "idle", "running", "awaiting_approval", "blocked", "failed", "completed", "hidden"];
 const TERMINAL = new Set(["idle", "failed", "completed", "hidden"]);
@@ -130,7 +131,7 @@ const dupOf = (rec, raw, ts) => { const b = Math.floor(ts / 5000); const seen = 
  * Runs one seeded random walk. Returns {steps, failures, coverage}. `seq` (optional) replays an exact action list
  * (used by the shrinker); otherwise actions are drawn from the seed.
  */
-export async function runSessionWalk({ harness, R, steps = 300, seq = null, sessions = 3, record }) {
+export async function runSessionWalk({ harness, R, steps = 300, seq = null, sessions = 3, record, covered = null }) {
   const W = await makeWorld(harness, "sess");
   const ids = Array.from({ length: sessions }, (_, i) => `aaaa000${i}-0000-4000-8000-00000000000${i}`);
   const recs = new Map(ids.map((i) => [i, fresh()]));
@@ -148,13 +149,17 @@ export async function runSessionWalk({ harness, R, steps = 300, seq = null, sess
       let name = planned ? planned.a : null;
       if (!name) {
         const ok = Object.entries(S_ACTIONS).filter(([, a]) => !a.pre || a.pre(rec));
-        name = R.pick(ok)[0];
+        // Coverage-guided: prefer a (state, action) or (previous action on this session, action) pair not run yet.
+        const fresh = covered && R.chance(0.8) ? ok.filter(([k]) => !covered.t.has(`session|${stateOf(rec)}|${k}`) || (lastAct.get(id) && !covered.p.has(`session|${lastAct.get(id)}>${k}`))) : [];
+        name = R.pick(fresh.length ? fresh : ok)[0];
       }
       const a = S_ACTIONS[name];
       if (a.pre && !a.pre(rec)) { if (seq) continue; else throw new Error(`generator picked a disabled action ${name}`); }
-      now = Math.min(Date.now() - 60_000, now + (planned?.gap ?? R.weighted([[R.int(0, 400), 5], [R.int(400, 4000), 4], [R.int(4000, 120_000), 1]])));
+      const sub = planned?.s ?? R.int(0, 2 ** 31); const SR = rng(sub); // per-step choices replay exactly
+      const gap = planned?.gap ?? SR.weighted([[SR.int(0, 400), 5], [SR.int(400, 4000), 4], [SR.int(4000, 120_000), 1]]);
+      now = Math.min(Date.now() - 60_000, now + gap);
       const before = stateOf(rec);
-      const entry = { id, a: name, gap: 0 };
+      const entry = { id, a: name, gap, s: sub };
       if (a.quiet) {
         now = Math.min(Date.now() - 60_000, now + 3 * 3600_000);
       } else if (a.hide) {
@@ -167,12 +172,12 @@ export async function runSessionWalk({ harness, R, steps = 300, seq = null, sess
           if (pageQuiet) { r.status = "hidden"; r.ended = now; }
         }
       } else if (a.rename) {
-        const nm = R.pick(["checkout", "  spaced   out  ", "", "x".repeat(60), "<b>bold</b>", "日本語 🚀"]);
+        const nm = SR.pick(["checkout", "  spaced   out  ", "", "x".repeat(60), "<b>bold</b>", "日本語 🚀"]);
         W.H.setBuildName(W.engine, id, nm);
         const norm = nm.replace(/\s+/g, " ").trim().slice(0, 40);
         rec.name = norm || null;
       } else {
-        const pl = payloadFor(name, a, rec, { id, cwd: W.proj, now, R, step });
+        const pl = payloadFor(name, a, rec, { id, cwd: W.proj, now, R: SR, step });
         const isDup = !a.bad && dupOf(rec, pl.raw, pl.ts);
         W.deliver(pl.raw, pl.ts);
         const next = spec(rec, a, pl.p, pl.ts, isDup);
@@ -180,7 +185,6 @@ export async function runSessionWalk({ harness, R, steps = 300, seq = null, sess
         Object.assign(rec, next);
         entry.ts = pl.ts;
       }
-      entry.gap = planned?.gap ?? 0;
       log.push(entry);
       const after = stateOf(rec);
       record?.transition("session", before, name, after);
@@ -276,4 +280,54 @@ export async function runConcurrency({ harness, R, procs = 4, sessions = 5, even
   const accepted = results.reduce((s, r) => { try { return s + JSON.parse(r.o.trim().split("\n").pop()).accepted; } catch { return s; } }, 0);
   W.cleanup();
   return { events, procs, accepted, errors: errs };
+}
+
+/**
+ * Criterion (d) for sessions: every simple path (no state visited twice) through the session state graph, starting
+ * from "absent". The graph's edges are the (state, action → state) transitions the oracle and the code agreed on in the
+ * random walks; each path is replayed on its own fresh session and checked against the oracle after every step.
+ */
+export function sessionPaths(transitions, maxLen = 9) {
+  const edges = new Map(); // state → [[action, to]]
+  for (const [k, v] of Object.entries(transitions)) { const [from, a] = k.split("|"); for (const to of v.to) if (to !== from) { const list = edges.get(from) ?? []; if (!list.some(([, t]) => t === to)) list.push([a, to]); edges.set(from, list); } }
+  const paths = [];
+  const walk = (s, seen, acts) => { if (acts.length) paths.push([...acts]); if (acts.length >= maxLen) return; for (const [a, to] of edges.get(s) ?? []) if (!seen.has(to)) { seen.add(to); acts.push({ a, to }); walk(to, seen, acts); acts.pop(); seen.delete(to); } };
+  walk("absent", new Set(["absent"]), []);
+  return paths;
+}
+
+export async function runSessionPaths({ harness, paths, R }) {
+  let W = await makeWorld(harness, "paths");
+  let ran = 0, realized = 0, n = 0; const failures = []; let now = Date.now() - 20 * 3600_000;
+  try {
+    for (const path_ of paths) {
+      if (++n % 3000 === 0) { W.cleanup(); W = await makeWorld(harness, "paths"); }
+      const id = `p${String(n).padStart(7, "0")}-0000-4000-8000-000000000000`;
+      let rec = fresh(); let ok = true;
+      for (const [i, { a: name, to }] of path_.entries()) {
+        const a = S_ACTIONS[name];
+        if (a.pre && !a.pre(rec)) { ok = false; break; }
+        now += 1000;
+        if (a.quiet) { now = Math.min(Date.now() - 60_000, now + 3 * 3600_000); }
+        else if (a.hide) { const v = W.H.widgetData(W.engine, now).sessions.find((s) => s.id === id); W.H.hideQuiet(W.engine, now); if (v && !v.needsYou && !v.stopped && v.status !== "running" && now - v.lastEventAt > 2 * 3600_000) rec = { ...rec, status: "hidden", ended: now }; }
+        else if (a.rename) { W.H.setBuildName(W.engine, id, "x"); }
+        else {
+          const pl = payloadFor(name, a, rec, { id, cwd: W.proj, now, R, step: n * 100 + i });
+          const isDup = !a.bad && dupOf(rec, pl.raw, pl.ts);
+          W.deliver(pl.raw, pl.ts);
+          const next = spec(rec, a, pl.p, pl.ts, isDup);
+          if (!a.bad && !isDup) { next.acceptedBuckets = new Map(rec.acceptedBuckets); next.acceptedBuckets.set(pl.raw, [Math.floor(pl.ts / 5000)]); next.lastRaw = pl.raw; next.lastRawTs = pl.ts; }
+          rec = next;
+        }
+        if (stateOf(rec) !== to) { ok = false; break; } // this path needs details the abstract state doesn't carry
+        const row = W.row(id);
+        const db = !row ? "absent" : row.status === "completed" && row.status_reason === "Hidden as idle" && row.ended_at != null ? "hidden" : row.status;
+        if (db !== stateOf(rec)) { failures.push({ path: path_.map((x) => x.a), step: i, errors: [`status ${db}, expected ${stateOf(rec)}`] }); ok = false; break; }
+        if (row && Number(row.event_count) !== rec.events) { failures.push({ path: path_.map((x) => x.a), step: i, errors: [`event_count ${row.event_count}, expected ${rec.events}`] }); ok = false; break; }
+      }
+      ran++; if (ok) realized++;
+      if (now > Date.now() - 4 * 3600_000) now = Date.now() - 20 * 3600_000;
+    }
+  } finally { W.cleanup(); }
+  return { paths: paths.length, ran, realized, failures };
 }

@@ -1,9 +1,12 @@
 // Coverage bookkeeping: every (state, action) transition and every consecutive action pair actually executed.
 export function recorder() {
   const t = {}; const p = {}; const misc = {};
+  // Flat sets for coverage-guided generators: "machine|state|action" and "machine|a>b".
+  const covered = { t: new Set(), p: new Set() };
   return {
-    transition(m, from, action, to) { ((t[m] ??= {})[`${from}|${action}`] ??= { n: 0, to: new Set() }).n++; t[m][`${from}|${action}`].to.add(to); },
-    pair(m, a, b) { const k = `${a}>${b}`; (p[m] ??= {})[k] = ((p[m] ??= {})[k] ?? 0) + 1; },
+    covered,
+    transition(m, from, action, to) { covered.t.add(`${m}|${from}|${action}`); ((t[m] ??= {})[`${from}|${action}`] ??= { n: 0, to: new Set() }).n++; t[m][`${from}|${action}`].to.add(to); },
+    pair(m, a, b) { const k = `${a}>${b}`; covered.p.add(`${m}|${k}`); (p[m] ??= {})[k] = ((p[m] ??= {})[k] ?? 0) + 1; },
     hit(kind, key) { (misc[kind] ??= {})[key] = (misc[kind][key] ?? 0) + 1; },
     dump() { const tt = {}; for (const [m, o] of Object.entries(t)) { tt[m] = {}; for (const [k, v] of Object.entries(o)) tt[m][k] = { n: v.n, to: [...v.to] }; } return { transitions: tt, pairs: p, misc }; },
   };

@@ -3,7 +3,7 @@
 // Claude Code's settings change only when the command is meant to change them, nothing opens on screen (OS log only),
 // nothing typed as an argument is ever run by the shell.
 import fs from "fs"; import path from "path"; import crypto from "crypto";
-import { execFileSync, spawn } from "child_process";
+import { spawn } from "child_process";
 import { makeServerWorld } from "./api.mjs";
 import { seed as seedDay, IDS } from "../e2e/seed.mjs";
 import { TEXT } from "./fuzz.mjs";
@@ -15,7 +15,6 @@ const FUZZ = TEXT.filter(([c]) => !["huge-20k", "nul"].includes(c)); // argv can
 
 /** The command matrix. Each case: [args, {stdin, changes: "settings"|null, slow}] */
 export function cliCases(W, B) {
-  const name = (c) => [c, {}];
   const cases = [];
   const add = (args, o = {}) => cases.push([args, o]);
   for (const c of ["glance", "widget", "recent", "limits", "today", "tmux", "help", "version", "--help", "-h", "--version", "-v", "builds", "brief", "status", "sessions", "handoff"]) { add([c]); add([c, "--json"]); }

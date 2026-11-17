@@ -390,7 +390,7 @@ function sideSection(): string {
   return `<div class="side"><ul class="builds"><li class="group"><h3 class="group-h">Side builds</h3><span class="count">review &amp; merge</span></li>${side
     .map((s) => `<li>
       <div class="b-main"><div class="b-name">${esc(s.name)}</div><div class="b-sub">${s.changed ? `${s.changed} file${s.changed === 1 ? "" : "s"} changed${s.unsaved ? " · not saved yet" : ""}` : "No changes yet"}</div></div>
-      ${s.changed ? `<button class="secondary small-btn" data-act="reviewBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="See each changed file, before and after">Review</button><button class="secondary small-btn" data-act="mergeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="Bring this build's work into your main project">Merge</button>` : `<button class="link" data-act="removeBuild" data-dir="${esc(s.dir)}" title="Remove this folder (its branch is kept)">Remove</button>`}
+      ${s.changed ? `<button class="secondary small-btn" data-act="reviewBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="See each changed file, before and after">Review</button><button class="secondary small-btn" data-act="mergeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="Bring this build's work into your main project">Merge</button>` : ""}<button class="link" data-act="removeBuild" data-dir="${esc(s.dir)}" data-branch="${esc(s.branch)}" title="${s.changed ? "Don't want this work? Remove the folder. Its branch is kept, so nothing is lost (a folder with unsaved changes is never removed)" : "Remove this folder (its branch is kept)"}">${s.changed ? "Discard" : "Remove"}</button>
     </li>`)
     .join("")}</ul></div>`;
 }
@@ -567,7 +567,8 @@ async function act(el: HTMLElement): Promise<void> {
       if (t === "pause") { await call("openBuild", { cwd: el.dataset.cwd }); return flash("Press Esc in that terminal to pause Claude"); }
       if (t === "goTo") return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id });
       if (t === "showErrors" && el.dataset.id) { errOpen.add(el.dataset.id); render(); document.querySelector(".errpanel")?.scrollIntoView?.({ block: "nearest" }); return; }
-      if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
+      // Only say "made" when it was (Cancel or a failure must not read as success).
+      if (t === "checkpoint") { const r = await call<{ flash?: string } | null>("checkpoint"); if (r?.flash) flash(r.flash); return; }
       if (t === "newBuild") return void call("newBuild");
       if (t === "planMode") {
         vs.request = "Stop. Look at why the last fixes failed, then write a short plan before changing any code.";
