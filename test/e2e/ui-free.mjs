@@ -1,4 +1,4 @@
-import fs from "fs"; import path from "path";
+import fs from "fs"; import path from "path"; import { execFileSync } from "child_process";
 import { launch } from "./cdp.mjs"; import { makeEnv } from "./env.mjs";
 process.env.BUILDPILOT_CHECKOUT_URL = "https://buy.stripe.com/test_example"; process.env.BUILDPILOT_TRIAL_DAYS = "0";
 const E = makeEnv(); const res = [];
@@ -17,6 +17,12 @@ try {
   await step("confirmed Start counts once", async () => { await b.click('[data-act="sendPrompt"]'); await b.wait(() => !!document.querySelector(".bp-modal [data-ok]")); await b.click(".bp-modal [data-ok]"); await b.wait(() => /starting/i.test(document.getElementById("flash").textContent), 6000); await new Promise((r) => setTimeout(r, 800)); ok(usage() === u0 + 1, `${u0} -> ${usage()}`); return `count ${usage()}`; });
   await step("upgrade opens checkout with install id (logged, not opened)", async () => { const has = await b.eval(() => !!document.querySelector('[data-act="upgrade"]')); if (!has) return "no upgrade button visible on this state"; await b.click('[data-act="upgrade"]'); await new Promise((r) => setTimeout(r, 800)); const o = E.osLog().find((x) => x.kind === "open"); ok(o && /buy\.stripe\.com\/test_example\?client_reference_id=/.test(o.url), JSON.stringify(o)); return o.url.replace(/=.*/, "=…"); });
   await step("invalid license key → plain error, nothing saved", async () => { const has = await b.eval(() => !!document.querySelector('[data-act="enterLicense"]')); if (!has) return "no key button visible"; await b.click('[data-act="enterLicense"]'); await b.wait(() => !!document.querySelector(".bp-modal input")); await b.eval(() => { document.querySelector(".bp-modal input").value = "BP1.abc.def"; }); await b.click(".bp-modal [data-ok]"); await b.wait(() => /didn't work/.test(document.getElementById("flash").textContent), 6000); ok(!fs.existsSync(path.join(E.home, ".buildpilot/license.json")), "saved"); return await b.eval(() => document.getElementById("flash").textContent); });
+  await step("free plan at its side-build limit: Go Pro comes first, no name asked, nothing created", async () => {
+    execFileSync("git", ["worktree", "add", "-q", "-b", "bp/one", path.join(E.home, "proj-one")], { cwd: E.proj, env: E.env });
+    await b.click('[data-act="newBuild"]'); await b.wait(() => !!document.querySelector(".bp-modal"), 6000);
+    const t = await b.eval(() => document.querySelector(".bp-modal").innerText); ok(/Go Pro/.test(t) && !(await b.eval(() => !!document.querySelector(".bp-modal input"))), t.slice(0, 80));
+    await b.click(".bp-modal [data-x]"); ok(execFileSync("git", ["worktree", "list"], { cwd: E.proj, encoding: "utf8" }).trim().split("\n").length === 2, "a build was created"); return t.split("\n")[2];
+  });
   await step("no console errors", async () => { ok(!b.errors().length, b.errors().join()); });
 } finally { await b.close(); E.cleanup(); }
 for (const r of res) console.log(r.join("  "));

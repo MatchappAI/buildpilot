@@ -138,7 +138,8 @@ function headsUp(): string {
 const FOCUS_ATTRS = ["data-act", "data-id", "data-cwd", "data-dir", "data-tip", "data-path", "data-branch"];
 function focusKey(el: Element | null): string | null {
   if (!el || el === document.body || el.id) return null;
-  const parts = FOCUS_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => `[${a}="${CSS.escape(el.getAttribute(a)!)}"]`).join("");
+  const q = (v: string) => v.replace(/["\\]/g, "\\$&"); // attribute-value quoting (no CSS.escape dependency)
+  const parts = FOCUS_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => `[${a}="${q(el.getAttribute(a)!)}"]`).join("");
   return parts ? `${el.tagName.toLowerCase()}${parts}` : null;
 }
 
@@ -565,6 +566,7 @@ async function act(el: HTMLElement): Promise<void> {
       if (t === "resumeBuild") return void call("resumeBuild", { id: el.dataset.id, cwd: el.dataset.cwd });
       if (t === "pause") { await call("openBuild", { cwd: el.dataset.cwd }); return flash("Press Esc in that terminal to pause Claude"); }
       if (t === "goTo") return void call("openBuild", { cwd: el.dataset.cwd, id: el.dataset.id });
+      if (t === "showErrors" && el.dataset.id) { errOpen.add(el.dataset.id); render(); document.querySelector(".errpanel")?.scrollIntoView?.({ block: "nearest" }); return; }
       if (t === "checkpoint") { await call("checkpoint"); return flash("Save point made"); }
       if (t === "newBuild") return void call("newBuild");
       if (t === "planMode") {

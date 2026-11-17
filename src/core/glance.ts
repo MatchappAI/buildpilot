@@ -183,9 +183,10 @@ export function oneLine(text: string | null, max = 90): string | null {
 }
 
 /** A few words that tell two same-named builds apart: what you asked it to do, or its id. */
-function disambiguate(b: { task: string | null; id: string; cwd?: string }): string {
+export function disambiguate(b: { task: string | null; id: string; cwd?: string }): string {
   try {
-    const head = fs.readFileSync(path.join(b.cwd ?? "", ".git", "HEAD"), "utf8").trim();
+    if (!b.cwd) throw new Error("no folder"); // never fall back to the current directory's branch
+    const head = fs.readFileSync(path.join(b.cwd, ".git", "HEAD"), "utf8").trim();
     const br = head.startsWith("ref: refs/heads/") ? head.slice(16) : null;
     if (br && br !== "main" && br !== "master") return br.replace(/^bp\//, "");
   } catch { /* not a repo root or a worktree (.git file): fall back to the prompt */ }

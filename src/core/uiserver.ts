@@ -536,6 +536,7 @@ export class UiServer {
     m.addEventListener("keydown", (e) => { if (e.key !== "Tab") return; const f = [...m.querySelectorAll("button, input, textarea, [href], [tabindex]:not([tabindex='-1'])")]; if (!f.length) return; const first = f[0], last = f[f.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } });
     // A click on the dimmed area closes it, but not the second click of a double click that opened it.
     m.addEventListener("click", (e) => { if (e.target === m && Date.now() - opened > 500) done(null); });
+    m.addEventListener("mousedown", (e) => { if (e.target === m) e.preventDefault(); }); // keep focus on the dialog's button (Enter still works)
     document.addEventListener("keydown", onKey);
     onReady(m.querySelector(".bp-box"), done);
   });
