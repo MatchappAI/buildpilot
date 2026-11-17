@@ -14,7 +14,7 @@
 import fs from "fs"; import path from "path";
 import { buildUnderTest } from "./build.mjs";
 import { rng } from "./rng.mjs";
-import { recorder } from "./coverage.mjs";
+import { recorder, merge } from "./coverage.mjs";
 import { shrink, signature } from "./shrink.mjs";
 import { runSessionWalk, runConcurrency, sessionPaths, runSessionPaths, runSessionTransitions } from "./session.mjs";
 import { runApiWalk, runIntegrationApi, runBuildPaths, buildPaths, runBuildTransitions, runPlanStates } from "./api.mjs";
@@ -170,8 +170,11 @@ if (layers.includes("paths")) {
   for (const f of r2.failures) { out(`  ✗ ${f.path.join(" → ")} at step ${f.step}: ${f.errors[0]}`); stats.failures.push({ layer: "build-paths", ...f }); }
 }
 
-// ---- coverage per criterion, from this run ----
-const cov = rec.dump();
+// ---- coverage per criterion, from this run (--add: plus the run already in qa/model-coverage.json) ----
+const COVFILE = path.join(QA, flag("quick") ? "model-coverage-quick.json" : "model-coverage.json");
+let prior = null; if (flag("add")) { try { prior = JSON.parse(fs.readFileSync(COVFILE, "utf8")); } catch { prior = null; } }
+const cov = prior ? merge([prior.raw, rec.dump()]) : rec.dump();
+if (prior) { for (const [k, v] of Object.entries(prior.steps ?? {})) addSteps(k, v); stats.suites = { ...prior.suites, ...stats.suites }; stats.failures.push(...(prior.failures ?? []).filter((f) => !layers.includes(f.layer))); stats.shrunk.push(...(prior.shrunk ?? [])); stats.runs = [...(prior.runs ?? [{ seed: prior.seed, seeds: prior.seeds, layers: prior.layers, seconds: prior.seconds }]), { seed, seeds, layers, added: true }]; }
 const M = machines(B);
 const coverage = {};
 for (const [k, m] of Object.entries(M)) {
@@ -186,8 +189,8 @@ const page = cov.transitions.page ?? {};
 const ranControls = new Set(Object.keys(page).map((k) => k.split("|")[1]).filter((a) => a.startsWith("press:")).map((a) => a.slice(6).split(".")[0]));
 coverage.page = { transitions: { covered: Object.keys(page).length }, pairs: { covered: Object.keys(cov.pairs.page ?? {}).length }, controls: { covered: PAGE_CONTROLS.filter((c) => ranControls.has(c)).length, of: PAGE_CONTROLS.length, missing: PAGE_CONTROLS.filter((c) => !ranControls.has(c)) }, screens: [...new Set(Object.keys(page).map((k) => k.split("|")[0]))] };
 coverage.fuzz = { inputClasses: Object.keys(cov.misc.fuzz ?? {}).length, cli: Object.keys(cov.misc.cli ?? {}).length, plugin: Object.keys(cov.misc.plugin ?? {}).length, integration: Object.keys(cov.misc.integration ?? {}).length };
-stats.coverage = coverage; stats.seconds = Math.round((Date.now() - t0) / 1000); stats.totalSteps = Object.values(stats.steps).reduce((a, b) => a + b, 0);
-const file = path.join(QA, flag("quick") ? "model-coverage-quick.json" : "model-coverage.json");
+stats.coverage = coverage; stats.seconds = Math.round((Date.now() - t0) / 1000) + (prior?.seconds ?? 0); stats.totalSteps = Object.values(stats.steps).reduce((a, b) => a + b, 0);
+const file = COVFILE;
 fs.writeFileSync(file, JSON.stringify({ ...stats, raw: cov }, null, 1));
 out("\ncoverage (this run):");
 for (const [k, c] of Object.entries(coverage)) if (c.transitions?.feasible) out(`  ${k.padEnd(11)} transitions ${c.transitions.covered}/${c.transitions.feasible} · consecutive pairs ${c.pairs.covered}/${c.pairs.of}`);

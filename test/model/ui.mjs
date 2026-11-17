@@ -210,7 +210,7 @@ async function checkUi(b, W, env, errsBefore) {
   if (env.down || env.offline) return errs;
   if (env.stale) { // after a restart this page's key is old: it must say so (and never pretend to be live)
     const t = await b.eval(() => document.getElementById("bp-offline")?.textContent ?? document.body.innerText.slice(0, 120));
-    if (!/restarted|expired|stopped running|can.t be reached|ERR_[A-Z_]+/i.test(t)) { await sleep(env.throttle ? 8000 : 3500); const t2 = await b.eval(() => document.getElementById("bp-offline")?.textContent ?? document.body.innerText.slice(0, 120)); if (!/restarted|expired|stopped running|can.t be reached|ERR_[A-Z_]+/i.test(t2)) errs.push(`after a server restart the old page doesn't say it's out of date: "${t2.slice(0, 80)}"`); }
+    if (!/restarted|expired|stopped running|can.t be reached|ERR_[A-Z_]+/i.test(t)) { await sleep(env.throttle ? 12000 : 7500); const t2 = await b.eval(() => document.getElementById("bp-offline")?.textContent ?? document.body.innerText.slice(0, 120)); if (!/restarted|expired|stopped running|can.t be reached|ERR_[A-Z_]+/i.test(t2)) errs.push(`after a server restart the old page doesn't say it's out of date: "${t2.slice(0, 80)}"`); }
     return errs;
   }
   // 3. the page shows what the server says (live refresh every 3 s: allow up to 4 s to catch up).

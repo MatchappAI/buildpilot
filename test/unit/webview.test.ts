@@ -148,7 +148,10 @@ describe("one-page UI (real bundle in jsdom)", () => {
     expect(doc.querySelector(".side")?.textContent).toMatch(/3 files changed · not saved yet/);
     await click('[data-act="reviewBuild"]');
     await click('[data-act="mergeBuild"]');
-    await click('[data-act="removeBuild"]');
+    // A build with changes offers Discard; an empty one offers Remove (both remove the folder, keep the branch).
+    const labels = [...doc.querySelectorAll('[data-act="removeBuild"]')].map((b) => `${b.getAttribute("data-dir")}:${b.textContent}`);
+    expect(labels).toEqual(["/p/shop-checkout:Discard", "/p/shop-empty:Remove"]);
+    await click('[data-act="removeBuild"][data-dir="/p/shop-empty"]');
     expect(sent.find((m) => m.type === "mergeBuild")).toMatchObject({ dir: "/p/shop-checkout", branch: "bp/checkout" });
     expect(sent.find((m) => m.type === "removeBuild")).toMatchObject({ dir: "/p/shop-empty" });
     expect(sent.some((m) => m.type === "reviewBuild")).toBe(true);

@@ -344,6 +344,7 @@ export async function runSessionTransitions({ harness, transitions, feasible, re
   while (q.length) { const s = q.shift(); for (const [a, to] of edges.get(s) ?? []) if (!route.has(to)) { route.set(to, [...route.get(s), a]); q.push(to); } }
   // "hidden" needs a self-loop first (time passing), which a shortest-route search over state changes skips.
   route.set("hidden", ["UserPromptSubmit", "Stop", "Quiet3h", "hideIdle"]);
+  if (!route.has("unknown")) route.set("unknown", ["UnknownEvent"]); // a first event that sets no status
   let W = await makeWorld(harness, "strans");
   let n = 0, ran = 0; const failures = []; const unreached = [];
   try {
