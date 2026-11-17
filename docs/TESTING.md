@@ -2,6 +2,9 @@
 
 Run everything: `npm run ci` (typecheck → lint → unit/engine tests). `npm run test:e2e` drives the real `bp ui` window in headless Chrome with a throwaway home (never a visible window; Terminal/clipboard/links/notifications are logged via `BUILDPILOT_OS_LOG`). `npm run test:smoke` opens a visible VS Code: only when the owner says so.
 
+## Results (2026-11-17 model-based QA, v0.12.6)
+`npm run test:model -- --seed N` (test/model/): seeded generator over 7 state machines + the window's screens, real code under test, invariants after every step, ddmin shrinking, saved regressions. Two full runs (seeds 1 and 11): 48,408 steps, 0 failures; all possible (state, action) transitions 531/532, session action pairs 1,156/1,156, pairwise configurations 205/205 pairs, 23/23 side-build lifecycle paths, 31/31 window controls. Details: docs/EXHAUSTIVE_QA_REPORT.md.
+
 ## Results (2026-11-16 live QA, v0.12.5)
 | Gate | Result |
 |---|---|

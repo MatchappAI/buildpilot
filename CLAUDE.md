@@ -10,6 +10,7 @@ Claude Code companion: plugin (primary) + local engine + standalone window (`bp 
 ## Commands
 - `npm run build`: esbuild bundles to `dist/` and `media/`
 - `npm run typecheck` · `npm run lint` · `npm test` (vitest, unit + engine e2e) · `npm run test:smoke` (real VS Code extension host; opens a visible window, opt-in only)
+- `npm run test:model -- --seed N`: model-based QA (test/model/): seeded random sequences over the app's state machines against the real engine, window server, headless window (never visible), CLI, plugin commands and Integration API; invariants every step, shrinks failures into test/model/regressions/. `--quick` ≈ 8 min, full ≈ 45 min. Report: docs/EXHAUSTIVE_QA_REPORT.md
 - `npm run package`: `dist/buildpilot.vsix`
 - `npm run desktop`: rebuilds the user-facing Desktop folder `~/Desktop/BuildPilot/` (guide PDF from `docs/guide/guide.html`, install/uninstall `.command` scripts from `scripts/desktop/`, VSIX). Keep the guide in sync with features and the version number.
 - UI screenshots: `npx esbuild test/ui/fixture.ts --bundle --platform=node --outfile=test/ui/fixture.cjs && cp node_modules/sql.js/dist/sql-wasm.wasm test/ui/ && node test/ui/fixture.cjs && node test/ui/make-preview.mjs`, then open `test/ui/preview-*.html`

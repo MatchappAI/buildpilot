@@ -147,4 +147,4 @@ Before this pass the e2e suites and 254 unit tests were green: every bug above w
 
 **Ready for the free product; one P1 and three P2 defects found and fixed; nothing open from this pass.** The generator found 16 real defects (1 P1, 3 P2, 12 P3) plus 2 test problems, all fixed at the root with a regression each, and the last 6 fresh seed blocks ran clean (48,408 steps, 0 failures). `npm run ci` and `npm run test:e2e` pass 3 times in a row (§ below). Not ready to *sell* for the same reason as before: the Stripe Payment Link is still a placeholder.
 
-Repeatability (after the last fix): `npm run ci` ×3 → {{CI}} · `npm run test:e2e` ×3 → {{E2E}}.
+Repeatability (after the last fix): `npm run ci` ×3 → 3 × green (typecheck, lint, 288/288 tests) · `npm run test:e2e` ×3 → 3 × green (59/59 steps each: ui-e2e 34, ui-free 8, ui-live 17).
