@@ -106,6 +106,14 @@ try {
     const label = await b.eval(() => document.querySelector('[data-act="toggleAlerts"]').textContent); const pref = JSON.parse(fs.readFileSync(path.join(E.home, ".buildpilot/ui.json"), "utf8")).alerts !== false;
     ok(label === `Alerts: ${pref ? "on" : "off"}`, `${label} vs file ${pref}`); return label;
   });
+  await step("slow network: a second dialog waits for the first instead of stacking on it (model QA)", async () => {
+    await b.throttle(1500);
+    await b.press('[data-act="newBuild"]'); await b.press(`[data-act="renameBuild"][data-id="${IDS.done}"]`);
+    let most = 0; for (let i = 0; i < 25; i++) { most = Math.max(most, await modals()); await sleep(120); }
+    await b.throttle(0);
+    for (let i = 0; i < 4 && (await modals()); i++) { await b.key("Escape"); await sleep(700); }
+    ok(most === 1, `${most} dialogs open at once`); ok((await modals()) === 0, "a dialog was left open");
+  });
   await step("no console errors so far", async () => { ok(!b.errors().length, b.errors().join(" | ")); });
   await step("server stops: a red line says so, the press says nothing changed, no uncaught errors", async () => {
     process.kill(info.pid, "SIGTERM"); await sleep(1000); b.clearErrors();

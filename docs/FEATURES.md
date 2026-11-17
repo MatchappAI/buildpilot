@@ -1,5 +1,10 @@
 # Features: implemented · partial · planned
 
+## 0.12.6 model-based QA (2026-11-17) — see docs/EXHAUSTIVE_QA_REPORT.md
+- ✅ `npm run test:model -- --seed N`: seeded generator over the app's state machines (sessions, side builds, plan, connection, prefs, project, window screens), invariants after every step, shrinking, saved regressions (`test/model/`)
+- ✅ "Clear them" hides only quiet sessions; side builds with changes can be discarded; Disconnect is honest with the plugin on; one dialog at a time
+- ✅ Slash commands pass arguments on stdin; `bp merge` runs tests on Pro (`--force`); Integration API refuses bad bodies (400/413)
+
 ## 0.12.5 live QA (2026-11-16) — see docs/LIVE_QA_REPORT.md
 - ✅ Real-browser journeys on a seeded day (`test/e2e/ui-live.mjs`): rename, file finder under live updates, slow network, double presses, two tabs, side builds incl. abandon, project switch, reload, server stopped
 - ✅ Offline line when the window server stops; one press at a time; nothing typed lost on live refresh; prompt survives reload

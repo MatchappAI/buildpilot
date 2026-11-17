@@ -43,8 +43,10 @@ export async function makeServerWorld(B, cfg = {}) {
   await start();
   const req = async (pathname, { method = "GET", body, headers = {} } = {}) => {
     let r;
-    try { r = await fetch(`http://127.0.0.1:${info.port}${pathname}`, { method, body, headers: { "x-bp-token": info.token, ...(body != null ? { "content-type": "application/json" } : {}), ...headers } }); }
-    catch (e) { return { status: -1, text: `unreachable: ${e.cause?.code ?? e.message} (server ${server?.exitCode != null ? `exited ${server.exitCode}` : "running"})`, json: null }; }
+    // One retry on a network error: Node's fetch can reuse a keep-alive socket the server is just closing (a client
+    // race; browsers retry the same way). A server that is really down fails both.
+    for (let attempt = 0; attempt < 2 && !r; attempt++) try { r = await fetch(`http://127.0.0.1:${info.port}${pathname}`, { method, body, headers: { "x-bp-token": info.token, ...(body != null ? { "content-type": "application/json" } : {}), ...headers } }); }
+    catch (e) { if (attempt === 0) { await sleep(150); continue; } return { status: -1, text: `unreachable: ${e.cause?.code ?? e.message} (server ${server?.exitCode != null ? `exited ${server.exitCode}` : "running"})`, json: null }; }
     const text = await r.text(); let json = null; try { json = JSON.parse(text); } catch {}
     return { status: r.status, text, json };
   };

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.6: every path, every sequence (model-based QA, 2026-11-17)
+**Fixes you'll notice**
+- "Clear them" (quiet sessions) never hides a session that needs your OK, stopped mid-task or is working: it hides exactly the sessions the page lists as quiet (it used to hide anything silent for 2 hours, including one waiting 3 hours for your approval).
+- A side build with changes now has "Discard" (its branch is kept), so you can drop work you don't want from the window.
+- Disconnect says so when the BuildPilot plugin keeps BuildPilot on (it used to say "Disconnected" while sessions kept showing).
+- After BuildPilot restarts, an open window says "BuildPilot restarted, so this page is out of date" (not "stopped running"); presses say nothing was changed.
+- One dialog at a time: on a slow network, a dialog from a second press waits for the first instead of stacking on top.
+- "See exactly what changes" and the project picker, pressed while BuildPilot can't be reached, show the reason instead of an "undefined" box or "No projects yet".
+- The save-point tip only says "Save point made" when one was made (Cancel used to show it too). Side builds show on the first page load after `bp ui` starts.
+- `bp merge` runs the build's tests first on Pro, like the window (`--force` merges anyway). `bp jump` with no folder prints how to use it.
+**Correctness**
+- Several BuildPilot processes (window, menu-bar widget, `bp glance`) reading the same events at once could leave a session showing an older status: each event is now recorded in one database transaction.
+- An event delivered late (hooks run as separate processes) can no longer reopen an ended session, replace a newer request with an older one, or roll Claude's checklist back.
+**Safety**
+- `/bp-who`, `/bp-new`, `/bp-merge` and `/bp-license` passed your words inside single quotes on a shell line: an apostrophe broke them and `'; command; '` ran as a command. They now pass the text on stdin (quoted heredoc), like `/bp-prompt`.
+- Integration API (`bp serve`): a request body of `null` stopped the server; it now answers 400. Over 20,000 characters is answered 413 instead of a dropped connection.
+- Window server: bad JSON is 400 (was 500), a too-large body closes cleanly, fields that aren't strings count as empty. Terminal focusing and CLI "open" go through the test OS log, so test runs can never bring a window forward.
+**Testing**
+- `npm run test:model -- --seed N`: a seeded, model-based generator that drives the real engine, window server, headless window, CLI, plugin commands and Integration API with long random sequences, checks invariants after every step, shrinks failures to a minimal sequence and saves it as a regression. Model: qa/model.json. Report: docs/EXHAUSTIVE_QA_REPORT.md.
+
 ## 0.12.5: live QA, operating the real window (2026-11-16)
 **Fixes you'll notice**
 - Pressing Enter in a name box (session name, side build, license key) saves and closes it; it used to reopen the same box.

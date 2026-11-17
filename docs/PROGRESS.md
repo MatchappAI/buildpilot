@@ -1,4 +1,7 @@
-# Progress (2026-11-16)
+# Progress (2026-11-17)
+
+## v0.12.6: model-based QA, every path and sequence (branch `exhaustive/2026-11-17`, not pushed)
+- Model of the app in qa/model.json; generator `npm run test:model`; 12 defects fixed (docs/EXHAUSTIVE_QA_REPORT.md).
 
 ## v0.12.5: live QA (branch `live-qa/2026-11-16`, not pushed)
 - Operated the real window in headless Chrome on a seeded throwaway home; 23 bugs fixed (3 P1, 9 P2, 11 P3), each re-run live. Report + tracker: docs/LIVE_QA_REPORT.md, screenshots qa/screenshots/.

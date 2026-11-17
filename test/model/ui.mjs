@@ -180,6 +180,8 @@ async function settle(b, env) {
 
 async function checkUi(b, W, env, errsBefore) {
   const errs = [];
+  // A native alert/confirm blocks the page (and would mean injected script ran): dismiss it and fail.
+  for (const e of b.events) if (e.method === "Page.javascriptDialogOpening") { errs.push(`native ${e.params.type} dialog opened: "${String(e.params.message).slice(0, 80)}"`); await b.send("Page.handleJavaScriptDialog", { accept: false }).catch(() => {}); }
   // 1. errors: uncaught exceptions always count; console errors count unless the network/server is down on purpose.
   const all = b.errors().slice(errsBefore);
   const expectedNet = (e) => /ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE|Failed to load resource|net::ERR|status of 401/.test(e);

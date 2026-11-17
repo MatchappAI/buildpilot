@@ -1,0 +1,382 @@
+{
+  "generated": "2026-11-17T06:12:51.434Z",
+  "machines": {
+    "session": {
+      "states": [
+        "absent",
+        "unknown",
+        "idle",
+        "running",
+        "awaiting_approval",
+        "blocked",
+        "failed",
+        "completed",
+        "hidden"
+      ],
+      "actions": [
+        "SessionStart:startup",
+        "SessionStart:resume",
+        "SessionStart:compact",
+        "UserPromptSubmit",
+        "UserPromptSubmit:system",
+        "PreToolUse",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "PostToolUseFailure:interrupt",
+        "PermissionRequest",
+        "Notification:permission_prompt",
+        "Notification:idle_prompt",
+        "Notification:agent_needs_input",
+        "Notification:other",
+        "Stop",
+        "StopFailure",
+        "SessionEnd",
+        "SubagentStart",
+        "SubagentStop",
+        "PreCompact",
+        "Subagent:PostToolUse",
+        "Subagent:PermissionRequest",
+        "TodoWrite",
+        "UnknownEvent",
+        "Late:PostToolUse",
+        "OutOfOrder:Stop",
+        "OutOfOrder:UserPromptSubmit",
+        "OutOfOrder:SessionStart",
+        "Duplicate",
+        "RepeatLater",
+        "Malformed",
+        "Quiet3h",
+        "hideIdle",
+        "rename"
+      ],
+      "feasibleTransitions": 297,
+      "infeasible": [
+        "absent|Late:PostToolUse",
+        "absent|OutOfOrder:Stop",
+        "absent|OutOfOrder:UserPromptSubmit",
+        "absent|OutOfOrder:SessionStart",
+        "absent|Duplicate",
+        "absent|RepeatLater",
+        "absent|Quiet3h",
+        "absent|hideIdle",
+        "absent|rename"
+      ],
+      "note": "in-process: real spool reader + ingestor + node:sqlite store, virtual clock; oracle = session.mjs spec()"
+    },
+    "build": {
+      "states": [
+        "none",
+        "clean",
+        "unsaved",
+        "saved",
+        "merged",
+        "removed",
+        "unsaved+conflict",
+        "saved+conflict",
+        "unsaved+failing",
+        "saved+failing"
+      ],
+      "actions": [
+        "newBuild",
+        "cli:new",
+        "edit",
+        "commitInBuild",
+        "makeConflict",
+        "fixConflict",
+        "breakTests",
+        "reviewBuild",
+        "mergeBuild",
+        "mergeBuild:force",
+        "cli:merge",
+        "removeBuild",
+        "cli:done",
+        "cli:review"
+      ],
+      "feasibleTransitions": 96,
+      "infeasible": [
+        "none|edit",
+        "none|commitInBuild",
+        "none|makeConflict",
+        "none|fixConflict",
+        "none|breakTests",
+        "none|cli:review",
+        "clean|newBuild",
+        "clean|cli:new",
+        "clean|commitInBuild",
+        "clean|fixConflict",
+        "unsaved|newBuild",
+        "unsaved|cli:new",
+        "unsaved|fixConflict",
+        "saved|newBuild",
+        "saved|cli:new",
+        "saved|commitInBuild",
+        "saved|fixConflict",
+        "merged|newBuild",
+        "merged|cli:new",
+        "merged|commitInBuild",
+        "merged|fixConflict",
+        "removed|newBuild",
+        "removed|cli:new",
+        "removed|edit",
+        "removed|commitInBuild",
+        "removed|makeConflict",
+        "removed|fixConflict",
+        "removed|breakTests",
+        "removed|cli:review",
+        "unsaved+conflict|newBuild",
+        "unsaved+conflict|cli:new",
+        "unsaved+conflict|fixConflict",
+        "saved+conflict|newBuild",
+        "saved+conflict|cli:new",
+        "saved+conflict|commitInBuild",
+        "unsaved+failing|newBuild",
+        "unsaved+failing|cli:new",
+        "unsaved+failing|fixConflict",
+        "unsaved+failing|breakTests",
+        "saved+failing|newBuild",
+        "saved+failing|cli:new",
+        "saved+failing|commitInBuild",
+        "saved+failing|fixConflict",
+        "saved+failing|breakTests"
+      ],
+      "note": "real bp ui server + git worktrees; +failing only on Pro (tests run before merge)"
+    },
+    "plan": {
+      "states": [
+        "free",
+        "free-exhausted",
+        "trial",
+        "trial-ending",
+        "licensed",
+        "not-sellable"
+      ],
+      "actions": [
+        "buildPrompt",
+        "promptUsed",
+        "enterLicense:valid",
+        "enterLicense:expired",
+        "enterLicense:forged",
+        "enterLicense:fuzz",
+        "upgrade",
+        "trialEnds"
+      ],
+      "feasibleTransitions": 46,
+      "infeasible": [
+        "free|trialEnds",
+        "free-exhausted|trialEnds"
+      ]
+    },
+    "connection": {
+      "states": [
+        "disconnected",
+        "connected",
+        "plugin",
+        "plugin+hooks"
+      ],
+      "actions": [
+        "connectAll",
+        "disconnect",
+        "fixDoubleHooks",
+        "showConnectChanges"
+      ],
+      "feasibleTransitions": 16,
+      "infeasible": []
+    },
+    "prefs": {
+      "states": [
+        "white/on",
+        "white/off",
+        "auto/on",
+        "auto/off",
+        "match/on",
+        "match/off"
+      ],
+      "actions": [
+        "toggleTheme",
+        "toggleAlerts"
+      ],
+      "feasibleTransitions": 12,
+      "infeasible": []
+    },
+    "sessionUi": {
+      "states": [
+        "absent",
+        "running",
+        "awaiting_approval",
+        "idle",
+        "failed"
+      ],
+      "actions": [
+        "renameBuild:fuzz",
+        "dismissRisk",
+        "hideIdle",
+        "openBuild:known",
+        "openBuild:unknown",
+        "resumeBuild:known",
+        "resumeBuild:injection",
+        "startFresh",
+        "whoChanged:fuzz",
+        "undoFile:unknown",
+        "undoFile:edited",
+        "claudeEvent"
+      ],
+      "feasibleTransitions": 59,
+      "infeasible": [
+        "absent|undoFile:edited"
+      ],
+      "note": "session actions sent to the window server (rename, dismiss, resume, start fresh, who changed, undo file)"
+    },
+    "project": {
+      "states": [
+        "clean",
+        "dirty"
+      ],
+      "actions": [
+        "projects",
+        "selectProject:known",
+        "selectProject:unknown",
+        "checkpoint",
+        "mainDirty",
+        "mainClean",
+        "cli:builds"
+      ],
+      "feasibleTransitions": 12,
+      "infeasible": [
+        "clean|mainClean",
+        "dirty|mainDirty"
+      ]
+    }
+  },
+  "page": {
+    "states": [
+      "connect",
+      "sessions",
+      "prompt-written",
+      "finder",
+      "paywall",
+      "dialog:confirm",
+      "dialog:input",
+      "dialog:show",
+      "dialog:pick",
+      "offline",
+      "expired",
+      "server-down",
+      "loading"
+    ],
+    "controls": [
+      "connectAll",
+      "showConnectChanges",
+      "disconnect",
+      "selectProject",
+      "more",
+      "toggleTheme",
+      "toggleAlerts",
+      "upgrade",
+      "enterLicense",
+      "newBuild",
+      "toggleBuild",
+      "renameBuild",
+      "openBuild",
+      "resumeBuild",
+      "startFresh",
+      "toggleErrors",
+      "copyErrors",
+      "dismissRisk",
+      "toggleQuiet",
+      "hideIdle",
+      "openFinder",
+      "whoChanged",
+      "undoFile",
+      "reviewBuild",
+      "mergeBuild",
+      "removeBuild",
+      "build",
+      "sendPrompt",
+      "useInOpen",
+      "copyPrompt",
+      "tip"
+    ],
+    "environment": [
+      "env:reload",
+      "env:reopen",
+      "env:secondTab",
+      "env:throttle",
+      "env:offline",
+      "env:online",
+      "env:serverStop",
+      "env:serverStart",
+      "env:serverRestart",
+      "env:narrow",
+      "env:dark",
+      "bg:claudeEvent",
+      "bg:apiRename",
+      "bg:cliNew",
+      "bg:apiHideIdle",
+      "bg:editBuild"
+    ],
+    "dialogs": [
+      "dlg:ok",
+      "dlg:cancel",
+      "dlg:esc",
+      "dlg:enter",
+      "dlg:backdrop",
+      "dlg:type",
+      "dlg:pick"
+    ],
+    "keys": [
+      "key:j",
+      "key:k",
+      "key:g",
+      "key:/",
+      "key:tab",
+      "key:esc",
+      "key:cmdEnter"
+    ]
+  },
+  "factors": {
+    "plan": [
+      "free",
+      "free-exhausted",
+      "trial",
+      "trial-ending",
+      "licensed",
+      "not-sellable"
+    ],
+    "connection": [
+      "disconnected",
+      "connected",
+      "plugin"
+    ],
+    "data": [
+      "empty",
+      "seeded"
+    ],
+    "theme": [
+      "white",
+      "auto",
+      "match"
+    ],
+    "alerts": [
+      "on",
+      "off"
+    ],
+    "viewport": [
+      "desktop",
+      "phone"
+    ],
+    "scheme": [
+      "light",
+      "dark"
+    ],
+    "project": [
+      "git",
+      "no-git"
+    ]
+  },
+  "totals": {
+    "machines": 7,
+    "states": 55,
+    "actions": 142,
+    "feasibleTransitions": 538
+  }
+}

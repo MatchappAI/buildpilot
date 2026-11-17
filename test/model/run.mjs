@@ -47,7 +47,7 @@ async function onFailure(layer, sub, cfg, res, replay) {
   const f = res.failures[0]; const sig = signature(f);
   out(`  ✗ ${layer} seed ${sub} step ${f.step} ${f.action}: ${f.errors.slice(0, 3).join(" | ")}`);
   const full = res.log.slice(0, f.step + 1);
-  const { seq, runs } = await shrink(full, async (c) => { const r = await replay(c); return r.failures.length > 0 && signature(r.failures[0]) === sig; }, { budget: layer === "session" ? 200 : layer === "ui" ? 25 : 50, log: (m) => out(`    ${m}`) });
+  const { seq, runs } = await shrink(full, async (c) => { const r = await replay(c); return r.failures.length > 0 && signature(r.failures[0]) === sig; }, { budget: layer === "session" ? 200 : layer === "ui" ? 12 : 50, minutes: layer === "ui" ? 20 : 15, log: (m) => out(`    ${m}`) });
   const file = path.join(REG, `${layer}-${sub}-${Date.now()}.json`);
   fs.writeFileSync(file, JSON.stringify({ layer, seed: sub, cfg, error: f.errors[0], seq }, null, 1));
   stats.failures.push({ layer, seed: sub, step: f.step, action: f.action, errors: f.errors.slice(0, 3) });
