@@ -17,7 +17,7 @@ import { rng } from "./rng.mjs";
 import { recorder } from "./coverage.mjs";
 import { shrink, signature } from "./shrink.mjs";
 import { runSessionWalk, runConcurrency, sessionPaths, runSessionPaths } from "./session.mjs";
-import { runApiWalk, runIntegrationApi, runBuildPaths, buildPaths } from "./api.mjs";
+import { runApiWalk, runIntegrationApi, runBuildPaths, buildPaths, runBuildTransitions } from "./api.mjs";
 import { runUiWalk, cfgFromRow } from "./ui.mjs";
 import { runCliMatrix, runPluginCommands } from "./cli.mjs";
 import { machines, modelJson, pairwiseRows, PAGE_CONTROLS } from "./model.mjs";
@@ -30,7 +30,7 @@ const quick = flag("quick");
 const seed = Number(opt("seed", 1));
 const seeds = Number(opt("seeds", quick ? 1 : 3));
 const steps = opt("steps") ? Number(opt("steps")) : null;
-const ALL = ["session", "concurrency", "api", "ui", "cli", "plugin", "integration", "pairwise", "paths"];
+const ALL = ["session", "concurrency", "api", "transitions", "ui", "cli", "plugin", "integration", "pairwise", "paths"];
 const layers = (opt("layers") ?? (quick ? "session,concurrency,api,cli,plugin,integration" : ALL.join(","))).split(",");
 const QA = path.join(REPO, "qa"); const REG = path.join(REPO, "test/model/regressions"); fs.mkdirSync(QA, { recursive: true }); fs.mkdirSync(REG, { recursive: true });
 const out = (s) => process.stdout.write(s + "\n");
@@ -105,6 +105,12 @@ for (let i = 0; i < seeds; i++) {
       if (r.failures.length) await onFailure("ui", s2, cfg, r, (c) => runUiWalk({ B, R: rng(s2), seq: c, cfg }));
     }
   }
+}
+if (layers.includes("transitions")) {
+  const r = await runBuildTransitions({ B, record: rec, only: quick ? ["none", "clean", "unsaved"] : null });
+  addSteps("transitions", r.ran); stats.suites.buildTransitions = { ran: r.ran, failures: r.failures.length };
+  out(`side-build transitions: ${r.ran} (state, action) pairs tried, ${r.failures.length} failures`);
+  for (const f of r.failures) { out(`  ✗ ${f.state} × ${f.action}: ${f.errors[0]}`); stats.failures.push({ layer: "build-transitions", ...f }); }
 }
 if (layers.includes("cli")) { const r = await runCliMatrix({ B, record: rec }); addSteps("cli", r.cases); stats.suites.cli = { cases: r.cases, failures: r.failures.length }; out(`cli: ${r.cases} cases, ${r.failures.length} failures`); for (const f of r.failures) { out(`  ✗ bp ${f.args.join(" ")}: ${f.errors.join(", ")}`); stats.failures.push({ layer: "cli", ...f }); } }
 if (layers.includes("plugin")) { const r = await runPluginCommands({ B, record: rec }); addSteps("plugin", r.cases); stats.suites.plugin = { cases: r.cases, failures: r.failures.length }; out(`plugin: ${r.cases} cases, ${r.failures.length} failures`); for (const f of r.failures) { out(`  ✗ /${f.command} (${f.cls}): ${f.errors.join(", ")}`); stats.failures.push({ layer: "plugin", ...f }); } }

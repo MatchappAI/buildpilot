@@ -1,0 +1,2619 @@
+{
+ "seed": 1,
+ "seeds": 1,
+ "layers": [
+  "session",
+  "concurrency",
+  "api",
+  "cli",
+  "plugin",
+  "integration"
+ ],
+ "startedAt": "2026-11-17T05:48:24.167Z",
+ "steps": {
+  "session": 300,
+  "concurrency": 600,
+  "api": 42,
+  "cli": 455,
+  "plugin": 171,
+  "integration": 136
+ },
+ "failures": [
+  {
+   "layer": "api",
+   "seed": 10000,
+   "step": 41,
+   "action": "cli:new",
+   "errors": [
+    "page side builds [\"proj-a-b\",\"proj-x\",\"proj-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"] ≠ [\"proj-a-b\",\"proj-it-s-mine\",\"proj-x\",\"proj-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"]"
+   ]
+  }
+ ],
+ "shrunk": [
+  {
+   "layer": "api",
+   "seed": 10000,
+   "from": 42,
+   "to": 6,
+   "replays": 24,
+   "file": "test/model/regressions/api-10000-1794894899962.json",
+   "seq": [
+    "cli:new",
+    "newBuild",
+    "cli:builds",
+    "raw:auth",
+    "newBuild",
+    "cli:new"
+   ]
+  }
+ ],
+ "suites": {
+  "concurrency": {
+   "runs": 1,
+   "events": 600,
+   "procs": 4
+  },
+  "cli": {
+   "cases": 455,
+   "failures": 0
+  },
+  "plugin": {
+   "cases": 171,
+   "failures": 0
+  },
+  "integration": {
+   "cases": 136,
+   "failures": 0
+  }
+ },
+ "coverage": {
+  "session": {
+   "transitions": {
+    "covered": 134,
+    "feasible": 297,
+    "missing": [
+     "absent|SessionStart:startup",
+     "absent|SessionStart:resume",
+     "absent|SessionStart:compact",
+     "absent|UserPromptSubmit",
+     "absent|UserPromptSubmit:system",
+     "absent|PreToolUse",
+     "absent|PostToolUse",
+     "absent|PostToolUseFailure:interrupt",
+     "absent|PermissionRequest",
+     "absent|Notification:permission_prompt",
+     "absent|Notification:idle_prompt",
+     "absent|Notification:agent_needs_input",
+     "absent|Notification:other",
+     "absent|Stop",
+     "absent|StopFailure",
+     "absent|SessionEnd",
+     "absent|PreCompact",
+     "absent|Subagent:PostToolUse",
+     "absent|Subagent:PermissionRequest",
+     "absent|TodoWrite",
+     "absent|UnknownEvent",
+     "absent|Malformed",
+     "unknown|SessionStart:startup",
+     "unknown|SessionStart:resume",
+     "unknown|SessionStart:compact",
+     "unknown|UserPromptSubmit",
+     "unknown|UserPromptSubmit:system",
+     "unknown|PreToolUse",
+     "unknown|PostToolUse",
+     "unknown|PostToolUseFailure",
+     "unknown|PostToolUseFailure:interrupt",
+     "unknown|PermissionRequest",
+     "unknown|Notification:permission_prompt",
+     "unknown|Notification:idle_prompt",
+     "unknown|Notification:agent_needs_input",
+     "unknown|Notification:other",
+     "unknown|Stop",
+     "unknown|StopFailure",
+     "unknown|SessionEnd",
+     "unknown|SubagentStart",
+     "unknown|SubagentStop",
+     "unknown|PreCompact",
+     "unknown|Subagent:PostToolUse",
+     "unknown|Subagent:PermissionRequest",
+     "unknown|TodoWrite",
+     "unknown|UnknownEvent",
+     "unknown|Late:PostToolUse",
+     "unknown|OutOfOrder:Stop",
+     "unknown|OutOfOrder:UserPromptSubmit",
+     "unknown|OutOfOrder:SessionStart",
+     "unknown|Duplicate",
+     "unknown|RepeatLater",
+     "unknown|Malformed",
+     "unknown|Quiet3h",
+     "unknown|hideIdle",
+     "unknown|rename",
+     "idle|PostToolUseFailure",
+     "idle|PostToolUseFailure:interrupt",
+     "idle|UnknownEvent",
+     "running|Quiet3h",
+     "awaiting_approval|PostToolUseFailure:interrupt",
+     "awaiting_approval|Notification:idle_prompt",
+     "awaiting_approval|TodoWrite",
+     "awaiting_approval|UnknownEvent",
+     "awaiting_approval|Late:PostToolUse",
+     "blocked|SessionStart:startup",
+     "blocked|SessionStart:resume",
+     "blocked|UserPromptSubmit",
+     "blocked|UserPromptSubmit:system",
+     "blocked|PreToolUse",
+     "blocked|PostToolUse",
+     "blocked|PostToolUseFailure",
+     "blocked|PostToolUseFailure:interrupt",
+     "blocked|Notification:permission_prompt",
+     "blocked|Notification:idle_prompt",
+     "blocked|Notification:other",
+     "blocked|StopFailure",
+     "blocked|SubagentStart",
+     "blocked|PreCompact",
+     "blocked|TodoWrite",
+     "blocked|UnknownEvent",
+     "blocked|OutOfOrder:Stop",
+     "blocked|OutOfOrder:SessionStart",
+     "blocked|Duplicate",
+     "blocked|rename",
+     "failed|SessionStart:startup",
+     "failed|PreToolUse",
+     "failed|PostToolUse",
+     "failed|PostToolUseFailure",
+     "failed|Notification:permission_prompt",
+     "failed|Notification:agent_needs_input",
+     "failed|SessionEnd",
+     "failed|SubagentStart",
+     "failed|PreCompact",
+     "failed|Subagent:PostToolUse",
+     "failed|Subagent:PermissionRequest",
+     "failed|UnknownEvent",
+     "failed|OutOfOrder:Stop",
+     "failed|OutOfOrder:UserPromptSubmit",
+     "failed|OutOfOrder:SessionStart",
+     "failed|RepeatLater",
+     "failed|Malformed",
+     "failed|hideIdle",
+     "failed|rename",
+     "completed|SessionStart:startup",
+     "completed|UserPromptSubmit",
+     "completed|PreToolUse",
+     "completed|PostToolUse",
+     "completed|PostToolUseFailure",
+     "completed|PostToolUseFailure:interrupt",
+     "completed|PermissionRequest",
+     "completed|Notification:permission_prompt",
+     "completed|Notification:other",
+     "completed|Stop",
+     "completed|StopFailure",
+     "completed|SessionEnd",
+     "completed|SubagentStart",
+     "completed|SubagentStop",
+     "completed|PreCompact",
+     "completed|Subagent:PostToolUse",
+     "completed|TodoWrite",
+     "completed|UnknownEvent",
+     "completed|Late:PostToolUse",
+     "completed|OutOfOrder:Stop",
+     "completed|OutOfOrder:UserPromptSubmit",
+     "completed|OutOfOrder:SessionStart",
+     "completed|Duplicate",
+     "completed|RepeatLater",
+     "completed|Malformed",
+     "completed|Quiet3h",
+     "completed|hideIdle",
+     "hidden|SessionStart:startup",
+     "hidden|SessionStart:resume",
+     "hidden|SessionStart:compact",
+     "hidden|UserPromptSubmit",
+     "hidden|UserPromptSubmit:system",
+     "hidden|PreToolUse",
+     "hidden|PostToolUse",
+     "hidden|PostToolUseFailure",
+     "hidden|PostToolUseFailure:interrupt",
+     "hidden|PermissionRequest",
+     "hidden|Notification:permission_prompt",
+     "hidden|Notification:idle_prompt",
+     "hidden|Notification:other",
+     "hidden|Stop",
+     "hidden|StopFailure",
+     "hidden|SessionEnd",
+     "hidden|SubagentStart",
+     "hidden|SubagentStop",
+     "hidden|PreCompact",
+     "hidden|Subagent:PostToolUse",
+     "hidden|Subagent:PermissionRequest",
+     "hidden|TodoWrite",
+     "hidden|UnknownEvent",
+     "hidden|Late:PostToolUse",
+     "hidden|OutOfOrder:Stop",
+     "hidden|OutOfOrder:UserPromptSubmit",
+     "hidden|OutOfOrder:SessionStart",
+     "hidden|Duplicate",
+     "hidden|RepeatLater",
+     "hidden|Malformed",
+     "hidden|Quiet3h",
+     "hidden|hideIdle"
+    ]
+   },
+   "pairs": {
+    "covered": 299,
+    "of": 1156
+   },
+   "unmodelled": [
+    "running|resumeBuild:injection",
+    "running|openBuild:unknown",
+    "running|resumeBuild:known",
+    "running|openBuild:known",
+    "running|startFresh",
+    "running|whoChanged:fuzz",
+    "running|undoFile:unknown",
+    "running|claudeEvent"
+   ]
+  },
+  "build": {
+   "transitions": {
+    "covered": 3,
+    "feasible": 96,
+    "missing": [
+     "none|mergeBuild",
+     "none|mergeBuild:force",
+     "none|cli:merge",
+     "none|removeBuild",
+     "none|cli:done",
+     "clean|edit",
+     "clean|makeConflict",
+     "clean|breakTests",
+     "clean|reviewBuild",
+     "clean|mergeBuild",
+     "clean|mergeBuild:force",
+     "clean|cli:merge",
+     "clean|removeBuild",
+     "clean|cli:done",
+     "clean|cli:review",
+     "unsaved|edit",
+     "unsaved|commitInBuild",
+     "unsaved|makeConflict",
+     "unsaved|breakTests",
+     "unsaved|reviewBuild",
+     "unsaved|mergeBuild",
+     "unsaved|mergeBuild:force",
+     "unsaved|cli:merge",
+     "unsaved|removeBuild",
+     "unsaved|cli:done",
+     "unsaved|cli:review",
+     "saved|edit",
+     "saved|makeConflict",
+     "saved|breakTests",
+     "saved|reviewBuild",
+     "saved|mergeBuild",
+     "saved|mergeBuild:force",
+     "saved|cli:merge",
+     "saved|removeBuild",
+     "saved|cli:done",
+     "saved|cli:review",
+     "merged|edit",
+     "merged|makeConflict",
+     "merged|breakTests",
+     "merged|reviewBuild",
+     "merged|mergeBuild",
+     "merged|mergeBuild:force",
+     "merged|cli:merge",
+     "merged|removeBuild",
+     "merged|cli:done",
+     "merged|cli:review",
+     "removed|reviewBuild",
+     "removed|mergeBuild",
+     "removed|mergeBuild:force",
+     "removed|cli:merge",
+     "removed|removeBuild",
+     "removed|cli:done",
+     "unsaved+conflict|edit",
+     "unsaved+conflict|commitInBuild",
+     "unsaved+conflict|makeConflict",
+     "unsaved+conflict|breakTests",
+     "unsaved+conflict|reviewBuild",
+     "unsaved+conflict|mergeBuild",
+     "unsaved+conflict|mergeBuild:force",
+     "unsaved+conflict|cli:merge",
+     "unsaved+conflict|removeBuild",
+     "unsaved+conflict|cli:done",
+     "unsaved+conflict|cli:review",
+     "saved+conflict|edit",
+     "saved+conflict|makeConflict",
+     "saved+conflict|fixConflict",
+     "saved+conflict|breakTests",
+     "saved+conflict|reviewBuild",
+     "saved+conflict|mergeBuild",
+     "saved+conflict|mergeBuild:force",
+     "saved+conflict|cli:merge",
+     "saved+conflict|removeBuild",
+     "saved+conflict|cli:done",
+     "saved+conflict|cli:review",
+     "unsaved+failing|edit",
+     "unsaved+failing|commitInBuild",
+     "unsaved+failing|makeConflict",
+     "unsaved+failing|reviewBuild",
+     "unsaved+failing|mergeBuild",
+     "unsaved+failing|mergeBuild:force",
+     "unsaved+failing|cli:merge",
+     "unsaved+failing|removeBuild",
+     "unsaved+failing|cli:done",
+     "unsaved+failing|cli:review",
+     "saved+failing|edit",
+     "saved+failing|makeConflict",
+     "saved+failing|reviewBuild",
+     "saved+failing|mergeBuild",
+     "saved+failing|mergeBuild:force",
+     "saved+failing|cli:merge",
+     "saved+failing|removeBuild",
+     "saved+failing|cli:done",
+     "saved+failing|cli:review"
+    ]
+   },
+   "pairs": {
+    "covered": 5,
+    "of": 196
+   },
+   "unmodelled": []
+  },
+  "plan": {
+   "transitions": {
+    "covered": 3,
+    "feasible": 46,
+    "missing": [
+     "free|buildPrompt",
+     "free|promptUsed",
+     "free|enterLicense:valid",
+     "free|enterLicense:expired",
+     "free|enterLicense:forged",
+     "free|enterLicense:fuzz",
+     "free|upgrade",
+     "free-exhausted|buildPrompt",
+     "free-exhausted|promptUsed",
+     "free-exhausted|enterLicense:valid",
+     "free-exhausted|enterLicense:expired",
+     "free-exhausted|enterLicense:forged",
+     "free-exhausted|enterLicense:fuzz",
+     "free-exhausted|upgrade",
+     "trial|buildPrompt",
+     "trial|promptUsed",
+     "trial|enterLicense:valid",
+     "trial|enterLicense:expired",
+     "trial|enterLicense:forged",
+     "trial|enterLicense:fuzz",
+     "trial|upgrade",
+     "trial|trialEnds",
+     "trial-ending|buildPrompt",
+     "trial-ending|promptUsed",
+     "trial-ending|enterLicense:valid",
+     "trial-ending|enterLicense:expired",
+     "trial-ending|enterLicense:forged",
+     "trial-ending|enterLicense:fuzz",
+     "trial-ending|upgrade",
+     "trial-ending|trialEnds",
+     "licensed|promptUsed",
+     "licensed|enterLicense:valid",
+     "licensed|enterLicense:forged",
+     "licensed|enterLicense:fuzz",
+     "licensed|trialEnds",
+     "not-sellable|buildPrompt",
+     "not-sellable|promptUsed",
+     "not-sellable|enterLicense:valid",
+     "not-sellable|enterLicense:expired",
+     "not-sellable|enterLicense:forged",
+     "not-sellable|enterLicense:fuzz",
+     "not-sellable|upgrade",
+     "not-sellable|trialEnds"
+    ]
+   },
+   "pairs": {
+    "covered": 4,
+    "of": 64
+   },
+   "unmodelled": []
+  },
+  "connection": {
+   "transitions": {
+    "covered": 2,
+    "feasible": 16,
+    "missing": [
+     "disconnected|connectAll",
+     "disconnected|fixDoubleHooks",
+     "connected|connectAll",
+     "connected|disconnect",
+     "connected|fixDoubleHooks",
+     "connected|showConnectChanges",
+     "plugin|connectAll",
+     "plugin|disconnect",
+     "plugin|fixDoubleHooks",
+     "plugin|showConnectChanges",
+     "plugin+hooks|connectAll",
+     "plugin+hooks|disconnect",
+     "plugin+hooks|fixDoubleHooks",
+     "plugin+hooks|showConnectChanges"
+    ]
+   },
+   "pairs": {
+    "covered": 4,
+    "of": 16
+   },
+   "unmodelled": []
+  },
+  "prefs": {
+   "transitions": {
+    "covered": 2,
+    "feasible": 12,
+    "missing": [
+     "white/on|toggleTheme",
+     "white/off|toggleTheme",
+     "auto/on|toggleTheme",
+     "auto/on|toggleAlerts",
+     "auto/off|toggleTheme",
+     "auto/off|toggleAlerts",
+     "match/on|toggleTheme",
+     "match/on|toggleAlerts",
+     "match/off|toggleTheme",
+     "match/off|toggleAlerts"
+    ]
+   },
+   "pairs": {
+    "covered": 1,
+    "of": 4
+   },
+   "unmodelled": []
+  },
+  "project": {
+   "transitions": {
+    "covered": 3,
+    "feasible": 12,
+    "missing": [
+     "clean|projects",
+     "clean|selectProject:known",
+     "clean|selectProject:unknown",
+     "clean|checkpoint",
+     "dirty|projects",
+     "dirty|selectProject:known",
+     "dirty|selectProject:unknown",
+     "dirty|checkpoint",
+     "dirty|mainClean"
+    ]
+   },
+   "pairs": {
+    "covered": 3,
+    "of": 49
+   },
+   "unmodelled": []
+  },
+  "page": {
+   "transitions": {
+    "covered": 0
+   },
+   "pairs": {
+    "covered": 0
+   },
+   "controls": {
+    "covered": 0,
+    "of": 31,
+    "missing": [
+     "connectAll",
+     "showConnectChanges",
+     "disconnect",
+     "selectProject",
+     "more",
+     "toggleTheme",
+     "toggleAlerts",
+     "upgrade",
+     "enterLicense",
+     "newBuild",
+     "toggleBuild",
+     "renameBuild",
+     "openBuild",
+     "resumeBuild",
+     "startFresh",
+     "toggleErrors",
+     "copyErrors",
+     "dismissRisk",
+     "toggleQuiet",
+     "hideIdle",
+     "openFinder",
+     "whoChanged",
+     "undoFile",
+     "reviewBuild",
+     "mergeBuild",
+     "removeBuild",
+     "build",
+     "sendPrompt",
+     "useInOpen",
+     "copyPrompt",
+     "tip"
+    ]
+   },
+   "screens": []
+  },
+  "fuzz": {
+   "inputClasses": 7,
+   "cli": 387,
+   "plugin": 171,
+   "integration": 136
+  }
+ },
+ "seconds": 471,
+ "totalSteps": 1704,
+ "raw": {
+  "transitions": {
+   "session": {
+    "absent|SubagentStart": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "absent|PostToolUseFailure": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Subagent:PermissionRequest": {
+     "n": 3,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|SubagentStop": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|SubagentStop": {
+     "n": 5,
+     "to": [
+      "running"
+     ]
+    },
+    "running|OutOfOrder:SessionStart": {
+     "n": 3,
+     "to": [
+      "running"
+     ]
+    },
+    "running|PostToolUse": {
+     "n": 6,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Stop": {
+     "n": 6,
+     "to": [
+      "idle"
+     ]
+    },
+    "absent|SubagentStop": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Notification:idle_prompt": {
+     "n": 3,
+     "to": [
+      "idle"
+     ]
+    },
+    "running|TodoWrite": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|SessionStart:compact": {
+     "n": 4,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|PermissionRequest": {
+     "n": 4,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|StopFailure": {
+     "n": 2,
+     "to": [
+      "failed"
+     ]
+    },
+    "idle|OutOfOrder:SessionStart": {
+     "n": 2,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|Notification:agent_needs_input": {
+     "n": 2,
+     "to": [
+      "blocked"
+     ]
+    },
+    "failed|PostToolUseFailure:interrupt": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Notification:permission_prompt": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|PreCompact": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Notification:other": {
+     "n": 4,
+     "to": [
+      "running"
+     ]
+    },
+    "awaiting_approval|SessionStart:compact": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|rename": {
+     "n": 3,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|Quiet3h": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "blocked|SubagentStop": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|StopFailure": {
+     "n": 7,
+     "to": [
+      "failed",
+      "running"
+     ]
+    },
+    "failed|Duplicate": {
+     "n": 1,
+     "to": [
+      "failed"
+     ]
+    },
+    "failed|PermissionRequest": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "running|PostToolUseFailure": {
+     "n": 6,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Late:PostToolUse": {
+     "n": 5,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Duplicate": {
+     "n": 3,
+     "to": [
+      "running"
+     ]
+    },
+    "awaiting_approval|PermissionRequest": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|Malformed": {
+     "n": 3,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "running|SubagentStart": {
+     "n": 5,
+     "to": [
+      "running"
+     ]
+    },
+    "running|UserPromptSubmit:system": {
+     "n": 3,
+     "to": [
+      "running"
+     ]
+    },
+    "running|rename": {
+     "n": 4,
+     "to": [
+      "running"
+     ]
+    },
+    "awaiting_approval|PostToolUse": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Malformed": {
+     "n": 4,
+     "to": [
+      "running"
+     ]
+    },
+    "running|PreCompact": {
+     "n": 3,
+     "to": [
+      "running"
+     ]
+    },
+    "running|OutOfOrder:Stop": {
+     "n": 5,
+     "to": [
+      "running"
+     ]
+    },
+    "running|PreToolUse": {
+     "n": 4,
+     "to": [
+      "running"
+     ]
+    },
+    "awaiting_approval|Duplicate": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "running|SessionStart:startup": {
+     "n": 7,
+     "to": [
+      "idle"
+     ]
+    },
+    "running|UnknownEvent": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|Subagent:PostToolUse": {
+     "n": 4,
+     "to": [
+      "idle"
+     ]
+    },
+    "awaiting_approval|Notification:permission_prompt": {
+     "n": 4,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "running|SessionStart:resume": {
+     "n": 6,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|SubagentStop": {
+     "n": 4,
+     "to": [
+      "running",
+      "idle"
+     ]
+    },
+    "idle|OutOfOrder:UserPromptSubmit": {
+     "n": 3,
+     "to": [
+      "idle"
+     ]
+    },
+    "awaiting_approval|PostToolUseFailure": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Notification:agent_needs_input": {
+     "n": 2,
+     "to": [
+      "blocked"
+     ]
+    },
+    "blocked|Subagent:PostToolUse": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|hideIdle": {
+     "n": 4,
+     "to": [
+      "idle",
+      "hidden"
+     ]
+    },
+    "running|SessionEnd": {
+     "n": 3,
+     "to": [
+      "completed"
+     ]
+    },
+    "completed|Notification:agent_needs_input": {
+     "n": 2,
+     "to": [
+      "blocked"
+     ]
+    },
+    "blocked|Malformed": {
+     "n": 1,
+     "to": [
+      "blocked"
+     ]
+    },
+    "running|hideIdle": {
+     "n": 3,
+     "to": [
+      "running"
+     ]
+    },
+    "blocked|hideIdle": {
+     "n": 1,
+     "to": [
+      "blocked"
+     ]
+    },
+    "running|OutOfOrder:UserPromptSubmit": {
+     "n": 5,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|OutOfOrder:Stop": {
+     "n": 2,
+     "to": [
+      "idle"
+     ]
+    },
+    "blocked|PermissionRequest": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "idle|UserPromptSubmit": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|SessionStart:startup": {
+     "n": 3,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|Notification:permission_prompt": {
+     "n": 6,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "idle|Malformed": {
+     "n": 3,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|rename": {
+     "n": 3,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|SessionEnd": {
+     "n": 1,
+     "to": [
+      "completed"
+     ]
+    },
+    "awaiting_approval|PreToolUse": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "completed|UserPromptSubmit:system": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|Subagent:PostToolUse": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "blocked|SessionEnd": {
+     "n": 1,
+     "to": [
+      "completed"
+     ]
+    },
+    "idle|PostToolUse": {
+     "n": 3,
+     "to": [
+      "running",
+      "idle"
+     ]
+    },
+    "awaiting_approval|Notification:agent_needs_input": {
+     "n": 3,
+     "to": [
+      "blocked"
+     ]
+    },
+    "failed|SubagentStop": {
+     "n": 1,
+     "to": [
+      "failed"
+     ]
+    },
+    "failed|SessionStart:compact": {
+     "n": 1,
+     "to": [
+      "failed"
+     ]
+    },
+    "completed|Notification:idle_prompt": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "failed|TodoWrite": {
+     "n": 1,
+     "to": [
+      "failed"
+     ]
+    },
+    "idle|SessionStart:resume": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "awaiting_approval|UserPromptSubmit:system": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "failed|Notification:other": {
+     "n": 4,
+     "to": [
+      "failed"
+     ]
+    },
+    "running|SessionStart:compact": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|Notification:other": {
+     "n": 2,
+     "to": [
+      "idle"
+     ]
+    },
+    "blocked|Notification:agent_needs_input": {
+     "n": 2,
+     "to": [
+      "blocked"
+     ]
+    },
+    "idle|PreCompact": {
+     "n": 3,
+     "to": [
+      "idle",
+      "running"
+     ]
+    },
+    "idle|TodoWrite": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|Duplicate": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "running|RepeatLater": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "blocked|Late:PostToolUse": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|Late:PostToolUse": {
+     "n": 3,
+     "to": [
+      "running",
+      "idle"
+     ]
+    },
+    "awaiting_approval|Subagent:PostToolUse": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|Subagent:PermissionRequest": {
+     "n": 4,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "failed|StopFailure": {
+     "n": 1,
+     "to": [
+      "failed"
+     ]
+    },
+    "failed|Notification:idle_prompt": {
+     "n": 2,
+     "to": [
+      "idle"
+     ]
+    },
+    "failed|Late:PostToolUse": {
+     "n": 1,
+     "to": [
+      "failed"
+     ]
+    },
+    "awaiting_approval|UserPromptSubmit": {
+     "n": 4,
+     "to": [
+      "running"
+     ]
+    },
+    "failed|Stop": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "awaiting_approval|OutOfOrder:Stop": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|Notification:other": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "completed|SessionStart:compact": {
+     "n": 1,
+     "to": [
+      "completed"
+     ]
+    },
+    "awaiting_approval|Stop": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "awaiting_approval|SessionEnd": {
+     "n": 1,
+     "to": [
+      "completed"
+     ]
+    },
+    "completed|rename": {
+     "n": 1,
+     "to": [
+      "completed"
+     ]
+    },
+    "completed|Subagent:PermissionRequest": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "blocked|Subagent:PermissionRequest": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "running|PermissionRequest": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|RepeatLater": {
+     "n": 2,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|SessionStart:resume": {
+     "n": 3,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|SubagentStart": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|Quiet3h": {
+     "n": 2,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|RepeatLater": {
+     "n": 2,
+     "to": [
+      "idle"
+     ]
+    },
+    "awaiting_approval|SubagentStart": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "awaiting_approval|hideIdle": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "awaiting_approval|Subagent:PermissionRequest": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "completed|SessionStart:resume": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "hidden|rename": {
+     "n": 1,
+     "to": [
+      "hidden"
+     ]
+    },
+    "hidden|Notification:agent_needs_input": {
+     "n": 1,
+     "to": [
+      "blocked"
+     ]
+    },
+    "awaiting_approval|OutOfOrder:SessionStart": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "blocked|Quiet3h": {
+     "n": 2,
+     "to": [
+      "blocked"
+     ]
+    },
+    "blocked|SessionStart:compact": {
+     "n": 1,
+     "to": [
+      "blocked"
+     ]
+    },
+    "idle|Stop": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "blocked|RepeatLater": {
+     "n": 1,
+     "to": [
+      "blocked"
+     ]
+    },
+    "blocked|Stop": {
+     "n": 2,
+     "to": [
+      "idle"
+     ]
+    },
+    "awaiting_approval|OutOfOrder:UserPromptSubmit": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    },
+    "failed|Quiet3h": {
+     "n": 1,
+     "to": [
+      "failed"
+     ]
+    },
+    "running|UserPromptSubmit": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|Notification:idle_prompt": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "idle|StopFailure": {
+     "n": 2,
+     "to": [
+      "failed"
+     ]
+    },
+    "failed|UserPromptSubmit": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "idle|PreToolUse": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "failed|UserPromptSubmit:system": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|PostToolUseFailure:interrupt": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "blocked|OutOfOrder:UserPromptSubmit": {
+     "n": 1,
+     "to": [
+      "blocked"
+     ]
+    },
+    "idle|UserPromptSubmit:system": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "awaiting_approval|SessionStart:startup": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "failed|SessionStart:resume": {
+     "n": 1,
+     "to": [
+      "idle"
+     ]
+    },
+    "running|resumeBuild:injection": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|openBuild:unknown": {
+     "n": 3,
+     "to": [
+      "running"
+     ]
+    },
+    "running|resumeBuild:known": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|openBuild:known": {
+     "n": 1,
+     "to": [
+      "running"
+     ]
+    },
+    "running|startFresh": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|whoChanged:fuzz": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|undoFile:unknown": {
+     "n": 2,
+     "to": [
+      "running"
+     ]
+    },
+    "running|claudeEvent": {
+     "n": 1,
+     "to": [
+      "awaiting_approval"
+     ]
+    }
+   },
+   "project": {
+    "clean|cli:builds": {
+     "n": 1,
+     "to": [
+      "clean"
+     ]
+    },
+    "clean|mainDirty": {
+     "n": 1,
+     "to": [
+      "dirty"
+     ]
+    },
+    "dirty|cli:builds": {
+     "n": 2,
+     "to": [
+      "dirty"
+     ]
+    }
+   },
+   "connection": {
+    "disconnected|disconnect": {
+     "n": 3,
+     "to": [
+      "disconnected"
+     ]
+    },
+    "disconnected|showConnectChanges": {
+     "n": 2,
+     "to": [
+      "disconnected"
+     ]
+    }
+   },
+   "plan": {
+    "licensed|upgrade": {
+     "n": 3,
+     "to": [
+      "licensed"
+     ]
+    },
+    "licensed|buildPrompt": {
+     "n": 1,
+     "to": [
+      "licensed"
+     ]
+    },
+    "licensed|enterLicense:expired": {
+     "n": 1,
+     "to": [
+      "licensed"
+     ]
+    }
+   },
+   "env": {
+    "licensed|restartServer": {
+     "n": 1,
+     "to": [
+      "licensed"
+     ]
+    },
+    "licensed|raw:body": {
+     "n": 1,
+     "to": [
+      "licensed"
+     ]
+    },
+    "licensed|raw:unknownType": {
+     "n": 1,
+     "to": [
+      "licensed"
+     ]
+    },
+    "licensed|raw:auth": {
+     "n": 2,
+     "to": [
+      "licensed"
+     ]
+    },
+    "licensed|raw:wrongTypes": {
+     "n": 1,
+     "to": [
+      "licensed"
+     ]
+    }
+   },
+   "prefs": {
+    "white/on|toggleAlerts": {
+     "n": 1,
+     "to": [
+      "white/off"
+     ]
+    },
+    "white/off|toggleAlerts": {
+     "n": 1,
+     "to": [
+      "white/on"
+     ]
+    }
+   },
+   "build": {
+    "none|reviewBuild": {
+     "n": 2,
+     "to": [
+      "none"
+     ]
+    },
+    "none|cli:new": {
+     "n": 2,
+     "to": [
+      "clean"
+     ]
+    },
+    "none|newBuild": {
+     "n": 2,
+     "to": [
+      "clean"
+     ]
+    }
+   }
+  },
+  "pairs": {
+   "session": {
+    "SubagentStart>Subagent:PermissionRequest": 1,
+    "Subagent:PermissionRequest>SubagentStop": 1,
+    "PostToolUseFailure>SubagentStop": 1,
+    "SubagentStop>OutOfOrder:SessionStart": 1,
+    "OutOfOrder:SessionStart>PostToolUse": 1,
+    "SubagentStop>Stop": 1,
+    "SubagentStop>Notification:idle_prompt": 1,
+    "PostToolUse>TodoWrite": 1,
+    "Stop>SessionStart:compact": 1,
+    "SessionStart:compact>SessionStart:compact": 1,
+    "SessionStart:compact>PermissionRequest": 1,
+    "TodoWrite>Subagent:PermissionRequest": 1,
+    "Subagent:PermissionRequest>StopFailure": 1,
+    "Notification:idle_prompt>OutOfOrder:SessionStart": 1,
+    "OutOfOrder:SessionStart>Notification:agent_needs_input": 1,
+    "StopFailure>PostToolUseFailure:interrupt": 1,
+    "PostToolUseFailure:interrupt>Notification:permission_prompt": 1,
+    "PermissionRequest>PreCompact": 1,
+    "PreCompact>Notification:other": 1,
+    "Notification:permission_prompt>SessionStart:compact": 1,
+    "SessionStart:compact>rename": 1,
+    "rename>Quiet3h": 1,
+    "Notification:agent_needs_input>SubagentStop": 2,
+    "Notification:other>StopFailure": 1,
+    "StopFailure>Duplicate": 1,
+    "Quiet3h>rename": 1,
+    "Duplicate>PermissionRequest": 1,
+    "PermissionRequest>SubagentStop": 1,
+    "SubagentStop>Notification:other": 1,
+    "Notification:other>PostToolUseFailure": 1,
+    "SubagentStop>Late:PostToolUse": 1,
+    "Late:PostToolUse>Duplicate": 1,
+    "rename>PermissionRequest": 1,
+    "PostToolUseFailure>PostToolUseFailure": 1,
+    "PermissionRequest>Malformed": 1,
+    "PostToolUseFailure>SubagentStart": 1,
+    "Duplicate>UserPromptSubmit:system": 1,
+    "UserPromptSubmit:system>rename": 1,
+    "Malformed>PostToolUse": 1,
+    "SubagentStart>PostToolUse": 1,
+    "PostToolUse>Malformed": 1,
+    "rename>PreCompact": 1,
+    "PostToolUse>Notification:idle_prompt": 1,
+    "Malformed>UserPromptSubmit:system": 1,
+    "PreCompact>OutOfOrder:Stop": 1,
+    "Notification:idle_prompt>PermissionRequest": 1,
+    "UserPromptSubmit:system>PostToolUse": 1,
+    "OutOfOrder:Stop>PreCompact": 1,
+    "PreCompact>PreToolUse": 1,
+    "PermissionRequest>Duplicate": 1,
+    "PreToolUse>SessionStart:startup": 1,
+    "PostToolUse>OutOfOrder:Stop": 1,
+    "OutOfOrder:Stop>UnknownEvent": 1,
+    "UnknownEvent>OutOfOrder:SessionStart": 1,
+    "SessionStart:startup>Subagent:PostToolUse": 1,
+    "Duplicate>Notification:permission_prompt": 1,
+    "OutOfOrder:SessionStart>SubagentStart": 1,
+    "SubagentStart>SessionStart:resume": 1,
+    "SessionStart:resume>SubagentStop": 1,
+    "Subagent:PostToolUse>OutOfOrder:UserPromptSubmit": 1,
+    "Notification:permission_prompt>PostToolUseFailure": 1,
+    "PostToolUseFailure>Notification:other": 1,
+    "Notification:other>Notification:agent_needs_input": 1,
+    "OutOfOrder:UserPromptSubmit>Subagent:PostToolUse": 1,
+    "Notification:agent_needs_input>Subagent:PostToolUse": 1,
+    "Subagent:PostToolUse>Duplicate": 1,
+    "Subagent:PostToolUse>hideIdle": 1,
+    "SubagentStop>OutOfOrder:Stop": 1,
+    "Duplicate>PreCompact": 1,
+    "OutOfOrder:Stop>PostToolUse": 1,
+    "PostToolUse>SessionEnd": 1,
+    "PreCompact>SubagentStop": 1,
+    "SubagentStop>PostToolUseFailure": 1,
+    "SessionEnd>Notification:agent_needs_input": 1,
+    "Notification:agent_needs_input>Malformed": 1,
+    "PostToolUseFailure>hideIdle": 1,
+    "Malformed>hideIdle": 1,
+    "hideIdle>OutOfOrder:UserPromptSubmit": 1,
+    "hideIdle>OutOfOrder:Stop": 2,
+    "hideIdle>PermissionRequest": 1,
+    "OutOfOrder:UserPromptSubmit>TodoWrite": 1,
+    "TodoWrite>SessionStart:startup": 1,
+    "SessionStart:startup>UserPromptSubmit": 1,
+    "UserPromptSubmit>SessionStart:resume": 1,
+    "OutOfOrder:Stop>SessionStart:startup": 1,
+    "SessionStart:startup>Notification:permission_prompt": 1,
+    "SessionStart:resume>Malformed": 1,
+    "Malformed>rename": 1,
+    "rename>SessionEnd": 2,
+    "Notification:permission_prompt>PreToolUse": 1,
+    "SessionEnd>UserPromptSubmit:system": 1,
+    "PreToolUse>OutOfOrder:UserPromptSubmit": 1,
+    "UserPromptSubmit:system>Notification:agent_needs_input": 1,
+    "OutOfOrder:UserPromptSubmit>Malformed": 1,
+    "Malformed>Subagent:PostToolUse": 1,
+    "Notification:agent_needs_input>SessionEnd": 1,
+    "Subagent:PostToolUse>SessionStart:resume": 1,
+    "SessionStart:resume>PostToolUse": 1,
+    "PermissionRequest>Notification:agent_needs_input": 1,
+    "PostToolUse>rename": 1,
+    "rename>StopFailure": 1,
+    "StopFailure>SubagentStop": 1,
+    "SubagentStop>SessionStart:compact": 1,
+    "SubagentStop>SubagentStop": 1,
+    "SessionEnd>Notification:idle_prompt": 1,
+    "SessionStart:compact>TodoWrite": 1,
+    "Notification:idle_prompt>SessionStart:resume": 1,
+    "SessionStart:resume>PermissionRequest": 2,
+    "PermissionRequest>UserPromptSubmit:system": 1,
+    "TodoWrite>Notification:other": 1,
+    "UserPromptSubmit:system>OutOfOrder:Stop": 1,
+    "OutOfOrder:Stop>Late:PostToolUse": 1,
+    "Notification:other>PostToolUseFailure:interrupt": 1,
+    "PostToolUseFailure:interrupt>SessionStart:compact": 1,
+    "SubagentStop>SessionStart:startup": 1,
+    "SessionStart:startup>Notification:other": 1,
+    "Notification:other>OutOfOrder:UserPromptSubmit": 1,
+    "Late:PostToolUse>SessionStart:startup": 1,
+    "OutOfOrder:UserPromptSubmit>Notification:agent_needs_input": 1,
+    "SessionStart:compact>Stop": 1,
+    "Stop>PostToolUse": 1,
+    "Notification:agent_needs_input>Notification:agent_needs_input": 1,
+    "PostToolUse>SessionStart:compact": 1,
+    "SessionStart:compact>hideIdle": 1,
+    "hideIdle>PreCompact": 1,
+    "PreCompact>Subagent:PostToolUse": 1,
+    "SessionStart:startup>SubagentStop": 1,
+    "SubagentStop>Duplicate": 1,
+    "Subagent:PostToolUse>TodoWrite": 1,
+    "Duplicate>PostToolUse": 1,
+    "PostToolUse>SessionStart:startup": 1,
+    "SessionStart:startup>Duplicate": 1,
+    "TodoWrite>RepeatLater": 1,
+    "Notification:agent_needs_input>Late:PostToolUse": 1,
+    "Late:PostToolUse>OutOfOrder:UserPromptSubmit": 1,
+    "OutOfOrder:UserPromptSubmit>Late:PostToolUse": 1,
+    "Duplicate>Late:PostToolUse": 1,
+    "RepeatLater>SubagentStop": 1,
+    "SubagentStop>PostToolUse": 1,
+    "PostToolUse>Subagent:PostToolUse": 1,
+    "Subagent:PostToolUse>OutOfOrder:SessionStart": 1,
+    "OutOfOrder:SessionStart>Subagent:PermissionRequest": 1,
+    "Late:PostToolUse>Stop": 1,
+    "Late:PostToolUse>PreToolUse": 1,
+    "PreToolUse>Late:PostToolUse": 1,
+    "Late:PostToolUse>Malformed": 1,
+    "Malformed>Notification:permission_prompt": 1,
+    "Subagent:PermissionRequest>Subagent:PostToolUse": 1,
+    "Notification:permission_prompt>Notification:permission_prompt": 1,
+    "Stop>Subagent:PermissionRequest": 1,
+    "Subagent:PostToolUse>UserPromptSubmit:system": 1,
+    "Notification:permission_prompt>StopFailure": 1,
+    "StopFailure>StopFailure": 1,
+    "StopFailure>Notification:idle_prompt": 1,
+    "UserPromptSubmit:system>hideIdle": 1,
+    "hideIdle>StopFailure": 1,
+    "StopFailure>Late:PostToolUse": 1,
+    "Late:PostToolUse>Notification:other": 1,
+    "Notification:idle_prompt>Notification:other": 1,
+    "Subagent:PermissionRequest>UserPromptSubmit": 1,
+    "Notification:other>Notification:other": 1,
+    "Notification:other>Notification:permission_prompt": 1,
+    "Notification:other>Stop": 1,
+    "UserPromptSubmit>SessionEnd": 1,
+    "Notification:permission_prompt>OutOfOrder:Stop": 1,
+    "Stop>SubagentStop": 2,
+    "SubagentStop>rename": 1,
+    "OutOfOrder:Stop>Notification:other": 1,
+    "SessionEnd>SessionStart:compact": 1,
+    "rename>Subagent:PermissionRequest": 2,
+    "Subagent:PermissionRequest>Stop": 1,
+    "Notification:other>SessionEnd": 1,
+    "SessionStart:compact>Notification:agent_needs_input": 2,
+    "Stop>hideIdle": 1,
+    "SessionEnd>rename": 1,
+    "OutOfOrder:Stop>Subagent:PostToolUse": 1,
+    "Notification:agent_needs_input>Subagent:PermissionRequest": 1,
+    "Subagent:PostToolUse>rename": 1,
+    "Subagent:PermissionRequest>SessionStart:compact": 1,
+    "SessionStart:compact>Notification:permission_prompt": 1,
+    "Notification:permission_prompt>PostToolUse": 1,
+    "PostToolUse>PermissionRequest": 1,
+    "Subagent:PermissionRequest>RepeatLater": 1,
+    "PermissionRequest>RepeatLater": 1,
+    "RepeatLater>Notification:agent_needs_input": 1,
+    "RepeatLater>SessionStart:resume": 1,
+    "rename>SubagentStart": 2,
+    "Notification:agent_needs_input>PermissionRequest": 1,
+    "SubagentStart>PermissionRequest": 1,
+    "PermissionRequest>SessionStart:resume": 1,
+    "SessionStart:resume>SessionStart:compact": 1,
+    "SessionStart:resume>Quiet3h": 1,
+    "SessionStart:compact>Malformed": 1,
+    "PermissionRequest>rename": 1,
+    "Quiet3h>OutOfOrder:UserPromptSubmit": 1,
+    "Malformed>RepeatLater": 1,
+    "OutOfOrder:UserPromptSubmit>PostToolUse": 1,
+    "RepeatLater>Subagent:PermissionRequest": 1,
+    "Subagent:PermissionRequest>hideIdle": 1,
+    "hideIdle>Malformed": 1,
+    "SubagentStart>SessionStart:startup": 1,
+    "PostToolUse>OutOfOrder:UserPromptSubmit": 1,
+    "Malformed>Subagent:PermissionRequest": 1,
+    "Subagent:PermissionRequest>OutOfOrder:Stop": 1,
+    "OutOfOrder:Stop>Quiet3h": 1,
+    "OutOfOrder:UserPromptSubmit>rename": 1,
+    "SessionStart:startup>hideIdle": 1,
+    "SessionEnd>SessionStart:resume": 1,
+    "Quiet3h>UserPromptSubmit": 1,
+    "UserPromptSubmit>StopFailure": 2,
+    "hideIdle>rename": 1,
+    "rename>Notification:agent_needs_input": 1,
+    "PermissionRequest>OutOfOrder:SessionStart": 1,
+    "Notification:agent_needs_input>Quiet3h": 1,
+    "Quiet3h>SessionStart:compact": 1,
+    "StopFailure>PermissionRequest": 1,
+    "OutOfOrder:SessionStart>Subagent:PostToolUse": 1,
+    "PermissionRequest>PostToolUseFailure": 1,
+    "Subagent:PostToolUse>SubagentStart": 1,
+    "PostToolUseFailure>SessionStart:resume": 1,
+    "SubagentStart>Malformed": 1,
+    "Malformed>PostToolUseFailure": 1,
+    "PostToolUseFailure>Notification:idle_prompt": 1,
+    "Notification:idle_prompt>Stop": 1,
+    "SessionStart:resume>SubagentStart": 1,
+    "Notification:agent_needs_input>RepeatLater": 1,
+    "SubagentStart>StopFailure": 1,
+    "RepeatLater>Quiet3h": 1,
+    "SubagentStop>Malformed": 1,
+    "Quiet3h>Stop": 1,
+    "Stop>OutOfOrder:SessionStart": 1,
+    "Malformed>SessionStart:startup": 2,
+    "OutOfOrder:SessionStart>Notification:permission_prompt": 1,
+    "SessionStart:startup>PreCompact": 1,
+    "Notification:permission_prompt>OutOfOrder:UserPromptSubmit": 1,
+    "StopFailure>Quiet3h": 1,
+    "OutOfOrder:UserPromptSubmit>UserPromptSubmit": 1,
+    "UserPromptSubmit>UserPromptSubmit": 1,
+    "UserPromptSubmit>Stop": 1,
+    "Quiet3h>Notification:idle_prompt": 1,
+    "Stop>Notification:idle_prompt": 1,
+    "Notification:idle_prompt>Late:PostToolUse": 1,
+    "PreCompact>PostToolUseFailure": 1,
+    "Notification:idle_prompt>Subagent:PermissionRequest": 1,
+    "Subagent:PermissionRequest>Notification:permission_prompt": 1,
+    "PostToolUseFailure>SessionStart:startup": 1,
+    "SessionStart:startup>SessionStart:startup": 1,
+    "Late:PostToolUse>Quiet3h": 1,
+    "Quiet3h>StopFailure": 1,
+    "StopFailure>Notification:other": 1,
+    "Notification:other>UserPromptSubmit": 1,
+    "Notification:permission_prompt>UserPromptSubmit": 1,
+    "SessionStart:startup>PreToolUse": 1,
+    "StopFailure>UserPromptSubmit:system": 1,
+    "UserPromptSubmit>OutOfOrder:UserPromptSubmit": 1,
+    "UserPromptSubmit:system>Late:PostToolUse": 1,
+    "PreToolUse>OutOfOrder:Stop": 1,
+    "Late:PostToolUse>SubagentStart": 1,
+    "OutOfOrder:UserPromptSubmit>Notification:other": 1,
+    "Notification:other>SessionStart:compact": 1,
+    "OutOfOrder:Stop>SubagentStop": 1,
+    "SubagentStart>RepeatLater": 1,
+    "RepeatLater>PreToolUse": 1,
+    "SessionStart:compact>SessionStart:resume": 1,
+    "SessionStart:resume>Notification:permission_prompt": 2,
+    "PreToolUse>PreToolUse": 1,
+    "SubagentStop>SessionStart:resume": 1,
+    "PreToolUse>StopFailure": 1,
+    "StopFailure>SubagentStart": 1,
+    "SubagentStart>PostToolUseFailure:interrupt": 1,
+    "Notification:permission_prompt>Notification:agent_needs_input": 1,
+    "Notification:agent_needs_input>OutOfOrder:UserPromptSubmit": 1,
+    "OutOfOrder:UserPromptSubmit>Stop": 1,
+    "SessionStart:resume>RepeatLater": 1,
+    "Stop>Notification:permission_prompt": 1,
+    "Notification:permission_prompt>SessionStart:resume": 1,
+    "Notification:permission_prompt>Malformed": 1,
+    "RepeatLater>PreCompact": 1,
+    "PostToolUseFailure:interrupt>Stop": 1,
+    "Stop>UserPromptSubmit:system": 1,
+    "PreCompact>StopFailure": 1,
+    "StopFailure>SessionStart:resume": 1,
+    "UserPromptSubmit:system>PostToolUseFailure": 1,
+    "PostToolUseFailure>Stop": 1,
+    "SessionStart:startup>Late:PostToolUse": 1,
+    "Late:PostToolUse>rename": 1,
+    "resumeBuild:injection>hideIdle": 1,
+    "hideIdle>openBuild:unknown": 1,
+    "openBuild:unknown>resumeBuild:known": 1,
+    "resumeBuild:known>openBuild:unknown": 1,
+    "openBuild:unknown>openBuild:unknown": 1,
+    "openBuild:unknown>openBuild:known": 1,
+    "openBuild:known>startFresh": 1,
+    "startFresh>whoChanged:fuzz": 1,
+    "whoChanged:fuzz>startFresh": 1,
+    "startFresh>undoFile:unknown": 1,
+    "undoFile:unknown>whoChanged:fuzz": 1,
+    "whoChanged:fuzz>undoFile:unknown": 1,
+    "undoFile:unknown>claudeEvent": 1
+   },
+   "any": {
+    "resumeBuild:injection>cli:builds": 1,
+    "cli:builds>disconnect": 1,
+    "disconnect>upgrade": 1,
+    "upgrade>restartServer": 1,
+    "restartServer>hideIdle": 1,
+    "hideIdle>raw:body": 1,
+    "raw:body>toggleAlerts": 1,
+    "toggleAlerts>toggleAlerts": 1,
+    "toggleAlerts>raw:unknownType": 1,
+    "raw:unknownType>openBuild:unknown": 1,
+    "openBuild:unknown>mainDirty": 1,
+    "mainDirty>resumeBuild:known": 1,
+    "resumeBuild:known>cli:builds": 1,
+    "cli:builds>openBuild:unknown": 1,
+    "openBuild:unknown>openBuild:unknown": 1,
+    "openBuild:unknown>openBuild:known": 1,
+    "openBuild:known>buildPrompt": 1,
+    "buildPrompt>enterLicense:expired": 1,
+    "enterLicense:expired>startFresh": 1,
+    "startFresh>showConnectChanges": 1,
+    "showConnectChanges>showConnectChanges": 1,
+    "showConnectChanges>whoChanged:fuzz": 1,
+    "whoChanged:fuzz>raw:auth": 1,
+    "raw:auth>startFresh": 1,
+    "startFresh>upgrade": 1,
+    "upgrade>reviewBuild": 1,
+    "reviewBuild>upgrade": 1,
+    "upgrade>undoFile:unknown": 1,
+    "undoFile:unknown>disconnect": 1,
+    "disconnect>reviewBuild": 1,
+    "reviewBuild>raw:wrongTypes": 1,
+    "raw:wrongTypes>whoChanged:fuzz": 1,
+    "whoChanged:fuzz>undoFile:unknown": 1,
+    "undoFile:unknown>cli:new": 1,
+    "cli:new>newBuild": 1,
+    "newBuild>cli:builds": 1,
+    "cli:builds>raw:auth": 1,
+    "raw:auth>disconnect": 1,
+    "disconnect>claudeEvent": 1,
+    "claudeEvent>newBuild": 1,
+    "newBuild>cli:new": 1
+   },
+   "env": {
+    "restartServer>raw:body": 1,
+    "raw:body>raw:unknownType": 1,
+    "raw:unknownType>raw:auth": 1,
+    "raw:auth>raw:wrongTypes": 1,
+    "raw:wrongTypes>raw:auth": 1
+   },
+   "prefs": {
+    "toggleAlerts>toggleAlerts": 1
+   },
+   "project": {
+    "cli:builds>mainDirty": 1,
+    "mainDirty>cli:builds": 1,
+    "cli:builds>cli:builds": 1
+   },
+   "plan": {
+    "upgrade>buildPrompt": 1,
+    "buildPrompt>enterLicense:expired": 1,
+    "enterLicense:expired>upgrade": 1,
+    "upgrade>upgrade": 1
+   },
+   "connection": {
+    "disconnect>showConnectChanges": 1,
+    "showConnectChanges>showConnectChanges": 1,
+    "showConnectChanges>disconnect": 1,
+    "disconnect>disconnect": 1
+   },
+   "build": {
+    "reviewBuild>reviewBuild": 1,
+    "reviewBuild>cli:new": 1,
+    "cli:new>newBuild": 1,
+    "newBuild>newBuild": 1,
+    "newBuild>cli:new": 1
+   }
+  },
+  "misc": {
+   "fuzz": {
+    "raw:body:array": 1,
+    "buildPrompt:like-wild": 1,
+    "whoChanged:fuzz:proto": 1,
+    "raw:wrongTypes:nested": 1,
+    "whoChanged:fuzz:json": 1,
+    "newBuild:boundary-41": 1,
+    "newBuild:nul": 1
+   },
+   "cli": {
+    "glance": 1,
+    "glance --json": 1,
+    "widget": 1,
+    "widget --json": 1,
+    "recent": 1,
+    "recent --json": 1,
+    "limits": 1,
+    "limits --json": 1,
+    "today": 1,
+    "today --json": 1,
+    "tmux": 1,
+    "tmux --json": 1,
+    "help": 1,
+    "help --json": 1,
+    "version": 1,
+    "version --json": 1,
+    "--help": 1,
+    "--help --json": 1,
+    "-h": 1,
+    "-h --json": 1,
+    "--version": 1,
+    "--version --json": 1,
+    "-v": 1,
+    "-v --json": 1,
+    "builds": 1,
+    "builds --json": 1,
+    "brief": 5,
+    "brief --json": 1,
+    "status": 5,
+    "status --json": 1,
+    "sessions": 5,
+    "sessions --json": 1,
+    "handoff": 5,
+    "handoff --json": 1,
+    "(none)": 1,
+    "--json": 1,
+    "hooks": 11,
+    "statusline": 8,
+    "shell": 8,
+    "hooks --project": 1,
+    "bar": 3,
+    "ui --print": 1,
+    "ui": 2,
+    "open": 2,
+    "open -x": 1,
+    "license": 5,
+    "jump": 5,
+    "go": 3,
+    "who": 3,
+    "review": 2,
+    "merge": 3,
+    "done": 2,
+    "new --no-env": 1,
+    "prompt": 8,
+    "doctor": 1,
+    "doctor --json": 1,
+    "doctor --fix": 1,
+    "audit": 1,
+    "visual": 2,
+    "stauts": 1,
+    "glnace": 1,
+    "xyz": 1,
+    "-x": 1,
+    "who:empty": 1,
+    "who:spaces": 1,
+    "who:one-char": 1,
+    "who:normal": 1,
+    "who:boundary-40": 1,
+    "who:boundary-41": 1,
+    "who:long-300": 1,
+    "who:newlines": 1,
+    "who:unicode": 1,
+    "who:rtl": 1,
+    "who:emoji": 1,
+    "who:zero-width": 1,
+    "who:html": 1,
+    "who:script": 1,
+    "who:attr": 1,
+    "who:shell": 1,
+    "who:apostrophe": 1,
+    "who:quotes": 1,
+    "who:backslash": 1,
+    "who:sql": 1,
+    "who:like-wild": 1,
+    "who:path-traversal": 1,
+    "who:lone-surrogate": 1,
+    "who:control": 1,
+    "who:json": 1,
+    "who:number-like": 1,
+    "who:proto": 1,
+    "go:empty": 1,
+    "go:spaces": 1,
+    "go:one-char": 1,
+    "go:normal": 1,
+    "go:boundary-40": 1,
+    "go:boundary-41": 1,
+    "go:long-300": 1,
+    "go:newlines": 1,
+    "go:unicode": 1,
+    "go:rtl": 1,
+    "go:emoji": 1,
+    "go:zero-width": 1,
+    "go:html": 1,
+    "go:script": 1,
+    "go:attr": 1,
+    "go:shell": 1,
+    "go:apostrophe": 1,
+    "go:quotes": 1,
+    "go:backslash": 1,
+    "go:sql": 1,
+    "go:like-wild": 1,
+    "go:path-traversal": 1,
+    "go:lone-surrogate": 1,
+    "go:control": 1,
+    "go:json": 1,
+    "go:number-like": 1,
+    "go:proto": 1,
+    "new:empty": 1,
+    "new:spaces": 1,
+    "new:one-char": 1,
+    "new:normal": 1,
+    "new:boundary-40": 1,
+    "new:boundary-41": 1,
+    "new:long-300": 1,
+    "new:newlines": 1,
+    "new:unicode": 1,
+    "new:rtl": 1,
+    "new:emoji": 1,
+    "new:zero-width": 1,
+    "new:html": 1,
+    "new:script": 1,
+    "new:attr": 1,
+    "new:shell": 1,
+    "new:apostrophe": 1,
+    "new:quotes": 1,
+    "new:backslash": 1,
+    "new:sql": 1,
+    "new:like-wild": 1,
+    "new:path-traversal": 1,
+    "new:lone-surrogate": 1,
+    "new:control": 1,
+    "new:json": 1,
+    "new:number-like": 1,
+    "new:proto": 1,
+    "review:empty": 1,
+    "review:spaces": 1,
+    "review:one-char": 1,
+    "review:normal": 1,
+    "review:boundary-40": 1,
+    "review:boundary-41": 1,
+    "review:long-300": 1,
+    "review:newlines": 1,
+    "review:unicode": 1,
+    "review:rtl": 1,
+    "review:emoji": 1,
+    "review:zero-width": 1,
+    "review:html": 1,
+    "review:script": 1,
+    "review:attr": 1,
+    "review:shell": 1,
+    "review:apostrophe": 1,
+    "review:quotes": 1,
+    "review:backslash": 1,
+    "review:sql": 1,
+    "review:like-wild": 1,
+    "review:path-traversal": 1,
+    "review:lone-surrogate": 1,
+    "review:control": 1,
+    "review:json": 1,
+    "review:number-like": 1,
+    "review:proto": 1,
+    "merge:empty": 1,
+    "merge:spaces": 1,
+    "merge:one-char": 1,
+    "merge:normal": 1,
+    "merge:boundary-40": 1,
+    "merge:boundary-41": 1,
+    "merge:long-300": 1,
+    "merge:newlines": 1,
+    "merge:unicode": 1,
+    "merge:rtl": 1,
+    "merge:emoji": 1,
+    "merge:zero-width": 1,
+    "merge:html": 1,
+    "merge:script": 1,
+    "merge:attr": 1,
+    "merge:shell": 1,
+    "merge:apostrophe": 1,
+    "merge:quotes": 1,
+    "merge:backslash": 1,
+    "merge:sql": 1,
+    "merge:like-wild": 1,
+    "merge:path-traversal": 1,
+    "merge:lone-surrogate": 1,
+    "merge:control": 1,
+    "merge:json": 1,
+    "merge:number-like": 1,
+    "merge:proto": 1,
+    "done:empty": 1,
+    "done:spaces": 1,
+    "done:one-char": 1,
+    "done:normal": 1,
+    "done:boundary-40": 1,
+    "done:boundary-41": 1,
+    "done:long-300": 1,
+    "done:newlines": 1,
+    "done:unicode": 1,
+    "done:rtl": 1,
+    "done:emoji": 1,
+    "done:zero-width": 1,
+    "done:html": 1,
+    "done:script": 1,
+    "done:attr": 1,
+    "done:shell": 1,
+    "done:apostrophe": 1,
+    "done:quotes": 1,
+    "done:backslash": 1,
+    "done:sql": 1,
+    "done:like-wild": 1,
+    "done:path-traversal": 1,
+    "done:lone-surrogate": 1,
+    "done:control": 1,
+    "done:json": 1,
+    "done:number-like": 1,
+    "done:proto": 1,
+    "license:empty": 1,
+    "license:spaces": 1,
+    "license:one-char": 1,
+    "license:normal": 1,
+    "license:boundary-40": 1,
+    "license:boundary-41": 1,
+    "license:long-300": 1,
+    "license:newlines": 1,
+    "license:unicode": 1,
+    "license:rtl": 1,
+    "license:emoji": 1,
+    "license:zero-width": 1,
+    "license:html": 1,
+    "license:script": 1,
+    "license:attr": 1,
+    "license:shell": 1,
+    "license:apostrophe": 1,
+    "license:quotes": 1,
+    "license:backslash": 1,
+    "license:sql": 1,
+    "license:like-wild": 1,
+    "license:path-traversal": 1,
+    "license:lone-surrogate": 1,
+    "license:control": 1,
+    "license:json": 1,
+    "license:number-like": 1,
+    "license:proto": 1,
+    "prompt:empty": 1,
+    "prompt:spaces": 1,
+    "prompt:one-char": 1,
+    "prompt:normal": 1,
+    "prompt:boundary-40": 1,
+    "prompt:boundary-41": 1,
+    "prompt:long-300": 1,
+    "prompt:newlines": 1,
+    "prompt:unicode": 1,
+    "prompt:rtl": 1,
+    "prompt:emoji": 1,
+    "prompt:zero-width": 1,
+    "prompt:html": 1,
+    "prompt:script": 1,
+    "prompt:attr": 1,
+    "prompt:shell": 1,
+    "prompt:apostrophe": 1,
+    "prompt:quotes": 1,
+    "prompt:backslash": 1,
+    "prompt:sql": 1,
+    "prompt:like-wild": 1,
+    "prompt:path-traversal": 1,
+    "prompt:lone-surrogate": 1,
+    "prompt:control": 1,
+    "prompt:json": 1,
+    "prompt:number-like": 1,
+    "prompt:proto": 1,
+    "jump:empty": 1,
+    "jump:spaces": 1,
+    "jump:one-char": 1,
+    "jump:normal": 1,
+    "jump:boundary-40": 1,
+    "jump:boundary-41": 1,
+    "jump:long-300": 1,
+    "jump:newlines": 1,
+    "jump:unicode": 1,
+    "jump:rtl": 1,
+    "jump:emoji": 1,
+    "jump:zero-width": 1,
+    "jump:html": 1,
+    "jump:script": 1,
+    "jump:attr": 1,
+    "jump:shell": 1,
+    "jump:apostrophe": 1,
+    "jump:quotes": 1,
+    "jump:backslash": 1,
+    "jump:sql": 1,
+    "jump:like-wild": 1,
+    "jump:path-traversal": 1,
+    "jump:lone-surrogate": 1,
+    "jump:control": 1,
+    "jump:json": 1,
+    "jump:number-like": 1,
+    "jump:proto": 1,
+    "open:empty": 1,
+    "open:spaces": 1,
+    "open:one-char": 1,
+    "open:normal": 1,
+    "open:boundary-40": 1,
+    "open:boundary-41": 1,
+    "open:long-300": 1,
+    "open:newlines": 1,
+    "open:unicode": 1,
+    "open:rtl": 1,
+    "open:emoji": 1,
+    "open:zero-width": 1,
+    "open:html": 1,
+    "open:script": 1,
+    "open:attr": 1,
+    "open:shell": 1,
+    "open:apostrophe": 1,
+    "open:quotes": 1,
+    "open:backslash": 1,
+    "open:sql": 1,
+    "open:like-wild": 1,
+    "open:path-traversal": 1,
+    "open:lone-surrogate": 1,
+    "open:control": 1,
+    "open:json": 1,
+    "open:number-like": 1,
+    "open:proto": 1,
+    "brief:empty": 1,
+    "brief:spaces": 1,
+    "brief:one-char": 1,
+    "brief:normal": 1,
+    "brief:boundary-40": 1,
+    "brief:boundary-41": 1,
+    "brief:long-300": 1,
+    "brief:newlines": 1,
+    "brief:unicode": 1,
+    "brief:rtl": 1,
+    "brief:emoji": 1,
+    "brief:zero-width": 1,
+    "brief:html": 1,
+    "brief:script": 1,
+    "brief:attr": 1,
+    "brief:shell": 1,
+    "brief:apostrophe": 1,
+    "brief:quotes": 1,
+    "brief:backslash": 1,
+    "brief:sql": 1,
+    "brief:like-wild": 1,
+    "brief:path-traversal": 1,
+    "brief:lone-surrogate": 1,
+    "brief:control": 1,
+    "brief:json": 1,
+    "brief:number-like": 1,
+    "brief:proto": 1,
+    "status:empty": 1,
+    "status:spaces": 1,
+    "status:one-char": 1,
+    "status:normal": 1,
+    "status:boundary-40": 1,
+    "status:boundary-41": 1,
+    "status:long-300": 1,
+    "status:newlines": 1,
+    "status:unicode": 1,
+    "status:rtl": 1,
+    "status:emoji": 1,
+    "status:zero-width": 1,
+    "status:html": 1,
+    "status:script": 1,
+    "status:attr": 1,
+    "status:shell": 1,
+    "status:apostrophe": 1,
+    "status:quotes": 1,
+    "status:backslash": 1,
+    "status:sql": 1,
+    "status:like-wild": 1,
+    "status:path-traversal": 1,
+    "status:lone-surrogate": 1,
+    "status:control": 1,
+    "status:json": 1,
+    "status:number-like": 1,
+    "status:proto": 1
+   },
+   "plugin": {
+    "bp-connect.md:none": 1,
+    "bp-doctor.md:none": 1,
+    "bp-license.md:empty": 1,
+    "bp-license.md:spaces": 1,
+    "bp-license.md:one-char": 1,
+    "bp-license.md:normal": 1,
+    "bp-license.md:boundary-40": 1,
+    "bp-license.md:boundary-41": 1,
+    "bp-license.md:long-300": 1,
+    "bp-license.md:newlines": 1,
+    "bp-license.md:unicode": 1,
+    "bp-license.md:rtl": 1,
+    "bp-license.md:emoji": 1,
+    "bp-license.md:zero-width": 1,
+    "bp-license.md:html": 1,
+    "bp-license.md:script": 1,
+    "bp-license.md:attr": 1,
+    "bp-license.md:shell": 1,
+    "bp-license.md:apostrophe": 1,
+    "bp-license.md:quotes": 1,
+    "bp-license.md:backslash": 1,
+    "bp-license.md:sql": 1,
+    "bp-license.md:like-wild": 1,
+    "bp-license.md:path-traversal": 1,
+    "bp-license.md:lone-surrogate": 1,
+    "bp-license.md:control": 1,
+    "bp-license.md:json": 1,
+    "bp-license.md:number-like": 1,
+    "bp-license.md:proto": 1,
+    "bp-license.md:inject-single": 1,
+    "bp-license.md:inject-subst": 1,
+    "bp-license.md:inject-backtick": 1,
+    "bp-license.md:inject-heredoc": 1,
+    "bp-license.md:inject-heredoc-7c41": 1,
+    "bp-license.md:inject-arg-end": 1,
+    "bp-merge.md:empty": 1,
+    "bp-merge.md:spaces": 1,
+    "bp-merge.md:one-char": 1,
+    "bp-merge.md:normal": 1,
+    "bp-merge.md:boundary-40": 1,
+    "bp-merge.md:boundary-41": 1,
+    "bp-merge.md:long-300": 1,
+    "bp-merge.md:newlines": 1,
+    "bp-merge.md:unicode": 1,
+    "bp-merge.md:rtl": 1,
+    "bp-merge.md:emoji": 1,
+    "bp-merge.md:zero-width": 1,
+    "bp-merge.md:html": 1,
+    "bp-merge.md:script": 1,
+    "bp-merge.md:attr": 1,
+    "bp-merge.md:shell": 1,
+    "bp-merge.md:apostrophe": 1,
+    "bp-merge.md:quotes": 1,
+    "bp-merge.md:backslash": 1,
+    "bp-merge.md:sql": 1,
+    "bp-merge.md:like-wild": 1,
+    "bp-merge.md:path-traversal": 1,
+    "bp-merge.md:lone-surrogate": 1,
+    "bp-merge.md:control": 1,
+    "bp-merge.md:json": 1,
+    "bp-merge.md:number-like": 1,
+    "bp-merge.md:proto": 1,
+    "bp-merge.md:inject-single": 1,
+    "bp-merge.md:inject-subst": 1,
+    "bp-merge.md:inject-backtick": 1,
+    "bp-merge.md:inject-heredoc": 1,
+    "bp-merge.md:inject-heredoc-7c41": 1,
+    "bp-merge.md:inject-arg-end": 1,
+    "bp-new.md:empty": 1,
+    "bp-new.md:spaces": 1,
+    "bp-new.md:one-char": 1,
+    "bp-new.md:normal": 1,
+    "bp-new.md:boundary-40": 1,
+    "bp-new.md:boundary-41": 1,
+    "bp-new.md:long-300": 1,
+    "bp-new.md:newlines": 1,
+    "bp-new.md:unicode": 1,
+    "bp-new.md:rtl": 1,
+    "bp-new.md:emoji": 1,
+    "bp-new.md:zero-width": 1,
+    "bp-new.md:html": 1,
+    "bp-new.md:script": 1,
+    "bp-new.md:attr": 1,
+    "bp-new.md:shell": 1,
+    "bp-new.md:apostrophe": 1,
+    "bp-new.md:quotes": 1,
+    "bp-new.md:backslash": 1,
+    "bp-new.md:sql": 1,
+    "bp-new.md:like-wild": 1,
+    "bp-new.md:path-traversal": 1,
+    "bp-new.md:lone-surrogate": 1,
+    "bp-new.md:control": 1,
+    "bp-new.md:json": 1,
+    "bp-new.md:number-like": 1,
+    "bp-new.md:proto": 1,
+    "bp-new.md:inject-single": 1,
+    "bp-new.md:inject-subst": 1,
+    "bp-new.md:inject-backtick": 1,
+    "bp-new.md:inject-heredoc": 1,
+    "bp-new.md:inject-heredoc-7c41": 1,
+    "bp-new.md:inject-arg-end": 1,
+    "bp-prompt.md:empty": 1,
+    "bp-prompt.md:spaces": 1,
+    "bp-prompt.md:one-char": 1,
+    "bp-prompt.md:normal": 1,
+    "bp-prompt.md:boundary-40": 1,
+    "bp-prompt.md:boundary-41": 1,
+    "bp-prompt.md:long-300": 1,
+    "bp-prompt.md:newlines": 1,
+    "bp-prompt.md:unicode": 1,
+    "bp-prompt.md:rtl": 1,
+    "bp-prompt.md:emoji": 1,
+    "bp-prompt.md:zero-width": 1,
+    "bp-prompt.md:html": 1,
+    "bp-prompt.md:script": 1,
+    "bp-prompt.md:attr": 1,
+    "bp-prompt.md:shell": 1,
+    "bp-prompt.md:apostrophe": 1,
+    "bp-prompt.md:quotes": 1,
+    "bp-prompt.md:backslash": 1,
+    "bp-prompt.md:sql": 1,
+    "bp-prompt.md:like-wild": 1,
+    "bp-prompt.md:path-traversal": 1,
+    "bp-prompt.md:lone-surrogate": 1,
+    "bp-prompt.md:control": 1,
+    "bp-prompt.md:json": 1,
+    "bp-prompt.md:number-like": 1,
+    "bp-prompt.md:proto": 1,
+    "bp-prompt.md:inject-single": 1,
+    "bp-prompt.md:inject-subst": 1,
+    "bp-prompt.md:inject-backtick": 1,
+    "bp-prompt.md:inject-heredoc": 1,
+    "bp-prompt.md:inject-heredoc-7c41": 1,
+    "bp-prompt.md:inject-arg-end": 1,
+    "bp-terminal.md:none": 1,
+    "bp-today.md:none": 1,
+    "bp-ui.md:none": 1,
+    "bp-who.md:empty": 1,
+    "bp-who.md:spaces": 1,
+    "bp-who.md:one-char": 1,
+    "bp-who.md:normal": 1,
+    "bp-who.md:boundary-40": 1,
+    "bp-who.md:boundary-41": 1,
+    "bp-who.md:long-300": 1,
+    "bp-who.md:newlines": 1,
+    "bp-who.md:unicode": 1,
+    "bp-who.md:rtl": 1,
+    "bp-who.md:emoji": 1,
+    "bp-who.md:zero-width": 1,
+    "bp-who.md:html": 1,
+    "bp-who.md:script": 1,
+    "bp-who.md:attr": 1,
+    "bp-who.md:shell": 1,
+    "bp-who.md:apostrophe": 1,
+    "bp-who.md:quotes": 1,
+    "bp-who.md:backslash": 1,
+    "bp-who.md:sql": 1,
+    "bp-who.md:like-wild": 1,
+    "bp-who.md:path-traversal": 1,
+    "bp-who.md:lone-surrogate": 1,
+    "bp-who.md:control": 1,
+    "bp-who.md:json": 1,
+    "bp-who.md:number-like": 1,
+    "bp-who.md:proto": 1,
+    "bp-who.md:inject-single": 1,
+    "bp-who.md:inject-subst": 1,
+    "bp-who.md:inject-backtick": 1,
+    "bp-who.md:inject-heredoc": 1,
+    "bp-who.md:inject-heredoc-7c41": 1,
+    "bp-who.md:inject-arg-end": 1,
+    "bp.md:none": 1
+   },
+   "integration": {
+    "GET /v1/brief auth=ok": 1,
+    "GET /v1/brief auth=none": 1,
+    "GET /v1/brief auth=wrong": 1,
+    "GET /v1/brief auth=basic": 1,
+    "GET /v1/brief auth=lower": 1,
+    "GET /v1/brief auth=padded": 1,
+    "PUT /v1/brief": 1,
+    "DELETE /v1/brief": 1,
+    "PATCH /v1/brief": 1,
+    "GET /v1/brief?format=text auth=ok": 1,
+    "GET /v1/brief?format=text auth=none": 1,
+    "GET /v1/brief?format=text auth=wrong": 1,
+    "GET /v1/brief?format=text auth=basic": 1,
+    "GET /v1/brief?format=text auth=lower": 1,
+    "GET /v1/brief?format=text auth=padded": 1,
+    "PUT /v1/brief?format=text": 1,
+    "DELETE /v1/brief?format=text": 1,
+    "PATCH /v1/brief?format=text": 1,
+    "GET /v1/status auth=ok": 1,
+    "GET /v1/status auth=none": 1,
+    "GET /v1/status auth=wrong": 1,
+    "GET /v1/status auth=basic": 1,
+    "GET /v1/status auth=lower": 1,
+    "GET /v1/status auth=padded": 1,
+    "PUT /v1/status": 1,
+    "DELETE /v1/status": 1,
+    "PATCH /v1/status": 1,
+    "GET /v1/sessions auth=ok": 1,
+    "GET /v1/sessions auth=none": 1,
+    "GET /v1/sessions auth=wrong": 1,
+    "GET /v1/sessions auth=basic": 1,
+    "GET /v1/sessions auth=lower": 1,
+    "GET /v1/sessions auth=padded": 1,
+    "PUT /v1/sessions": 1,
+    "DELETE /v1/sessions": 1,
+    "PATCH /v1/sessions": 1,
+    "GET /v1/next auth=ok": 1,
+    "GET /v1/next auth=none": 1,
+    "GET /v1/next auth=wrong": 1,
+    "GET /v1/next auth=basic": 1,
+    "GET /v1/next auth=lower": 1,
+    "GET /v1/next auth=padded": 1,
+    "PUT /v1/next": 1,
+    "DELETE /v1/next": 1,
+    "PATCH /v1/next": 1,
+    "GET /v1/goals auth=ok": 1,
+    "GET /v1/goals auth=none": 1,
+    "GET /v1/goals auth=wrong": 1,
+    "GET /v1/goals auth=basic": 1,
+    "GET /v1/goals auth=lower": 1,
+    "GET /v1/goals auth=padded": 1,
+    "PUT /v1/goals": 1,
+    "DELETE /v1/goals": 1,
+    "PATCH /v1/goals": 1,
+    "GET /v1/health auth=ok": 1,
+    "GET /v1/health auth=none": 1,
+    "GET /v1/health auth=wrong": 1,
+    "GET /v1/health auth=basic": 1,
+    "GET /v1/health auth=lower": 1,
+    "GET /v1/health auth=padded": 1,
+    "PUT /v1/health": 1,
+    "DELETE /v1/health": 1,
+    "PATCH /v1/health": 1,
+    "GET /v1/nope auth=ok": 1,
+    "GET /v1/nope auth=none": 1,
+    "GET /v1/nope auth=wrong": 1,
+    "GET /v1/nope auth=basic": 1,
+    "GET /v1/nope auth=lower": 1,
+    "GET /v1/nope auth=padded": 1,
+    "PUT /v1/nope": 1,
+    "DELETE /v1/nope": 1,
+    "PATCH /v1/nope": 1,
+    "GET / auth=ok": 1,
+    "GET / auth=none": 1,
+    "GET / auth=wrong": 1,
+    "GET / auth=basic": 1,
+    "GET / auth=lower": 1,
+    "GET / auth=padded": 1,
+    "PUT /": 1,
+    "DELETE /": 1,
+    "PATCH /": 1,
+    "GET /pocket auth=ok": 1,
+    "GET /pocket auth=none": 1,
+    "GET /pocket auth=wrong": 1,
+    "GET /pocket auth=basic": 1,
+    "GET /pocket auth=lower": 1,
+    "GET /pocket auth=padded": 1,
+    "PUT /pocket": 1,
+    "DELETE /pocket": 1,
+    "PATCH /pocket": 1,
+    "GET /v1/sessions shape": 1,
+    "POST /v1/prompt empty": 1,
+    "POST /v1/prompt not-json": 1,
+    "POST /v1/prompt truncated": 1,
+    "POST /v1/prompt array": 1,
+    "POST /v1/prompt null": 1,
+    "POST /v1/prompt number": 1,
+    "POST /v1/prompt string": 1,
+    "POST /v1/prompt deep": 1,
+    "POST /v1/prompt big-299k": 1,
+    "POST /v1/prompt unknown-type": 1,
+    "POST /v1/prompt proto": 1,
+    "POST /v1/prompt bom": 1,
+    "POST /v1/prompt request:empty": 1,
+    "POST /v1/prompt request:spaces": 1,
+    "POST /v1/prompt request:one-char": 1,
+    "POST /v1/prompt request:normal": 1,
+    "POST /v1/prompt request:boundary-40": 1,
+    "POST /v1/prompt request:boundary-41": 1,
+    "POST /v1/prompt request:long-300": 1,
+    "POST /v1/prompt request:huge-20k": 1,
+    "POST /v1/prompt request:newlines": 1,
+    "POST /v1/prompt request:unicode": 1,
+    "POST /v1/prompt request:rtl": 1,
+    "POST /v1/prompt request:emoji": 1,
+    "POST /v1/prompt request:zero-width": 1,
+    "POST /v1/prompt request:html": 1,
+    "POST /v1/prompt request:script": 1,
+    "POST /v1/prompt request:attr": 1,
+    "POST /v1/prompt request:shell": 1,
+    "POST /v1/prompt request:apostrophe": 1,
+    "POST /v1/prompt request:quotes": 1,
+    "POST /v1/prompt request:backslash": 1,
+    "POST /v1/prompt request:sql": 1,
+    "POST /v1/prompt request:like-wild": 1,
+    "POST /v1/prompt request:path-traversal": 1,
+    "POST /v1/prompt request:nul": 1,
+    "POST /v1/prompt request:lone-surrogate": 1,
+    "POST /v1/prompt request:control": 1,
+    "POST /v1/prompt request:json": 1,
+    "POST /v1/prompt request:number-like": 1,
+    "POST /v1/prompt request:proto": 1,
+    "POST /v1/prompt goal-bogus": 1,
+    "POST /v1/prompt request-number": 1,
+    "POST /v1/prompt over-20k": 1,
+    "GET /v1/health after the fuzz": 1
+   }
+  }
+ }
+}

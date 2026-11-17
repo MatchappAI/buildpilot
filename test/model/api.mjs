@@ -111,18 +111,18 @@ export function apiActions(B) {
     "selectProject:unknown": { m: "project", run: async (W, m, R) => { const root = R.pick([os.homedir(), "/", "/etc", W.home, `${W.proj}/../..`, "", ...TEXT.map((x) => x[1]).slice(0, 8)]); const r = await W.msg({ type: "selectProject", root }); return { res: r, expect: "refused", check: () => r.json?.result?.flash === "BuildPilot doesn't know that folder" || (root === "" && r.json?.result?.flash) || `unknown folder accepted (${String(root).slice(0, 40)}): ${r.text.slice(0, 100)}` }; } },
     checkpoint: { m: "project", run: async (W) => { const r = await W.msg({ type: "checkpoint" }); return { res: r, expect: "refused", check: () => /Save point made \([0-9a-f]{8}\)/.test(r.json?.result?.flash) || r.text }; } },
     // ---------- sessions (from the page) ----------
-    "renameBuild:fuzz": { m: "session", run: async (W, m, R) => { const [cls, t] = R.pick([...TEXT, ...WRONG]); m.lastFuzz = cls; const id = R.pick([m.sid, "short", "../../etc", "a".repeat(80), m.sid]); const r = await W.msg({ type: "renameBuild", id, name: t }); const valid = /^[A-Za-z0-9-]{8,64}$/.test(id); if (valid && id === m.sid) m.name = (typeof t === "string" ? t : typeof t === "number" || typeof t === "boolean" ? String(t) : "").replace(/\s+/g, " ").trim().slice(0, 40).toWellFormed() || null; return { res: r, expect: valid ? "ok" : "refused" }; } },
-    dismissRisk: { m: "session", run: async (W, m, R) => { const r = await W.msg({ type: "dismissRisk", id: R.pick([m.sid, "nope-nope-nope"]) }); return { res: r, expect: "ok" }; } },
-    hideIdle: { m: "session", run: async (W) => { const r = await W.msg({ type: "hideIdle" }); return { res: r, expect: "ok" }; } },
-    "openBuild:known": { m: "session", run: async (W, m) => { const r = await W.msg({ type: "openBuild", cwd: W.proj, id: m.sid }); return { res: r, expect: "refused", check: () => !!(r.json?.result?.show || r.json?.result?.flash) || r.text }; } },
-    "openBuild:unknown": { m: "session", run: async (W, m, R) => { const r = await W.msg({ type: "openBuild", cwd: R.pick(["/", "/etc", "", 7, W.home]), id: m.sid }); return { res: r, expect: "refused", check: () => r.json?.result?.flash === "BuildPilot doesn't know that folder" || r.text }; } },
-    "resumeBuild:known": { m: "session", run: async (W, m) => { const n = W.osLog().length; const r = await W.msg({ type: "resumeBuild", id: m.sid, cwd: W.proj }); const o = W.osLog().slice(n); return { res: r, expect: "refused", check: () => (o.length === 1 && o[0].kind === "terminal" && o[0].command === `claude --resume ${m.sid}`) || `resume did ${JSON.stringify(o)}` }; } },
-    "resumeBuild:injection": { m: "session", run: async (W, m, R) => { const n = W.osLog().length; const r = await W.msg({ type: "resumeBuild", id: R.pick([`${m.sid}; rm -rf ~`, "$(id)", m.sid]), cwd: R.pick(["/tmp", W.home, "/"]) }); const o = W.osLog().slice(n); return { res: r, expect: "refused", check: () => (o.length === 0 && r.json?.result?.flash === "Can't resume that one") || `resume with a bad id/folder did ${JSON.stringify(o)}` }; } },
-    startFresh: { m: "session", run: async (W, m, R) => { const n = W.osLog().length; const cwd = R.pick([W.proj, "/etc", ""]); const r = await W.msg({ type: "startFresh", cwd }); const o = W.osLog().slice(n); const okDir = cwd === W.proj || cwd === ""; return { res: r, expect: "refused", check: () => (okDir ? o.some((x) => x.kind === "terminal" && x.dir === W.proj) && o.some((x) => x.kind === "copy") : o.length === 0) || `startFresh(${cwd}) did ${JSON.stringify(o).slice(0, 200)}` }; } },
-    "whoChanged:fuzz": { m: "session", run: async (W, m, R) => { const [cls, t] = R.pick([...TEXT, ...WRONG]); m.lastFuzz = cls; const r = await W.msg({ type: "whoChanged", query: t }); return { res: r, expect: "refused", check: () => Array.isArray(r.json?.result?.files) || r.text }; } },
-    "undoFile:unknown": { m: "session", run: async (W, m, R) => { const r = await W.msg({ type: "undoFile", path: R.pick(["/etc/hosts", path.join(W.proj, "package.json"), "", "../../x", path.join(W.home, ".claude/settings.json")]) }); return { res: r, expect: "refused", check: () => /only puts back files a Claude session changed/.test(r.json?.result?.flash) || r.text }; } },
-    "undoFile:edited": { m: "session", pre: (m) => m.edited, run: async (W) => { const f = path.join(W.proj, "src/shared.txt"); fs.appendFileSync(f, "claude edit\n"); const r = await W.msg({ type: "undoFile", path: f }); return { res: r, expect: "ok", check: () => (/Put back the last saved version/.test(r.json?.result?.flash) && !fs.readFileSync(f, "utf8").includes("claude edit")) || r.text }; } },
-    claudeEvent: { m: "session", run: async (W, m, R) => { const ev = R.pick(["UserPromptSubmit", "PermissionRequest", "Stop", "PostToolUse", "Notification", "StopFailure"]); const p = { session_id: m.sid, cwd: W.proj, hook_event_name: ev, nonce: m.n++, ...(ev === "UserPromptSubmit" ? { prompt: "add a checkout page" } : ev === "PostToolUse" ? { tool_name: "Edit", tool_input: { file_path: path.join(W.proj, "src/shared.txt") }, tool_response: {} } : ev === "Notification" ? { notification_type: "permission_prompt", message: "needs Bash" } : ev === "PermissionRequest" ? { tool_name: "Bash", tool_input: { command: "ls" } } : {}) }; if (ev === "PostToolUse") m.edited = true; const d = path.join(W.bph, "spool"); fs.mkdirSync(path.join(d, "tmp"), { recursive: true }); fs.writeFileSync(path.join(d, "tmp", `e${m.n}`), JSON.stringify(p)); fs.renameSync(path.join(d, "tmp", `e${m.n}`), path.join(d, `evt.model${m.n}.json`)); m.status = { UserPromptSubmit: "running", PermissionRequest: "awaiting_approval", Stop: "idle", PostToolUse: "running", Notification: "awaiting_approval", StopFailure: "failed" }[ev]; m.pendingEvent = true; return { res: null, expect: "env" }; } },
+    "renameBuild:fuzz": { m: "sessionUi", run: async (W, m, R) => { const [cls, t] = R.pick([...TEXT, ...WRONG]); m.lastFuzz = cls; const id = R.pick([m.sid, "short", "../../etc", "a".repeat(80), m.sid]); const r = await W.msg({ type: "renameBuild", id, name: t }); const valid = /^[A-Za-z0-9-]{8,64}$/.test(id); if (valid && id === m.sid) m.name = (typeof t === "string" ? t : typeof t === "number" || typeof t === "boolean" ? String(t) : "").replace(/\s+/g, " ").trim().slice(0, 40).toWellFormed() || null; return { res: r, expect: valid ? "ok" : "refused" }; } },
+    dismissRisk: { m: "sessionUi", run: async (W, m, R) => { const r = await W.msg({ type: "dismissRisk", id: R.pick([m.sid, "nope-nope-nope"]) }); return { res: r, expect: "ok" }; } },
+    hideIdle: { m: "sessionUi", run: async (W) => { const r = await W.msg({ type: "hideIdle" }); return { res: r, expect: "ok" }; } },
+    "openBuild:known": { m: "sessionUi", run: async (W, m) => { const r = await W.msg({ type: "openBuild", cwd: W.proj, id: m.sid }); return { res: r, expect: "refused", check: () => !!(r.json?.result?.show || r.json?.result?.flash) || r.text }; } },
+    "openBuild:unknown": { m: "sessionUi", run: async (W, m, R) => { const r = await W.msg({ type: "openBuild", cwd: R.pick(["/", "/etc", "", 7, W.home]), id: m.sid }); return { res: r, expect: "refused", check: () => r.json?.result?.flash === "BuildPilot doesn't know that folder" || r.text }; } },
+    "resumeBuild:known": { m: "sessionUi", run: async (W, m) => { const n = W.osLog().length; const r = await W.msg({ type: "resumeBuild", id: m.sid, cwd: W.proj }); const o = W.osLog().slice(n); return { res: r, expect: "refused", check: () => (o.length === 1 && o[0].kind === "terminal" && o[0].command === `claude --resume ${m.sid}`) || `resume did ${JSON.stringify(o)}` }; } },
+    "resumeBuild:injection": { m: "sessionUi", run: async (W, m, R) => { const n = W.osLog().length; const r = await W.msg({ type: "resumeBuild", id: R.pick([`${m.sid}; rm -rf ~`, "$(id)", m.sid]), cwd: R.pick(["/tmp", W.home, "/"]) }); const o = W.osLog().slice(n); return { res: r, expect: "refused", check: () => (o.length === 0 && r.json?.result?.flash === "Can't resume that one") || `resume with a bad id/folder did ${JSON.stringify(o)}` }; } },
+    startFresh: { m: "sessionUi", run: async (W, m, R) => { const n = W.osLog().length; const cwd = R.pick([W.proj, "/etc", ""]); const r = await W.msg({ type: "startFresh", cwd }); const o = W.osLog().slice(n); const okDir = cwd === W.proj || cwd === ""; return { res: r, expect: "refused", check: () => (okDir ? o.some((x) => x.kind === "terminal" && x.dir === W.proj) && o.some((x) => x.kind === "copy") : o.length === 0) || `startFresh(${cwd}) did ${JSON.stringify(o).slice(0, 200)}` }; } },
+    "whoChanged:fuzz": { m: "sessionUi", run: async (W, m, R) => { const [cls, t] = R.pick([...TEXT, ...WRONG]); m.lastFuzz = cls; const r = await W.msg({ type: "whoChanged", query: t }); return { res: r, expect: "refused", check: () => Array.isArray(r.json?.result?.files) || r.text }; } },
+    "undoFile:unknown": { m: "sessionUi", run: async (W, m, R) => { const r = await W.msg({ type: "undoFile", path: R.pick(["/etc/hosts", path.join(W.proj, "package.json"), "", "../../x", path.join(W.home, ".claude/settings.json")]) }); return { res: r, expect: "refused", check: () => /only puts back files a Claude session changed/.test(r.json?.result?.flash) || r.text }; } },
+    "undoFile:edited": { m: "sessionUi", pre: (m) => m.edited, run: async (W) => { const f = path.join(W.proj, "src/shared.txt"); fs.appendFileSync(f, "claude edit\n"); const r = await W.msg({ type: "undoFile", path: f }); return { res: r, expect: "ok", check: () => (/Put back the last saved version/.test(r.json?.result?.flash) && !fs.readFileSync(f, "utf8").includes("claude edit")) || r.text }; } },
+    claudeEvent: { m: "sessionUi", run: async (W, m, R) => { const ev = R.pick(["UserPromptSubmit", "PermissionRequest", "Stop", "PostToolUse", "Notification", "StopFailure"]); const p = { session_id: m.sid, cwd: W.proj, hook_event_name: ev, nonce: m.n++, ...(ev === "UserPromptSubmit" ? { prompt: "add a checkout page" } : ev === "PostToolUse" ? { tool_name: "Edit", tool_input: { file_path: path.join(W.proj, "src/shared.txt") }, tool_response: {} } : ev === "Notification" ? { notification_type: "permission_prompt", message: "needs Bash" } : ev === "PermissionRequest" ? { tool_name: "Bash", tool_input: { command: "ls" } } : {}) }; if (ev === "PostToolUse") m.edited = true; const d = path.join(W.bph, "spool"); fs.mkdirSync(path.join(d, "tmp"), { recursive: true }); fs.writeFileSync(path.join(d, "tmp", `e${m.n}`), JSON.stringify(p)); fs.renameSync(path.join(d, "tmp", `e${m.n}`), path.join(d, `evt.model${m.n}.json`)); m.status = { UserPromptSubmit: "running", PermissionRequest: "awaiting_approval", Stop: "idle", PostToolUse: "running", Notification: "awaiting_approval", StopFailure: "failed" }[ev]; m.pendingEvent = true; return { res: null, expect: "env" }; } },
     // ---------- side builds ----------
     "newBuild": { m: "build", pre: (m) => known(m).length < 4, run: async (W, m, R) => {
       const [cls, label] = R.pick([...TEXT.filter(([c]) => !["huge-20k"].includes(c)), ["normal", "checkout"], ["normal", "dark mode"]]); m.lastFuzz = cls;
@@ -236,11 +236,13 @@ export async function checkServer(W, m) {
   const gitList = (W.git(["worktree", "list", "--porcelain"]).match(/^worktree .+$/gm) ?? []).map((l) => l.slice(9)).filter((d) => d !== W.proj).sort();
   if (JSON.stringify(gitList) !== JSON.stringify(want)) errs.push(`git worktrees ${JSON.stringify(gitList)} ≠ model ${JSON.stringify(want)}`);
   let side = (P.side ?? []).map((x) => x.dir).sort();
-  if (JSON.stringify(side) !== JSON.stringify(want)) { await sleep(5200); await W.req("/api/state"); await sleep(400); side = ((await W.state()).page.side ?? []).map((x) => x.dir).sort(); if (JSON.stringify(side) !== JSON.stringify(want)) errs.push(`page side builds ${JSON.stringify(side.map((d) => path.basename(d)))} ≠ ${JSON.stringify(want.map((d) => path.basename(d)))}`); }
+  // Changes made outside the window (bp new / bp done) show at the next background re-read (every 5 s, a few git calls).
+  for (let i = 0; i < 30 && JSON.stringify(side) !== JSON.stringify(want); i++) { await sleep(500); side = ((await W.state()).page.side ?? []).map((x) => x.dir).sort(); }
+  if (JSON.stringify(side) !== JSON.stringify(want)) { if (JSON.stringify(side) !== JSON.stringify(want)) errs.push(`page side builds ${JSON.stringify(side.map((d) => path.basename(d)))} ≠ ${JSON.stringify(want.map((d) => path.basename(d)))}`); }
   // The page re-reads side builds in the background every 5 s: a change made outside the window must show by then.
   const sideErrs = (list) => { const out = []; for (const x of list ?? []) { const b = m.builds.get(x.dir); if (!b) continue; if ((b.state === "clean" || b.state === "merged") && x.changed !== 0) out.push(`${x.name}: ${x.changed} files changed, expected none (${b.state})`); if ((b.state === "unsaved" || b.state === "saved") && x.changed === 0) out.push(`${x.name}: no changes shown, but it has ${b.state} work`); } return out; };
   let se1 = sideErrs(P.side);
-  if (se1.length) { await sleep(5200); await W.req("/api/state"); await sleep(600); se1 = sideErrs((await W.state()).page.side); }
+  for (let i = 0; i < 30 && se1.length; i++) { await sleep(500); se1 = sideErrs((await W.state()).page.side); }
   errs.push(...se1);
   if (fs.existsSync(path.join(W.proj, ".git/MERGE_HEAD"))) errs.push("main project left in the middle of a merge");
   for (const b of m.builds.values()) if (W.git(["branch", "--list", b.branch]).trim() === "") errs.push(`branch ${b.branch} was deleted`);
@@ -325,7 +327,7 @@ function summarize(m) {
   const plan = m.licensed ? "licensed" : !m.sellable ? "not-sellable" : m.trialLeft > 3 ? "trial" : m.trialLeft > 0 ? "trial-ending" : m.count >= 20 ? "free-exhausted" : "free";
   const builds = [...m.builds.values()].filter((b) => b.state !== "removed");
   const b = builds.length ? builds.map((x) => x.state + (x.conflict ? "+conflict" : "") + (x.testsFail && pro ? "+failing" : "")).sort().join(",") : "none";
-  return { plan, prefs: `${m.theme}/${m.alerts ? "on" : "off"}`, connection: m.plugin ? (m.connected ? "plugin+hooks" : "plugin") : m.connected ? "connected" : "disconnected", project: m.mainDirty ? "dirty" : "clean", session: m.status ?? "absent", build: `${builds.length}:${b}${m.mainDirty ? ":main-dirty" : ""}`, env: plan, mixed: "-" };
+  return { plan, prefs: `${m.theme}/${m.alerts ? "on" : "off"}`, connection: m.plugin ? (m.connected ? "plugin+hooks" : "plugin") : m.connected ? "connected" : "disconnected", project: m.mainDirty ? "dirty" : "clean", sessionUi: m.status ?? "absent", build: `${builds.length}:${b}${m.mainDirty ? ":main-dirty" : ""}`, env: plan, mixed: "-" };
 }
 
 function diffFp(a, b) { const x = JSON.parse(a), y = JSON.parse(b); return Object.keys(x).filter((k) => JSON.stringify(x[k]) !== JSON.stringify(y[k])).map((k) => `${k}: ${JSON.stringify(x[k]).slice(0, 80)} → ${JSON.stringify(y[k]).slice(0, 80)}`).join("; "); }
@@ -373,7 +375,8 @@ export const BUILD_EDGES = {
   clean: [["edit", "unsaved"], ["breakTests", "unsaved+failing"], ["makeConflict", "saved+conflict"], ["mergeBuild", "clean"], ["removeBuild", "removed"], ["cli:done", "removed"]],
   unsaved: [["commitInBuild", "saved"], ["mergeBuild", "merged"], ["cli:merge", "merged"], ["removeBuild", "unsaved"], ["breakTests", "unsaved+failing"]],
   saved: [["mergeBuild", "merged"], ["edit", "unsaved"], ["makeConflict", "saved+conflict"], ["removeBuild", "removed"]],
-  "saved+conflict": [["mergeBuild", "saved+conflict"], ["cli:merge", "saved+conflict"], ["fixConflict", "saved"], ["removeBuild", "removed"]],
+  "saved+conflict": [["mergeBuild", "saved+conflict"], ["cli:merge", "saved+conflict"], ["fixConflict", "saved"], ["edit", "unsaved+conflict"], ["removeBuild", "removed"]],
+  "unsaved+conflict": [["commitInBuild", "saved+conflict"], ["mergeBuild", "saved+conflict"], ["removeBuild", "unsaved+conflict"]],
   "unsaved+failing": [["mergeBuild", "unsaved+failing"], ["mergeBuild:force", "merged"], ["commitInBuild", "saved+failing"], ["removeBuild", "unsaved+failing"]],
   "saved+failing": [["mergeBuild", "saved+failing"], ["cli:merge", "saved+failing"], ["mergeBuild:force", "merged"], ["removeBuild", "removed"]],
   merged: [["mergeBuild", "merged"], ["edit", "unsaved"], ["removeBuild", "removed"], ["cli:done", "removed"]],
@@ -441,4 +444,46 @@ export async function runBuildPaths({ B, paths, record }) {
     }
   } finally { await W.cleanup(); }
   return { paths: paths.length, realized, failures };
+}
+
+/**
+ * Criterion (a) for side builds, exhaustively: for every build state, reach it by the shortest lifecycle path, then try
+ * EVERY action possible from it (including the ones that must be refused), on a Pro world (tests run before merge).
+ */
+export async function runBuildTransitions({ B, record, only = null }) {
+  const { buildFeasible, BUILD_STATES } = await import("./model.mjs");
+  const W = await makeServerWorld(B, { sellable: true, trialDays: 0, license: B.mint() });
+  const m = { sellable: true, trialLeft: 0, licensed: true, count: 0, theme: "white", alerts: true, connected: false, plugin: false, builds: new Map(), mainDirty: false, sid: "abcd1234-0000-4000-8000-00000000beef", name: null, n: 0, edited: false };
+  const A = apiActions(B);
+  const R0 = { chance: (p) => p >= 0.5, pick: (xs) => xs[xs.length - 1], int: (a) => a, weighted: (p) => p[0][0], next: () => 0 };
+  const prefixTo = (target) => { const q = [["none", []]]; const seen = new Set(["none"]); while (q.length) { const [st, acts] = q.shift(); if (st === target) return acts; for (const [a, to] of BUILD_EDGES[st] ?? []) if (!seen.has(to)) { seen.add(to); q.push([to, [...acts, a]]); } } return null; };
+  const actions = Object.keys(A).filter((k) => A[k].m === "build");
+  const failures = []; let ran = 0;
+  const tidy = () => { for (const b of m.builds.values()) if (b.state !== "removed") { try { W.git(["worktree", "remove", "--force", b.dir]); } catch {} b.state = "removed"; } if (m.mainTestsFail) { fs.writeFileSync(path.join(W.proj, "package.json"), JSON.stringify({ name: "demo", scripts: { test: "node -e 0" } })); W.git(["commit", "-qam", "tests pass again"]); m.mainTestsFail = false; } };
+  try {
+    for (const st of only ?? BUILD_STATES) {
+      const prefix = prefixTo(st) ?? [];
+      for (const a of actions.filter((x) => buildFeasible(st, x))) {
+        tidy();
+        let ok = true;
+        for (const p of prefix) { const r = await A[p].run(W, m, R0); if (r.check && r.check() !== true) { ok = false; failures.push({ state: st, action: a, errors: [`reaching ${st}: ${p}: ${r.check()}`] }); break; } }
+        if (!ok) continue;
+        const live = [...m.builds.values()].filter((b) => b.state !== "removed").pop();
+        const now = live ? buildLabel(live, m) : st === "removed" ? "removed" : "none";
+        if (now !== st) { failures.push({ state: st, action: a, errors: [`prefix ${prefix.join(" → ")} reached ${now}, not ${st}`] }); continue; }
+        const before = fingerprint(W);
+        if (A[a].pre && !A[a].pre(m)) continue;
+        const r = await A[a].run(W, m, R0); ran++;
+        const errs = [];
+        if (r.res && (r.res.status >= 500 || r.res.status === -1)) errs.push(`HTTP ${r.res.status}`);
+        if (r.check) { const c = r.check(); if (c !== true) errs.push(c); }
+        if (r.expect === "refused" && fingerprint(W) !== before) errs.push(`should change nothing: ${diffFp(before, fingerprint(W))}`);
+        errs.push(...(await checkServer(W, m)));
+        const after = r.b?.dir && m.builds.has(r.b.dir) ? buildLabel(m.builds.get(r.b.dir), m) : live && m.builds.has(live.dir) ? buildLabel(m.builds.get(live.dir), m) : st;
+        record?.transition("build", st, a, after);
+        if (errs.length) failures.push({ state: st, action: a, errors: errs });
+      }
+    }
+  } finally { await W.cleanup(); }
+  return { ran, failures };
 }

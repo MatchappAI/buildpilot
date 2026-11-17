@@ -48,6 +48,7 @@ export function machines(B = { mint: () => "", forge: () => "" }) {
     plan: { states: PLAN_STATES, actions: by("plan"), feasible: (s, a) => !(a === "trialEnds" && !["trial", "trial-ending", "licensed", "not-sellable"].includes(s)) },
     connection: { states: CONN_STATES, actions: by("connection"), feasible: () => true },
     prefs: { states: PREF_STATES, actions: by("prefs"), feasible: () => true },
+    sessionUi: { states: ["absent", "running", "awaiting_approval", "idle", "failed"], actions: by("sessionUi"), feasible: (s, a) => !(a === "undoFile:edited" && s === "absent"), note: "session actions sent to the window server (rename, dismiss, resume, start fresh, who changed, undo file)" },
     project: { states: PROJECT_STATES, actions: by("project"), feasible: (s, a) => !((a === "mainDirty" && s === "dirty") || (a === "mainClean" && s === "clean")) },
   };
 }

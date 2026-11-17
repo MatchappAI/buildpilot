@@ -20,7 +20,10 @@ try {
   await b.viewport(1280, 900); await b.goto(url); await b.wait(() => !!document.querySelector(".builds") && !!document.querySelector(".hu-need"), 15000); await sleep(800);
   await step("seeded day: needs-you line names the exact session, no Pause for an idle session", async () => {
     const t = await b.eval(() => document.querySelector(".hu-need").textContent); ok(/proj \(clean the old build\) needs your OK/.test(t), t);
-    ok(await b.eval(() => !document.querySelector('[data-tip="pause"]')), "Pause offered for a session that isn't working");
+    // Pause may only ever name the session that is working (whether it shows at all depends on its share of today's
+    // cost, which changes when the seeded hour crosses midnight).
+    const pause = await b.eval(() => document.querySelector('[data-tip="pause"]')?.textContent ?? "");
+    ok(!pause || /checkout/.test(pause), `Pause offered for a session that isn't working: "${pause}"`);
     await b.shot(`${OUT}/live-1-seeded.png`, false); return t.trim().slice(0, 60);
   });
   await step("seeded day: Start fresh never overlaps the chat % (desktop) and no sideways scroll at 375 px", async () => {
